@@ -34,7 +34,7 @@
     "sun": null
   },
   "escalation": {
-    "humanPhone": "+14095550100",
+    "humanPhone": "+14092574186",
     "urgentAfterHours": true,
     "safetyRule": "Move caller to safety and direct to emergency services or utility when appropriate; do not diagnose hazardous conditions."
   },
@@ -68,7 +68,7 @@
       "type": "sip",
       "enabled": false,
       "inboundNumbers": [
-        "+14095550100"
+        "+14092574186"
       ]
     },
     "sms": {
