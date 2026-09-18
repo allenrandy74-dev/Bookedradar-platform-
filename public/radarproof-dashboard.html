@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RadarProof — BookedRadar</title>
+<style>
+:root{color-scheme:dark;--bg:#070b08;--panel:#101611;--line:#243226;--text:#f4f7f4;--muted:#9baa9d;--accent:#afff40}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 70% 0,#112417 0,transparent 38%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1120px;margin:auto;padding:28px 18px 60px}header{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:26px}.eyebrow{font-size:12px;letter-spacing:.18em;color:var(--accent);font-weight:800}.title{font-size:clamp(30px,6vw,58px);font-weight:850;line-height:.95;margin:9px 0}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:linear-gradient(180deg,#121914,#0d120e);border:1px solid var(--line);border-radius:18px;padding:18px;min-height:128px}.label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.value{font-size:34px;font-weight:800;margin-top:12px}.accent{color:var(--accent)}.wide{grid-column:span 2}.full{grid-column:1/-1}.source{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.source:last-child{border:0}.disclaimer{font-size:12px;color:var(--muted);margin-top:18px;line-height:1.5}.status{font-size:12px;border:1px solid var(--line);padding:7px 10px;border-radius:999px}.empty{padding:24px 0;color:var(--muted)}
+@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:span 2}}
+@media(max-width:520px){header{align-items:start;flex-direction:column}.grid{grid-template-columns:1fr}.wide,.full{grid-column:1}.value{font-size:30px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div><div class="eyebrow">RADARPROOF</div><div class="title">Revenue recovery,<br><span class="accent">made visible.</span></div><div class="muted">Confirmed revenue is kept separate from diagnostic estimates.</div></div>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<input id="token" placeholder="Admin token (private dashboards)" type="password" style="background:#0d120e;border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:10px;max-width:250px">
+<button id="saveToken" style="background:var(--accent);border:0;padding:9px 12px;border-radius:10px;font-weight:800;cursor:pointer">Use token</button>
+<div class="status" id="status">Loading live data…</div>
+</div>
+</header>
+<section class="grid">
+<div class="card"><div class="label">Opportunities captured</div><div class="value" id="captured">—</div></div>
+<div class="card"><div class="label">Recovered</div><div class="value accent" id="recovered">—</div></div>
+<div class="card"><div class="label">Estimated recovered value</div><div class="value" id="estimated">—</div></div>
+<div class="card"><div class="label">Confirmed revenue</div><div class="value accent" id="confirmed">—</div></div>
+<div class="card wide"><div class="label">Recovery rate</div><div class="value" id="rate">—</div></div>
+<div class="card wide"><div class="label">Open work</div><div class="value" id="pending">—</div><div class="muted" id="blocked"></div></div>
+<div class="card full"><div class="label">Recovery by source</div><div id="sources" class="empty">No data yet.</div></div>
+</section>
+<div class="disclaimer" id="disclaimer"></div>
+</main>
+<script>
+const tokenInput=document.getElementById("token");
+tokenInput.value=sessionStorage.getItem("br_admin_token")||"";
+document.getElementById("saveToken").onclick=()=>{
+  sessionStorage.setItem("br_admin_token",tokenInput.value.trim());
+  load();
+};
+const money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
+const pct=n=>new Intl.NumberFormat("en-US",{style:"percent",maximumFractionDigits:1}).format(Number(n||0));
+async function load(){
+  const status=document.getElementById("status");
+  try{
+    const tenant=new URLSearchParams(location.search).get("tenant")||"";
+    const endpoint="/api/v1/radarproof"+(tenant?("?tenant="+encodeURIComponent(tenant)):"");
+    const adminToken=sessionStorage.getItem("br_admin_token")||"";
+    const r=await fetch(endpoint,{
+      cache:"no-store",
+      headers:adminToken?{Authorization:`Bearer ${adminToken}`}:{},
+    });
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const {report}=await r.json();
+    captured.textContent=report.opportunitiesCaptured;
+    recovered.textContent=report.recoveredOpportunities;
+    estimated.textContent=money(report.estimatedRecoveredValue);
+    confirmed.textContent=money(report.confirmedRevenue);
+    rate.textContent=pct(report.recoveryRate);
+    pending.textContent=report.pendingActions;
+    blocked.textContent=`${report.blockedActions} blocked by policy or consent`;
+    disclaimer.textContent=report.disclaimer;
+    const entries=Object.entries(report.bySource||{});
+    sources.className=entries.length?"":"empty";
+    sources.innerHTML=entries.length?entries.map(([name,x])=>`<div class="source"><span>${name}</span><span>${x.recovered}/${x.opportunities} recovered</span><span>${money(x.estimatedValue)}</span></div>`).join(""):"No opportunities have been recorded yet.";
+    status.textContent="Live";
+  }catch(e){
+    status.textContent="Data unavailable";
+    disclaimer.textContent="RadarProof will populate after the BookedRadar backend is deployed and receiving real opportunity events.";
+  }
+}
+load();
+setInterval(load,30000);
+</script>
+</body>
+</html>

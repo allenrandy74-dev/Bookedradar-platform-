@@ -1,0 +1,13 @@
+{
+  "company_name": "Pilot Customer Name",
+  "trade": "HVAC",
+  "service_area": "Customer service area",
+  "human_transfer_number": "+1XXXXXXXXXX",
+  "rules": {
+    "can_confirm_appointments": false,
+    "can_quote_prices": false,
+    "record_calls": false,
+    "emergency_escalation": true
+  },
+  "notes": "Copy this profile per pilot customer. Scheduling remains confirmation-only until that customer's calendar/dispatch system is connected."
+}
