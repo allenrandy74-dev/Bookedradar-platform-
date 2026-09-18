@@ -1,0 +1,6 @@
+.env
+node_modules
+data/*.jsonl
+data/state.json
+.git
+.DS_Store

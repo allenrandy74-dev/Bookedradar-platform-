@@ -1,0 +1,68 @@
+openapi: 3.1.0
+info:
+  title: BookedRadar Platform API
+  version: 1.4.0
+  description: Multi-tenant opportunity capture, recovery, dispatch, suppression, attribution and RadarProof API.
+servers:
+  - url: https://YOUR-BACKEND
+components:
+  securitySchemes:
+    ingestBearer: {type: http, scheme: bearer, bearerFormat: token}
+    adminBearer: {type: http, scheme: bearer, bearerFormat: token}
+  parameters:
+    Tenant:
+      name: x-bookedradar-tenant
+      in: header
+      required: true
+      schema: {type: string}
+paths:
+  /health:
+    get:
+      summary: Public liveness probe
+      responses: {'200': {description: Service alive}}
+  /api/v1/events:
+    post:
+      summary: Ingest an opportunity/recovery event
+      security: [{ingestBearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}]
+      responses: {'201': {description: Event accepted}, '401': {description: Unauthorized}}
+  /api/v1/actions/due:
+    get:
+      summary: Inspect due recovery actions
+      security: [{adminBearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}]
+      responses: {'200': {description: Due actions}}
+  /api/v1/dispatch/run:
+    post:
+      summary: Execute due recovery actions through configured adapters
+      security: [{adminBearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}]
+      responses: {'200': {description: Dispatch results}}
+  /api/v1/opportunities/{id}/recovered:
+    post:
+      summary: Mark an opportunity recovered
+      security: [{adminBearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses: {'200': {description: Updated}}
+  /api/v1/opportunities/{id}/revenue:
+    post:
+      summary: Record explicitly confirmed revenue
+      security: [{adminBearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses: {'200': {description: Revenue recorded}}
+  /api/v1/contacts/{key}/opt-out:
+    post:
+      summary: Suppress a contact from future automated outreach
+      security: [{adminBearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {name: key, in: path, required: true, schema: {type: string}}
+      responses: {'200': {description: Contact suppressed}}
+  /api/v1/radarproof:
+    get:
+      summary: Retrieve tenant-scoped recovery metrics
+      responses: {'200': {description: Metrics}, '401': {description: Private by default}}

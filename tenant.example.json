@@ -1,0 +1,84 @@
+{
+  "tenantId": "pilot-hvac-001",
+  "businessName": "Example HVAC",
+  "trade": "HVAC",
+  "timeZone": "America/Chicago",
+  "serviceArea": [
+    "Southeast Texas"
+  ],
+  "businessHours": {
+    "mon": [
+      "07:00",
+      "18:00"
+    ],
+    "tue": [
+      "07:00",
+      "18:00"
+    ],
+    "wed": [
+      "07:00",
+      "18:00"
+    ],
+    "thu": [
+      "07:00",
+      "18:00"
+    ],
+    "fri": [
+      "07:00",
+      "18:00"
+    ],
+    "sat": [
+      "08:00",
+      "14:00"
+    ],
+    "sun": null
+  },
+  "escalation": {
+    "humanPhone": "+14095550100",
+    "urgentAfterHours": true,
+    "safetyRule": "Move caller to safety and direct to emergency services or utility when appropriate; do not diagnose hazardous conditions."
+  },
+  "policies": {
+    "bookingMode": "confirm_only",
+    "quietHours": {
+      "start": 20,
+      "end": 8
+    },
+    "sms": {
+      "allowTransactionalWhenInbound": true
+    },
+    "recordCalls": false,
+    "quotePrices": false
+  },
+  "economics": {
+    "defaultAverageJobValue": 450,
+    "averageJobValueByType": {
+      "repair": 450,
+      "maintenance": 225,
+      "replacement": 9500
+    },
+    "highValueThreshold": 3000
+  },
+  "integrations": {
+    "crm": {
+      "type": "wix",
+      "enabled": false
+    },
+    "phone": {
+      "type": "sip",
+      "enabled": false
+    },
+    "sms": {
+      "type": "quo_or_twilio",
+      "enabled": false
+    },
+    "email": {
+      "type": "gmail_or_provider",
+      "enabled": false
+    },
+    "calendar": {
+      "type": "customer_specific",
+      "enabled": false
+    }
+  }
+}

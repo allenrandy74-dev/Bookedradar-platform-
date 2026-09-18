@@ -1,0 +1,51 @@
+openapi: 3.1.0
+info:
+  title: BookedRadar Platform API
+  version: 2.0.0
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    TenantHeader:
+      type: apiKey
+      in: header
+      name: x-bookedradar-tenant
+paths:
+  /health:
+    get:
+      responses:
+        "200": { description: Service health }
+  /ready:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Integration readiness }
+  /api/v1/intake/missed-call:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "201": { description: Missed call accepted } }
+  /api/v1/intake/web-lead:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "201": { description: Web lead accepted } }
+  /api/v1/intake/estimate:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "201": { description: Estimate accepted } }
+  /api/v1/intake/cancellation:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "201": { description: Cancellation accepted } }
+  /api/v1/intake/dormant:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "201": { description: Reactivation candidate accepted } }
+  /api/v1/intake/reply:
+    post:
+      security: [{ BearerAuth: [], TenantHeader: [] }]
+      responses: { "200": { description: Customer reply or opt-out accepted } }
+  /api/v1/radarproof:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses: { "200": { description: RadarProof metrics } }

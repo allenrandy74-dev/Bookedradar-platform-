@@ -1,0 +1,28 @@
+{
+  "name": "bookedradar-platform",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check src/operator.js && node --check src/openai-call.js && node --check src/wix.js && node --check src/intake.js && node --check src/recovery/catalog.js && node --check src/recovery/compliance.js && node --check src/recovery/templates.js && node --check src/recovery/store.js && node --check src/recovery/engine.js && node --check src/recovery/radarproof.js && node --check src/recovery/tenant.js && node --check src/recovery/tenant-registry.js && node --check src/integrations/dispatcher.js && node --check src/integrations/booking-webhook.js && node --check src/integrations/tenant-adapters.js",
+    "simulate": "node scripts/simulate.js",
+    "self-check": "node scripts/self-check.js",
+    "backup": "node scripts/backup.js",
+    "validate-config": "node scripts/validate-config.mjs",
+    "generate-secrets": "node scripts/generate-secrets.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "openai": "7.17.0",
+    "ws": "8.21.3"
+  },
+  "description": "BookedRadar opportunity capture, recovery, voice, CRM, booking and RadarProof engine"
+}

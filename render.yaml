@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: bookedradar-platform
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    disk:
+      name: bookedradar-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5050"
+      - key: RECOVERY_STATE_FILE
+        value: /app/data/recovery-state.json
+      - key: STATE_FILE
+        value: /app/data/state.json
+      - key: LEADS_FILE
+        value: /app/data/leads.jsonl
+      - key: TENANT_CONFIG_DIR
+        value: ./config/tenants
+      - key: BOOKEDRADAR_INGEST_TOKEN
+        generateValue: true
+      - key: BOOKEDRADAR_ADMIN_TOKEN
+        generateValue: true
+      - key: VOICE_ENABLED
+        value: "false"
+      - key: RADARPROOF_PUBLIC
+        value: "false"
+      - key: LOG_TRANSCRIPTS
+        value: "false"
+      - key: DISPATCH_INTERVAL_SECONDS
+        value: "30"

@@ -1,0 +1,11 @@
+services:
+  bookedradar:
+    build: .
+    ports:
+      - "5050:5050"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config/tenants:/app/config/tenants:ro
+    restart: unless-stopped
