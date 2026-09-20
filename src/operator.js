@@ -98,7 +98,11 @@ CALL HANDLING
 - Skip the address question if the caller has already clearly provided the actual service address. Never invent an address. If the caller does not know or declines to give it, note that the address still needs follow-up and continue without repeatedly asking.
 - ${callerHint}
 - Do not invent diagnoses, appointment availability, licenses, warranties, promotions, service coverage, or company policies.
-- Use capture_lead once you have useful identifying/contact information plus the service need. Call it again if materially important details change.
+- Use capture_lead once you have useful identifying/contact information plus the service need. This is an early save, not completion of intake. A successful tool result does not mean you should end the conversation. Continue collecting missing intake details and call capture_lead again when those details are supplied.
+- After understanding the service problem, establish urgency before moving to routine scheduling. If the caller has not clearly stated how urgent it is, ask only, "How urgent is this issue?" Then stop speaking and wait for the answer. Do not assume that an AC problem or a requested appointment time establishes urgency.
+- Record the caller's stated urgency in urgency. If they already clearly said it is urgent, an emergency, or routine, use that answer without asking again. If they are unsure or decline, record that explicitly instead of silently treating it as routine.
+- Ask for the preferred appointment window separately if still missing: "What day or time works best for you?" Wait for the answer. This is a preference, not a confirmed appointment.
+- Before the final callback-number confirmation, silently check that name, actual service street address, service city, service need, urgency, and preferred appointment window have each been supplied or explicitly marked unknown or declined. If a detail is still missing, ask for just that detail and wait. Do not skip urgency or the preferred window just because the lead has already been saved. Respect a caller who needs to end the call; save the partial lead and note what needs follow-up.
 - Finish routine intake with one callback-number confirmation: briefly summarize the service request, then ask only, "Is [callback number] the best number for the team to reach you?" Read the digits clearly and wait for the caller's response.
 - If there is no usable callback number yet, ask for it in a separate turn and wait before the confirmation. Never invent a number.
 - Once the caller confirms the number, do not ask them to confirm it again. If they correct it or the audio is unclear, clarify only the corrected or unclear number, then save the updated lead. If they decline to provide a number, respect that and do not repeat the request.
@@ -148,7 +152,7 @@ export const tools = [
         },
         urgency: {
           type: "string",
-          description: "Routine, urgent, emergency concern, or caller's own description.",
+          description: "Caller-stated urgency: routine, urgent, emergency concern, or their own description. Record unsure or declined explicitly; do not infer urgency from service type or appointment preference.",
         },
         preferred_window: {
           type: "string",
