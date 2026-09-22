@@ -101,7 +101,7 @@ for (const digit of ['', '2']) test(`screening ${digit ? 'rejection' : 'timeout'
 test('no answer fallback does not claim a successful handoff',async t=>{
   const f=await fixture(t); await f.entry();
   const result=await f.post(f.callback('complete'),{CallSid:f.parent,DialCallSid:f.child,DialCallStatus:'no-answer',DialBridged:'false'});
-  assert.match(result.text,/unavailable/); assert.equal(f.logs.some(x=>x.event==='transfer.no-answer'),true);
+  assert.match(result.text,/unavailable/); assert.equal(f.logs.some(x=>x.event==='transfer.no_answer'),true);
 });
 test('unsigned, forged action, wrong account, and cross-call callbacks cannot screen or dial',async t=>{
   const f=await fixture(t);
@@ -136,4 +136,70 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.audio.input.turn_detection.create_response,true);
   assert.equal(body.audio.input.turn_detection.interrupt_response,true);
   assert.equal(body.audio.input.turn_detection.threshold,0.35);
+});
+
+// The production handler uses this same controller; no provider calls are made here.
+import { createTransferController } from '../src/warm-transfer.js';
+function controllerFixture(overrides = {}) {
+  const events = [], targets = [];
+  const relay = {
+    preflight: () => ({ ready: true, reason: 'configured' }),
+    start: async () => ({ id: 'transfer', targetUri: 'sip:opaque@example.com' }),
+    waitForEntry: async () => true,
+    cancelPending: async () => true,
+    ...overrides,
+  };
+  const run = createTransferController({ relay, timeoutMs: 30,
+    refer: async ({targetUri}) => targets.push(targetUri),
+    log: (event, fields) => events.push({event,...fields}),
+  });
+  const options = {callId:'call', tenant:{tenantId:'demo'},target:'+15555550100',prepare:async()=>({})};
+  return {run, options, events, targets, relay};
+}
+test('configuration failure invokes proven REFER exactly once', async () => {
+  const f = controllerFixture({preflight:()=>({ready:false,reason:'relay_configuration_invalid'}),start:()=>assert.fail('must not start screening')});
+  const [a,b] = await Promise.all([f.run(f.options),f.run(f.options)]);
+  assert.equal(a.status,'legacy_referred'); assert.equal(b.status,a.status);
+  assert.deepEqual(f.targets,['tel:+15555550100']);
+  assert.deepEqual(f.events.map(e=>e.event),['transfer.requested','transfer.preflight','transfer.fallback_refer','transfer.referred']);
+  assert.equal(JSON.stringify(f.events).includes('+1555'),false);
+});
+test('relay accepted by API but never entered triggers fallback',async()=>{
+  const f=controllerFixture({waitForEntry:async()=>false});
+  assert.equal((await f.run(f.options)).status,'legacy_referred');
+  assert.deepEqual(f.targets,['sip:opaque@example.com','tel:+15555550100']);
+  assert.equal(f.events.find(e=>e.event==='transfer.fallback_refer').reason,'relay_entry_timeout');
+});
+test('preflight exception, preparation timeout, start failure and callback timeout cannot hang transfer',async()=>{
+  for (const kind of ['preflight','prepare','start','waitForEntry']) {
+    const overrides=kind==='prepare'?{}:{[kind]:kind==='waitForEntry'?()=>new Promise(()=>{}):()=>{throw new Error('secret must not be logged');}};
+    const f=controllerFixture(overrides);
+    if(kind==='prepare') f.options.prepare=()=>new Promise(()=>{});
+    assert.equal((await f.run(f.options)).status,'legacy_referred',kind);
+    assert.equal(f.targets.at(-1),'tel:+15555550100');
+    assert.equal(JSON.stringify(f.events).includes('secret'),false);
+  }
+});
+test('entry arriving at cancellation boundary prevents a duplicate human dial',async()=>{
+  const f=controllerFixture({waitForEntry:async()=>false,cancelPending:async()=>false});
+  assert.equal((await f.run(f.options)).status,'screening_started');
+  assert.deepEqual(f.targets,['sip:opaque@example.com']);
+});
+test('revoked pending relay rejects late Twilio entry',async t=>{
+  const f=await fixture(t);
+  assert.equal(await f.relay.cancelPending(f.transfer.id),true);
+  assert.equal((await f.entry()).status,403);
+  assert.equal(f.logs.some(e=>e.event==='transfer.dialing'),false);
+});
+test('confirmed relay entry disarms cancellation and emits dialing',async t=>{
+  const f=await fixture(t); await f.entry();
+  assert.equal(await f.relay.waitForEntry(f.transfer.id,20),true);
+  assert.equal(await f.relay.cancelPending(f.transfer.id),false);
+});
+test('legacy provider failure returns control to the assistant with explicit failure',async()=>{
+  const events=[];
+  const run=createTransferController({relay:{preflight:()=>({ready:false,reason:'screening_disabled'})},refer:async()=>{throw new Error('provider failure');},log:event=>events.push(event)});
+  const result=await run({callId:'failed',tenant:{tenantId:'demo'},target:'+15555550100',prepare:async()=>({})});
+  assert.equal(result.transferred,false); assert.equal(result.reason,'legacy_refer_failed');
+  assert.equal(events.at(-1),'transfer.failed');
 });
