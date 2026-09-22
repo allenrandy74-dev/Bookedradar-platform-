@@ -21,7 +21,7 @@ import {
   parseDialedNumber,
   tools,
 } from "./src/operator.js";
-import { createWixContact } from "./src/wix.js";
+import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
@@ -66,6 +66,7 @@ const {
   DISPATCH_INTERVAL_SECONDS = "30",
   RETENTION_DAYS = "90",
   ACTION_RETENTION_DAYS = "180",
+  CRM_SMOKE_TEST_ON_STARTUP = "false",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -200,6 +201,65 @@ for (const tenant of registry.list()) {
     sms_enabled: Boolean(tenant?.integrations?.sms?.enabled),
     dispatch_channels: Object.keys(adapters),
   }));
+}
+
+if (CRM_SMOKE_TEST_ON_STARTUP.toLowerCase() === "true") {
+  for (const tenant of registry.list()) {
+    const wix = wixCredentialsForTenant(tenant);
+    if (!wix) {
+      console.log(JSON.stringify({
+        event: "crm.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: false,
+        reason: "credentials_not_configured",
+      }));
+      continue;
+    }
+    try {
+      const lead = {
+        name: "BookedRadar CRM Permission Test",
+        service_type: "internal_qa",
+        urgency: "test",
+        notes: "Temporary internal CRM permission test. Safe to delete.",
+      };
+      const contact = await createWixContact({
+        apiKey: wix.apiKey,
+        siteId: wix.siteId,
+        lead,
+        timeoutMs,
+        retries,
+      });
+      if (!contact?.ok || !contact?.contactId) {
+        throw new Error(contact?.reason || "contact_create_failed");
+      }
+      const task = await createWixFollowupTask({
+        apiKey: wix.apiKey,
+        siteId: wix.siteId,
+        contactId: contact.contactId,
+        lead,
+        dueInMinutes: 0,
+        timeoutMs,
+        retries,
+      });
+      if (!task?.ok || !task?.taskId) {
+        throw new Error("task_create_failed");
+      }
+      console.log(JSON.stringify({
+        event: "crm.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: true,
+        contact_id: contact.contactId,
+        task_id: task.taskId,
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "crm.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: false,
+        message: String(error?.message || error).slice(0, 400),
+      }));
+    }
+  }
 }
 
 function tenantFromRequest(req) {
