@@ -2,6 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog } from "./src/greeting-watchdog.js";
 import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
+import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
 import OpenAI from "openai";
 import WebSocket from "ws";
@@ -50,6 +51,7 @@ const {
   TWILIO_ACCOUNT_SID = "",
   TWILIO_AUTH_TOKEN = "",
   TWILIO_VOICE_CALLER_ID = "",
+  TWILIO_TRANSFER_SMS_FROM = "",
   LEADS_FILE = "./data/leads.jsonl",
   STATE_FILE = "./data/state.json",
   LOG_TRANSCRIPTS = "false",
@@ -141,6 +143,12 @@ const guardedTransfer = createTransferController({
   refer: ({ targetUri, callId }) => referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri }),
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
+const transferCompanion = createTransferCompanion({
+  config: { accountSid: TWILIO_ACCOUNT_SID, authToken: TWILIO_AUTH_TOKEN,
+    fromNumber: TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID },
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+console.log(JSON.stringify({ event: "transfer.sms_preflight", scope: "startup", configured: transferCompanion.ready(), delay_ms: TRANSFER_DELAY_MS }));
 const transferFallbackReady = Boolean(OPENAI_API_KEY && /^\+[1-9]\d{7,14}$/.test(HUMAN_TRANSFER_NUMBER.trim()));
 console.log(JSON.stringify({ event: "transfer.preflight", scope: "startup", ...warmTransfer.preflight(), fallback_ready: transferFallbackReady }));
 app.use("/voice/transfer", createRateLimiter({ max: 1200 }), warmTransfer.router);
@@ -235,6 +243,7 @@ async function executeTool({
   callerNumber,
   tenant,
   syncCrm = true,
+  transferHold,
 }) {
   const engine = engineFor(tenant);
 
@@ -408,7 +417,10 @@ async function executeTool({
       };
     }
 
-    const result = await guardedTransfer({ callId, tenant, target, prepare: async () => {
+    transferHold?.start();
+    const result = await guardedTransfer({ callId, tenant, target,
+      beforeRefer: ({ lead }) => transferCompanion.notifyAndWait({ callId, tenant, target, lead, callerNumber }),
+      prepare: async () => {
       const existing = await state.getCall(callId);
       const supplied = args?.context || {};
       const lead = { ...(existing?.lastLead || {}) };
@@ -440,6 +452,7 @@ async function attachSideband({
 
   const handledToolCalls = new Set();
   const voiceLog = (event, fields = {}) => console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
+  const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog });
   let fallbackStarted = false;
   const greeting = createGreetingWatchdog({
     businessName: tenant.businessName, send: event => send(ws, event), log: voiceLog,
@@ -485,6 +498,7 @@ async function attachSideband({
 
     if (fallbackStarted) return;
     greeting.event(event);
+    transferHold.event(event);
 
 
     if (
@@ -535,6 +549,7 @@ async function attachSideband({
           callId,
           callerNumber,
           tenant,
+          transferHold,
         });
       } catch (error) {
         console.error(JSON.stringify({
@@ -548,10 +563,12 @@ async function attachSideband({
       }
 
       if (toolCall.name === "transfer_to_human" && output.transferred) {
+        transferHold.stop();
         greeting.stop();
         try { ws.close(); } catch {}
         return;
       }
+      if (toolCall.name === "transfer_to_human") transferHold.stop({ restore: true });
 
       send(ws, {
         type: "conversation.item.create",
@@ -584,6 +601,7 @@ async function attachSideband({
       message: "websocket_error",
     }));
   });
+  ws.on("close", () => transferHold.stop());
 }
 
 async function handleIncomingCall(event) {
@@ -929,6 +947,8 @@ app.get("/health", (_req, res) => {
     voiceReliabilityRevision: "2026-09-22.2",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
+    transferSmsConfigured: transferCompanion.ready(),
+    transferDelayMs: TRANSFER_DELAY_MS,
     transferMode: warmTransfer.ready() ? "screened_with_refer_fallback" : "refer_fallback",
     tenants: registry.list().length,
     voiceEnabled,
