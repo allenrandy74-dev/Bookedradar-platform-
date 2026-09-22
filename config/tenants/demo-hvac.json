@@ -62,7 +62,7 @@
   "integrations": {
     "crm": {
       "type": "wix",
-      "enabled": false
+      "enabled": true
     },
     "phone": {
       "type": "sip",

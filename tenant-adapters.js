@@ -6,7 +6,12 @@ import { ConfirmOnlyBookingAdapter } from "./booking.js";
 import { BookingWebhookAdapter } from "./booking-webhook.js";
 
 function valueOrSecret(tenant, object, field, suffix, env) {
-  return object?.[field] || tenantSecret(tenant, suffix, env);
+  return (
+    object?.[field] ||
+    tenantSecret(tenant, suffix, env) ||
+    env[suffix] ||
+    ""
+  );
 }
 
 export function buildTenantAdapters(tenant, {
@@ -58,8 +63,16 @@ export function buildTenantAdapters(tenant, {
 export function wixCredentialsForTenant(tenant, env = process.env) {
   const crm = tenant?.integrations?.crm || {};
   if (!crm.enabled || crm.type !== "wix") return null;
-  const apiKey = crm.apiKey || tenantSecret(tenant, "WIX_API_KEY", env);
-  const siteId = crm.siteId || tenantSecret(tenant, "WIX_SITE_ID", env);
+  const apiKey =
+    crm.apiKey ||
+    tenantSecret(tenant, "WIX_API_KEY", env) ||
+    env.WIX_API_KEY ||
+    "";
+  const siteId =
+    crm.siteId ||
+    tenantSecret(tenant, "WIX_SITE_ID", env) ||
+    env.WIX_SITE_ID ||
+    "";
   return apiKey && siteId ? { apiKey, siteId } : null;
 }
 

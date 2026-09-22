@@ -188,6 +188,20 @@ function dispatcherFor(tenant) {
   return dispatchers.get(tenant.tenantId);
 }
 
+for (const tenant of registry.list()) {
+  const wix = wixCredentialsForTenant(tenant);
+  const { adapters } = dispatcherFor(tenant);
+  console.log(JSON.stringify({
+    event: "integration.preflight",
+    tenant_id: tenant.tenantId,
+    crm_enabled: Boolean(tenant?.integrations?.crm?.enabled),
+    crm_credentials_configured: Boolean(wix),
+    email_enabled: Boolean(tenant?.integrations?.email?.enabled),
+    sms_enabled: Boolean(tenant?.integrations?.sms?.enabled),
+    dispatch_channels: Object.keys(adapters),
+  }));
+}
+
 function tenantFromRequest(req) {
   const tenantId =
     String(req.headers["x-bookedradar-tenant"] || "") ||
