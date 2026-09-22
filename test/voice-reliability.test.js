@@ -1,9 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import express from 'express';
 import { createGreetingWatchdog } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
+
+test('transfer request preserves captured intake and only fills missing name or service', async () => {
+  // Exercise the production prepare callback without starting the HTTP/SIP server.
+  const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  const handler = source.slice(source.indexOf('if (name === "transfer_to_human")'));
+  const match = handler.match(/prepare: async \(\) => \{([\s\S]*?)\n    \} \}\);/);
+  assert.ok(match, 'transfer prepare callback exists');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const prepare = new AsyncFunction('state', 'args', 'executeTool', 'callId', 'callerNumber', 'tenant', match[1]);
+  const context = { name: 'Replacement', service_type: 'I want to speak with someone', urgency: 'routine', preferred_window: 'anytime' };
+  for (const lastLead of [
+    { name: 'Jane', service_type: 'Burst pipe', urgency: 'emergency', preferred_window: 'today after 3', address: '123 Example St' },
+    { urgency: 'urgent', preferred_window: 'tomorrow morning' },
+    {},
+  ]) {
+    const before = structuredClone(lastLead);
+    const captured = [];
+    const result = await prepare({ getCall: async () => ({ lastLead }) }, { context }, async tool => captured.push(tool), 'test-call', '', {});
+    assert.equal(result.urgency, before.urgency);
+    assert.equal(result.preferred_window, before.preferred_window);
+    assert.equal(result.name, before.name || context.name);
+    assert.equal(result.service_type, before.service_type || context.service_type);
+    assert.equal(result.address, before.address);
+    assert.deepEqual(lastLead, before);
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].name, 'capture_lead');
+    assert.equal(captured[0].syncCrm, false);
+    assert.deepEqual(captured[0].args, result);
+  }
+});
 
 function clock() {
   const timers = new Map(); let i = 0, time = 0;
