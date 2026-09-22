@@ -1,7 +1,7 @@
 import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog } from "./src/greeting-watchdog.js";
-import { createWarmTransfer } from "./src/warm-transfer.js";
+import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
 import express from "express";
 import OpenAI from "openai";
 import WebSocket from "ws";
@@ -136,6 +136,13 @@ const warmTransfer = createWarmTransfer({
     authToken: TWILIO_AUTH_TOKEN, callerId: TWILIO_VOICE_CALLER_ID },
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
+const guardedTransfer = createTransferController({
+  relay: warmTransfer,
+  refer: ({ targetUri, callId }) => referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri }),
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+const transferFallbackReady = Boolean(OPENAI_API_KEY && /^\+[1-9]\d{7,14}$/.test(HUMAN_TRANSFER_NUMBER.trim()));
+console.log(JSON.stringify({ event: "transfer.preflight", scope: "startup", ...warmTransfer.preflight(), fallback_ready: transferFallbackReady }));
 app.use("/voice/transfer", createRateLimiter({ max: 1200 }), warmTransfer.router);
 const logTranscripts = LOG_TRANSCRIPTS.toLowerCase() === "true";
 const timeoutMs = Number(HTTP_TIMEOUT_MS);
@@ -401,32 +408,21 @@ async function executeTool({
       };
     }
 
-    // Save the latest known context before relinquishing the AI leg.
-    const existing = await state.getCall(callId);
-    const supplied = args?.context || {};
-    const lead = { ...(existing?.lastLead || {}) };
-    for (const key of ["name", "service_type", "urgency", "preferred_window"]) {
-      if (supplied[key]) lead[key] = supplied[key];
-    }
-    await executeTool({ name: "capture_lead", args: lead, callId, callerNumber, tenant, syncCrm: false });
-    if (warmTransfer.ready()) {
-      const transfer = await warmTransfer.start({ callId, tenant, target, lead, leadSaved: true });
-      try {
-        await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: transfer.targetUri });
-      } catch {
-        await warmTransfer.failed(transfer.id);
-        // Never dial a second, unscreened leg after an ambiguous REFER result.
-        return { ok: false, transferred: false, lead_saved: true, reason: "screened_transfer_failed" };
+    const result = await guardedTransfer({ callId, tenant, target, prepare: async () => {
+      const existing = await state.getCall(callId);
+      const supplied = args?.context || {};
+      const lead = { ...(existing?.lastLead || {}) };
+      for (const key of ["name", "service_type", "urgency", "preferred_window"]) {
+        if (supplied[key]) lead[key] = supplied[key];
       }
-      await state.patchCall(callId, { transferId: transfer.id, transferRequested: true });
-      return { ok: true, transferred: true, status: "screening_requested" };
+      await executeTool({ name: "capture_lead", args: lead, callId, callerNumber, tenant, syncCrm: false });
+      return lead;
+    } });
+    if (result.transferred) {
+      try { await state.patchCall(callId, { transferId: result.transferId, transferRequested: true }); }
+      catch { console.error(JSON.stringify({ event: "transfer.failed", call_id: callId, reason: "state_update_failed" })); }
     }
-    // Keep the proven path until the separately configured relay is verified.
-    console.log(JSON.stringify({ event: "transfer.requested", tenant_id: tenant.tenantId, call_id: callId, mode: "legacy" }));
-    await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: `tel:${target}` });
-    console.log(JSON.stringify({ event: "call.transfer.referred", tenant_id: tenant.tenantId, call_id: callId, mode: "legacy" }));
-    await state.patchCall(callId, { tenantId: tenant.tenantId, transferRequested: true });
-    return { ok: true, transferred: true, status: "legacy_referred" };
+    return result;
   }
 
   return { ok: false, reason: `unknown_tool:${name}` };
@@ -930,8 +926,10 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "bookedradar-platform",
     version: "2.0.0",
-    voiceReliabilityRevision: "2026-09-22.1",
+    voiceReliabilityRevision: "2026-09-22.2",
     screenedTransferReady: warmTransfer.ready(),
+    transferFallbackReady,
+    transferMode: warmTransfer.ready() ? "screened_with_refer_fallback" : "refer_fallback",
     tenants: registry.list().length,
     voiceEnabled,
   });

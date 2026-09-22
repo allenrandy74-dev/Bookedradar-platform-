@@ -1,3 +1,23 @@
+## Current production disposition — 2026-09-22 follow-up
+
+The owner test reached a failed Twilio SIP relay leg (last SIP response 500),
+with zero HTTP requests to the screening webhook. Configuration presence was
+not evidence that SIP transport worked. WARM_TRANSFER_ENABLED is therefore
+false until that transport is independently verified. The existing tel REFER
+path is armed; no new phone numbers or inbound route changes were made.
+
+The shared transfer controller logs requested/preflight/fallback_refer/referred,
+bounds preparation and provider control, and treats a REFER HTTP success only
+as acceptance. If screening is enabled later, it waits up to eight seconds for
+signed relay entry, then revokes the pending entry before invoking tel REFER.
+Late entry cannot start a duplicate outbound dial. Provider failures return
+control to the assistant and log transfer.failed; no software can guarantee
+completion when the provider itself rejects call control.
+
+Health revision 2026-09-22.2 includes transferFallbackReady and transferMode.
+Startup transfer.preflight identifies the configured route without caller data.
+No-answer lifecycle events use transfer.no_answer.
+
 # Voice reliability release — 2026-09-22
 
 Existing inbound PSTN -> secure Elastic SIP trunk -> OpenAI SIP routing is preserved.
@@ -10,7 +30,7 @@ sideband handshake. The server explicitly requests the exact tenant greeting.
 Only output_audio_buffer.started proves SIP playback; transcripts do not count.
 There is one retry, canceling active generation first, followed by fallback.
 Server VAD: threshold 0.35, prefix 300 ms, silence 450 ms. Automatic responses and
-interruptions are explicitly enabled. The subsequent idle timeout is
+interruptions turn on when opening audio starts. The subsequent idle timeout is
 10 seconds, giving callers time to answer the final closing invitation.
 
 With a configured screening relay, greeting failure goes to independent Twilio
