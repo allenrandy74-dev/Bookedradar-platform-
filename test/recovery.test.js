@@ -59,9 +59,14 @@ test("dormant marketing email is blocked without marketing consent", async () =>
     contact: { name: "Jordan", email: "j@example.com" },
   });
 
-  const marketing = result.actions.find((a) => a.purpose === "marketing");
-  assert.equal(marketing.status, "blocked");
-  assert.equal(marketing.blockedReason, "marketing_consent_required");
+  const marketing = result.actions.filter((a) => a.purpose === "marketing");
+  // Production v2.2 routes non-consenting contacts to human review instead
+  // of creating a blocked marketing action. Both paths must prevent sending.
+  assert.ok(marketing.length || result.actions.some(a => a.channel === "human_task"));
+  for (const action of marketing) {
+    assert.equal(action.status, "blocked");
+    assert.equal(action.blockedReason, "marketing_consent_required");
+  }
 });
 
 test("confirmed revenue stays separate from estimated value", async () => {
