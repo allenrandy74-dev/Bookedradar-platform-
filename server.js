@@ -39,6 +39,7 @@ const {
   OPENAI_WEBHOOK_SECRET = "",
   OPENAI_REALTIME_MODEL = "gpt-realtime-2.1",
   OPENAI_VOICE = "marin",
+  HUMAN_TRANSFER_NUMBER = "",
   LEADS_FILE = "./data/leads.jsonl",
   STATE_FILE = "./data/state.json",
   LOG_TRANSCRIPTS = "false",
@@ -369,7 +370,7 @@ async function executeTool({
   }
 
   if (name === "transfer_to_human") {
-    const target = tenant?.escalation?.humanPhone || "";
+    const target = String(HUMAN_TRANSFER_NUMBER || tenant?.escalation?.humanPhone || "").trim();
     if (!target) {
       return {
         ok: false,
@@ -378,11 +379,23 @@ async function executeTool({
       };
     }
 
+    console.log(JSON.stringify({
+      event: "call.transfer.requested",
+      tenant_id: tenant.tenantId,
+      call_id: callId,
+    }));
+
     await referRealtimeCall({
       apiKey: OPENAI_API_KEY,
       callId,
       targetUri: `tel:${target}`,
     });
+
+    console.log(JSON.stringify({
+      event: "call.transfer.referred",
+      tenant_id: tenant.tenantId,
+      call_id: callId,
+    }));
 
     await state.patchCall(callId, {
       tenantId: tenant.tenantId,
