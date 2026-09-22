@@ -27,6 +27,7 @@ export function whisperText(tenant, lead = {}) {
 
 export function createWarmTransfer({ store, registry, config, log, now = Date.now }) {
   const locks = new Map();
+  const revoked = new Set();
   async function serialized(id, fn) {
     const previous = locks.get(id) || Promise.resolve();
     const next = previous.catch(() => {}).then(fn);
@@ -35,6 +36,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
   }
   const ready = () => Boolean(config.enabled && /^([a-z0-9-]+\.)+sip\.twilio\.com$/i.test(config.domain || '') &&
     /^https:\/\/[^/?#]+$/.test(config.baseUrl || '') && /^AC[0-9a-f]{32}$/i.test(config.accountSid || '') && config.authToken && /^\+[1-9]\d{7,14}$/.test(config.callerId || ''));
+  const preflight = () => ({ ready: ready(), reason: !config.enabled ? 'screening_disabled' : ready() ? 'configured' : 'relay_configuration_invalid' });
   const signedPath = (record, action) => {
     const path = `/voice/transfer/${record.id}/${action}`;
     const signature = crypto.createHmac('sha256', record.secret).update(path).digest('hex');
@@ -59,7 +61,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     const record = { id, secret, callId, tenantId: tenant.tenantId, target, lead, leadSaved,
       kind, expiresAt: now() + 24 * 60 * 60_000, entryExpiresAt: now() + 60_000, status: 'requested', events: [] };
     await store.patchCall(id, record);
-    await emit(record, 'requested');
+    if (kind === 'greeting_fallback') await emit(record, 'requested');
     return { id, targetUri: `sip:br-${id}-${secret}@${config.domain};transport=tls` };
   }
   async function failed(id) {
@@ -81,7 +83,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     if (!match || !sidValid(req.body.CallSid)) return res.sendStatus(403);
     await serialized(match[1], async () => {
       let record = await store.getCall(match[1]);
-      if (!record || !equal(record.secret, match[2]) || now() > record.entryExpiresAt || record.status === 'failed' ||
+      if (revoked.has(match[1]) || !record || !equal(record.secret, match[2]) || now() > record.entryExpiresAt || record.status === 'failed' ||
         (record.parentSid && record.parentSid !== req.body.CallSid)) return res.sendStatus(403);
       const tenant = registry.resolve({ tenantId: record.tenantId });
       if (!tenant) return res.sendStatus(403);
@@ -119,7 +121,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
         return res.type('text/xml').send(response('<Hangup/>'));
       }
       if (record.status === 'bridged') return res.type('text/xml').send(response('<Hangup/>'));
-      const status = ['no-answer', 'busy', 'canceled'].includes(body.DialCallStatus) ? 'no-answer' : 'failed';
+      const status = ['no-answer', 'busy', 'canceled'].includes(body.DialCallStatus) ? 'no_answer' : 'failed';
       if (record.status !== 'rejected') await emit(record, status);
       await emit(record, 'fallback', { status: 'fallback' });
       return res.type('text/xml').send(fallbackXml(record));
@@ -132,7 +134,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     }
     if (action === 'status') {
       const mapped = { initiated: 'dialing', queued: 'dialing', ringing: 'ringing', 'in-progress': 'answered',
-        busy: 'no-answer', 'no-answer': 'no-answer', failed: 'failed', canceled: 'no-answer' }[body.CallStatus];
+        busy: 'no_answer', 'no-answer': 'no_answer', failed: 'failed', canceled: 'no_answer' }[body.CallStatus];
       if (mapped) await emit(record, mapped);
       return res.sendStatus(204);
     }
@@ -155,5 +157,91 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     await emit(record, 'rejected', { status: 'rejected' });
     return res.type('text/xml').send(response(say('The call was not connected. Goodbye.') + '<Hangup/>'));
   }));
-  return { ready, start, failed, router };
+  async function waitForEntry(id, timeoutMs = 8000) {
+    const until = Date.now() + timeoutMs;
+    do {
+      const record = await store.getCall(id);
+      if (record?.parentSid && record.entryXml) return true;
+      if (!record || revoked.has(id) || record.status === 'failed') return false;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } while (Date.now() < until);
+    return false;
+  }
+  async function cancelPending(id) {
+    return serialized(id, async () => {
+      const record = await store.getCall(id);
+      // Entry and cancellation share a lock: a late SIP leg cannot start a second dial.
+      if (record?.parentSid) return false;
+      revoked.add(id);
+      if (record) await emit(record, 'failed', { status: 'failed' });
+      return true;
+    });
+  }
+  return { ready, preflight, start, failed, waitForEntry, cancelPending, router };
+}
+
+// REFER acceptance is not proof that Twilio reached the relay. Keep call control
+// until the signed entry callback arrives, or invalidate the relay before fallback.
+export function createTransferController({ relay, refer, log, timeoutMs = 8000 }) {
+  const calls = new Map();
+  async function bounded(work) {
+    let timer;
+    try {
+      return await Promise.race([Promise.resolve().then(work), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('transfer_step_timeout')), timeoutMs);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
+  async function run({ callId, tenant, target, prepare }) {
+    const fields = { call_id: callId, tenant_id: tenant.tenantId };
+    const emit = (event, extra = {}) => log(`transfer.${event}`, { ...fields, ...extra });
+    emit('requested');
+    let transfer, leadSaved = false;
+    let reason = 'preparation_failed';
+    try {
+      if (!/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
+      const check = relay.preflight();
+      emit('preflight', { ...check, fallback_ready: true });
+      const lead = await bounded(prepare);
+      leadSaved = true;
+      reason = check.reason;
+      if (check.ready) {
+        reason = 'relay_start_failed';
+        transfer = await bounded(() => relay.start({ callId, tenant, target, lead, leadSaved }));
+        await bounded(() => refer({ callId, targetUri: transfer.targetUri }));
+        emit('relay_referred');
+        if (await bounded(() => relay.waitForEntry(transfer.id, Math.max(100, timeoutMs - 100)))) {
+          return { ok: true, transferred: true, lead_saved: true, status: 'screening_started', transferId: transfer.id };
+        }
+        reason = 'relay_entry_timeout';
+      }
+    } catch {
+      emit('failed', { reason });
+    }
+    if (transfer) {
+      // Revoke before attempting legacy REFER, including after ambiguous API timeouts.
+      if (!await relay.cancelPending(transfer.id)) {
+        return { ok: true, transferred: true, lead_saved: leadSaved, status: 'screening_started', transferId: transfer.id };
+      }
+    }
+    emit('fallback_refer', { reason });
+    try {
+      await bounded(() => refer({ callId, targetUri: `tel:${target}` }));
+      emit('referred', { mode: 'legacy' });
+      return { ok: true, transferred: true, lead_saved: leadSaved, status: 'legacy_referred' };
+    } catch {
+      emit('failed', { reason: 'legacy_refer_failed' });
+      return { ok: false, transferred: false, lead_saved: leadSaved, reason: 'legacy_refer_failed' };
+    }
+  }
+  return options => {
+    if (calls.has(options.callId)) return calls.get(options.callId);
+    const work = run(options);
+    calls.set(options.callId, work);
+    work.finally(() => {
+      const cleanup = setTimeout(() => calls.delete(options.callId), 60000);
+      cleanup.unref?.();
+    }).catch(() => {});
+    return work;
+  };
 }
