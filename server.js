@@ -412,8 +412,8 @@ async function executeTool({
       const existing = await state.getCall(callId);
       const supplied = args?.context || {};
       const lead = { ...(existing?.lastLead || {}) };
-      for (const key of ["name", "service_type", "urgency", "preferred_window"]) {
-        if (supplied[key]) lead[key] = supplied[key];
+      for (const key of ["name", "service_type"]) {
+        if (!lead[key] && supplied[key]) lead[key] = supplied[key];
       }
       await executeTool({ name: "capture_lead", args: lead, callId, callerNumber, tenant, syncCrm: false });
       return lead;
