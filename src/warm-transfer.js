@@ -192,17 +192,17 @@ export function createTransferController({ relay, refer, log, timeoutMs = 8000 }
       })]);
     } finally { clearTimeout(timer); }
   }
-  async function run({ callId, tenant, target, prepare }) {
+  async function run({ callId, tenant, target, prepare, beforeRefer }) {
     const fields = { call_id: callId, tenant_id: tenant.tenantId };
     const emit = (event, extra = {}) => log(`transfer.${event}`, { ...fields, ...extra });
     emit('requested');
-    let transfer, leadSaved = false;
+    let transfer, lead = {}, leadSaved = false;
     let reason = 'preparation_failed';
     try {
       if (!/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
       const check = relay.preflight();
       emit('preflight', { ...check, fallback_ready: true });
-      const lead = await bounded(prepare);
+      lead = await bounded(prepare);
       leadSaved = true;
       reason = check.reason;
       if (check.ready) {
@@ -223,6 +223,12 @@ export function createTransferController({ relay, refer, log, timeoutMs = 8000 }
       if (!await relay.cancelPending(transfer.id)) {
         return { ok: true, transferred: true, lead_saved: leadSaved, status: 'screening_started', transferId: transfer.id };
       }
+    }
+    // The companion owns its bounded SMS request and fixed ten-second window.
+    // Do not apply the eight-second call-control timeout to that window.
+    if (beforeRefer) {
+      try { await beforeRefer({ lead }); }
+      catch { emit('sms_failed', { reason: 'companion_failed' }); }
     }
     emit('fallback_refer', { reason });
     try {
