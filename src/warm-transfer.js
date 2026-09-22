@@ -70,7 +70,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
   router.use(express.urlencoded({ extended: false, limit: '32kb' }));
   router.use((req, res, next) => {
     if (!ready()) return res.sendStatus(503);
-    if (req.body.AccountSid !== config.accountSid || !validTwilioSignature({
+    if (req.body?.AccountSid !== config.accountSid || !validTwilioSignature({
       token: config.authToken, url: config.baseUrl + req.originalUrl, body: req.body,
       signature: req.get('X-Twilio-Signature'),
     })) return res.sendStatus(403);
