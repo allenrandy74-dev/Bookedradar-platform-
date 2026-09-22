@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
+RUN npm run check && npm test
 RUN cp BookedRadar-v2.2-Preload.txt /tmp/bookedradar-v22-preload.mjs && node /tmp/bookedradar-v22-preload.mjs && rm /tmp/bookedradar-v22-preload.mjs
 ENV NODE_ENV=production
 EXPOSE 5050
