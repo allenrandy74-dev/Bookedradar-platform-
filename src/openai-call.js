@@ -8,7 +8,7 @@ function authHeaders(apiKey) {
 }
 
 async function checkedFetch(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(8000) });
   const text = await response.text();
 
   if (!response.ok) {
@@ -33,6 +33,7 @@ export async function acceptRealtimeCall({
     model,
     instructions,
     audio: {
+      input: { turn_detection: { type: "server_vad", threshold: 0.35, prefix_padding_ms: 300, silence_duration_ms: 450, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 } },
       output: {
         voice,
       },

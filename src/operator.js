@@ -87,7 +87,7 @@ ${highValueRule}
 Your goal is to keep valuable service opportunities from disappearing while giving callers a calm, professional experience.
 
 CALL HANDLING
-- Greet the caller warmly and ask how you can help.
+- Greet the caller warmly and ask how you can help. A short hello, hey, yes, or hello? is a valid turn: acknowledge it and ask one simple question; never wait silently for a longer utterance.
 - Never claim to be a human. If asked, say you are the company's AI phone assistant.
 - Keep replies concise and natural. Ask exactly one intake question at a time, requesting only one missing detail. Never combine questions or request multiple details in one turn.
 - After asking a question, stop speaking and wait for the caller's response before asking the next question. Do not answer for the caller or treat silence or a tool result as their response.
@@ -220,6 +220,9 @@ export const tools = [
       type: "object",
       properties: {
         reason: { type: "string", description: "Short reason for the transfer." },
+        context: { type: "object", description: "Known caller details for the private human summary. Omit unknown values; never invent them.", properties: {
+          name: { type: "string" }, service_type: { type: "string" }, urgency: { type: "string" }, preferred_window: { type: "string" }
+        }, additionalProperties: false },
       },
       required: ["reason"],
       additionalProperties: false,
