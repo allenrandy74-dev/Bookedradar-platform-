@@ -65,8 +65,13 @@ async function fixture(t) {
     const record = records.get(transfer.id), p = `/voice/transfer/${record.id}/${action}`;
     return p+'?sig='+crypto.createHmac('sha256',record.secret).update(p).digest('hex');
   };
-  return { relay, records, config, tenant, logs, parent, child, post, entry, callback, transfer };
+  const emptyPost = () => fetch(`http://127.0.0.1:${server.address().port}/voice/transfer/entry`, { method: 'POST' });
+  return { relay, records, config, tenant, logs, parent, child, post, entry, callback, transfer, emptyPost };
 }
+test('bodyless webhook requests are rejected without a server error', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.emptyPost()).status, 403);
+});
 test('screened transfer plays private context, requires 1, and confirms bridge only from Twilio', async t => {
   const f = await fixture(t); assert.equal(f.relay.ready(), true);
   const entry = await f.entry(); assert.equal(entry.status, 200);
