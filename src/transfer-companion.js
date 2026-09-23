@@ -1,4 +1,4 @@
-export const TRANSFER_DELAY_MS = 20_000;
+export const TRANSFER_DELAY_MS = 10_000;
 export const TRANSFER_HOLD_MESSAGE = "I’m arranging your transfer. Please stay on the line.";
 
 export function transferSummary(tenant, lead = {}, callerNumber = '') {
