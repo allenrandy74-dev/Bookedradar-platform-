@@ -34,7 +34,7 @@ test('summary uses captured fields, omits missing values and does not include ar
 });
 
 for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_configured', 'invalid_response']) {
-  test(`SMS ${mode}: one REFER only after the full ten-second window`, async () => {
+  test(`SMS ${mode}: one REFER only after the full twenty-second window`, async () => {
     const c = clock(), logs = [], calls = [], requests = [];
     let acceptRequest;
     const companion = createTransferCompanion({ config: mode === 'not_configured' ? {} : config, ...c,
@@ -66,11 +66,11 @@ for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_con
     }
     const start = c.now();
     assert.equal(logs.filter(x => x.event === 'transfer.delay_started').length, 1);
-    await c.advance(9999);
+    await c.advance(19999);
     assert.equal(calls.length, 0, 'REFER must not begin early');
     await c.advance(1);
     assert.equal((await result).transferred, true);
-    assert.deepEqual(calls, [{ callId: 'call', targetUri: 'tel:+15555550101', at: start + 10000 }]);
+    assert.deepEqual(calls, [{ callId: 'call', targetUri: 'tel:+15555550101', at: start + 20000 }]);
     assert.equal(logs.filter(x => x.event === 'transfer.delay_complete').length, 1);
     assert.equal(logs.filter(x => x.event === `transfer.sms_${mode === 'accepted' ? 'sent' : 'failed'}`).length, 1);
     assert.doesNotMatch(JSON.stringify(logs), /Jane|urgent|555555|private-token|Burst pipe/);
@@ -82,7 +82,7 @@ for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_con
   });
 }
 
-test('hold playback replenishes after stopping, suppresses interruption, and restores VAD on failed transfer', async () => {
+test('hold speaks once, stays quiet during the wait, and restores VAD on failed transfer', async () => {
   const c = clock(), sent = [], logs = [];
   const hold = createTransferHold({ ...c, send: event => sent.push(event), log: event => logs.push(event) });
   const vad = { type: 'server_vad', threshold: 0.35, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 };
@@ -100,12 +100,13 @@ test('hold playback replenishes after stopping, suppresses interruption, and res
   hold.event({ type: 'response.done', response: { id: 'hold-1' } });
   assert.equal(sent.filter(x => x.type === 'response.create').length, 1, 'generation completion is not playback completion');
   hold.event({ type: 'output_audio_buffer.stopped', response_id: 'hold-1' });
-  assert.equal(sent.filter(x => x.type === 'response.create').length, 2);
+  await c.advance(20000);
+  assert.equal(sent.filter(x => x.type === 'response.create').length, 1, 'completed announcement must not loop');
   hold.stop({ restore: true });
   assert.deepEqual(sent.at(-1).session.audio.input.turn_detection, vad);
   assert.ok(sent.some(x => x.type === 'output_audio_buffer.clear'));
   await c.advance(10000);
-  assert.equal(sent.filter(x => x.type === 'response.create').length, 2);
+  assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
 });
 
 test('hold watchdog retries absent playback, and stopping cancels retries', async () => {
