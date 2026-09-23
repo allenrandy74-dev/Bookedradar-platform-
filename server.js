@@ -71,6 +71,7 @@ const {
   E2E_SMOKE_TEST_ON_STARTUP = "false",
   TWILIO_A2P_DIAGNOSTIC_ON_STARTUP = "false",
   TWILIO_A2P_MESSAGING_SERVICE_SID = "",
+  TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -158,42 +159,48 @@ if (TWILIO_A2P_DIAGNOSTIC_ON_STARTUP.toLowerCase() === "true") {
   const serviceSid = String(TWILIO_A2P_MESSAGING_SERVICE_SID || "").trim();
   const accountSid = String(TWILIO_ACCOUNT_SID || "").trim();
   const authToken = String(TWILIO_AUTH_TOKEN || "");
+  const expectedAccountSid = String(TWILIO_A2P_EXPECTED_ACCOUNT_SID || "").trim();
   const expectedFrom = String(TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID || "").trim();
   const auth = accountSid && authToken
     ? `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
     : "";
 
-  const getJson = async (url) => {
-    const response = await fetch(url, {
-      headers: { Authorization: auth },
-      signal: AbortSignal.timeout(8000),
-    });
-    const text = await response.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch {}
-    if (!response.ok) {
-      throw new Error(`twilio_read_failed_${response.status}`);
+  const read = async (url) => {
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: auth },
+        signal: AbortSignal.timeout(8000),
+      });
+      const text = await response.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch {}
+      return { status: response.status, ok: response.ok, data };
+    } catch (error) {
+      return { status: null, ok: false, data: null, error: String(error?.name || "fetch_failed") };
     }
-    return data;
   };
 
-  try {
-    if (!/^MG[0-9a-f]{32}$/i.test(serviceSid)) throw new Error("messaging_service_sid_invalid");
-    if (!/^AC[0-9a-f]{32}$/i.test(accountSid) || !authToken) throw new Error("twilio_credentials_missing");
-
-    const [service, campaignList, phoneList] = await Promise.all([
-      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}`),
-      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}/Compliance/Usa2p`),
-      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}/PhoneNumbers?PageSize=100`),
+  if (!/^MG[0-9a-f]{32}$/i.test(serviceSid)) {
+    console.error(JSON.stringify({ event: "twilio.a2p_diagnostic", ok: false, reason: "messaging_service_sid_invalid" }));
+  } else if (!/^AC[0-9a-f]{32}$/i.test(accountSid) || !authToken) {
+    console.error(JSON.stringify({ event: "twilio.a2p_diagnostic", ok: false, reason: "twilio_credentials_missing" }));
+  } else {
+    const [accountCheck, serviceCheck, campaignCheck, phoneCheck] = await Promise.all([
+      read(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`),
+      read(`https://messaging.twilio.com/v1/Services/${serviceSid}`),
+      read(`https://messaging.twilio.com/v1/Services/${serviceSid}/Compliance/Usa2p`),
+      read(`https://messaging.twilio.com/v1/Services/${serviceSid}/PhoneNumbers?PageSize=100`),
     ]);
 
-    const campaigns = Array.isArray(campaignList?.usa2p) ? campaignList.usa2p
-      : Array.isArray(campaignList?.us_app_to_person) ? campaignList.us_app_to_person
-      : Array.isArray(campaignList?.resources) ? campaignList.resources
+    const campaignData = campaignCheck.data;
+    const campaigns = Array.isArray(campaignData?.usa2p) ? campaignData.usa2p
+      : Array.isArray(campaignData?.us_app_to_person) ? campaignData.us_app_to_person
+      : Array.isArray(campaignData?.resources) ? campaignData.resources
       : [];
 
-    const phones = Array.isArray(phoneList?.phone_numbers) ? phoneList.phone_numbers
-      : Array.isArray(phoneList?.phoneNumbers) ? phoneList.phoneNumbers
+    const phoneData = phoneCheck.data;
+    const phones = Array.isArray(phoneData?.phone_numbers) ? phoneData.phone_numbers
+      : Array.isArray(phoneData?.phoneNumbers) ? phoneData.phoneNumbers
       : [];
 
     const normalizedExpected = expectedFrom.replace(/\D/g, "");
@@ -204,21 +211,19 @@ if (TWILIO_A2P_DIAGNOSTIC_ON_STARTUP.toLowerCase() === "true") {
     const campaign = campaigns[0] || null;
     console.log(JSON.stringify({
       event: "twilio.a2p_diagnostic",
-      ok: true,
-      messaging_service_found: Boolean(service?.sid),
-      messaging_service_matches: service?.sid === serviceSid,
-      service_a2p_registered: Boolean(service?.us_app_to_person_registered),
+      ok: accountCheck.ok && serviceCheck.ok && campaignCheck.ok && phoneCheck.ok,
+      account_sid_matches_submission: Boolean(expectedAccountSid) && accountSid === expectedAccountSid,
+      account_api_status: accountCheck.status,
+      messaging_service_api_status: serviceCheck.status,
+      campaign_api_status: campaignCheck.status,
+      sender_pool_api_status: phoneCheck.status,
+      messaging_service_found: Boolean(serviceCheck.data?.sid),
+      service_a2p_registered: Boolean(serviceCheck.data?.us_app_to_person_registered),
       campaign_count: campaigns.length,
       campaign_status: campaign?.campaign_status || campaign?.campaignStatus || null,
       campaign_errors: Array.isArray(campaign?.errors) ? campaign.errors.length : 0,
       sender_pool_count: phones.length,
       sending_number_present: sendingNumberPresent,
-    }));
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: "twilio.a2p_diagnostic",
-      ok: false,
-      reason: String(error?.message || error).slice(0, 200),
     }));
   }
 }
