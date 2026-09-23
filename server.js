@@ -67,6 +67,7 @@ const {
   RETENTION_DAYS = "90",
   ACTION_RETENTION_DAYS = "180",
   CRM_SMOKE_TEST_ON_STARTUP = "false",
+  EMAIL_SMOKE_TEST_ON_STARTUP = "false",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -210,6 +211,47 @@ for (const tenant of registry.list()) {
     sms_enabled: Boolean(tenant?.integrations?.sms?.enabled),
     dispatch_channels: Object.keys(adapters),
   }));
+}
+
+if (EMAIL_SMOKE_TEST_ON_STARTUP.toLowerCase() === "true") {
+  for (const tenant of registry.list()) {
+    const { adapters } = dispatcherFor(tenant);
+    if (!adapters.email) {
+      console.log(JSON.stringify({
+        event: "email.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: false,
+        reason: "email_adapter_not_configured",
+      }));
+      continue;
+    }
+    try {
+      const result = await adapters.email.send({
+        contact: { email: "delivered@resend.dev" },
+        content: "BookedRadar transactional email provider production smoke test.",
+        tenant,
+        action: {
+          id: "resend-production-smoke-v1",
+          opportunityId: "internal-smoke-test",
+          template: "internal_smoke_test",
+        },
+      });
+      console.log(JSON.stringify({
+        event: "email.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: true,
+        provider: result?.provider || null,
+        email_id: result?.id || null,
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "email.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: false,
+        message: String(error?.message || error).slice(0, 400),
+      }));
+    }
+  }
 }
 
 if (CRM_SMOKE_TEST_ON_STARTUP.toLowerCase() === "true") {
