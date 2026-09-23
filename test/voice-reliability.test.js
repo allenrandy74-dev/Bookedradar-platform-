@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import express from 'express';
-import { createGreetingWatchdog } from '../src/greeting-watchdog.js';
+import { createGreetingWatchdog, createOpeningAudioMonitor } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
 
 test('transfer request preserves captured intake and only fills missing name or service', async () => {
@@ -233,4 +233,46 @@ test('legacy provider failure returns control to the assistant with explicit fai
   const result=await run({callId:'failed',tenant:{tenantId:'demo'},target:'+15555550100',prepare:async()=>({})});
   assert.equal(result.transferred,false); assert.equal(result.reason,'legacy_refer_failed');
   assert.equal(events.at(-1),'transfer.failed');
+});
+
+
+test('opening monitor distinguishes generation from playback and detects speech cutoff', () => {
+  let time = 0; const logs = [];
+  const m = createOpeningAudioMonitor({ now: () => time, log: (event, fields) => logs.push({ event, ...fields }) });
+  m.open();
+  m.event({ type: 'response.created', response: { id: 'g', metadata: { purpose: 'opening_greeting' } } });
+  m.event({ type: 'response.done', response: { id: 'g', status: 'completed' } });
+  assert.equal(logs.some(x => x.event === 'opening.playback_completed'), false);
+  time = 1000; m.event({ type: 'output_audio_buffer.started', response_id: 'g' });
+  time = 1200; m.event({ type: 'input_audio_buffer.speech_started' });
+  m.event({ type: 'output_audio_buffer.cleared', response_id: 'other' });
+  time = 1250; m.event({ type: 'output_audio_buffer.cleared', response_id: 'g' });
+  assert.deepEqual(logs.at(-1), { event: 'opening.playback_interrupted', elapsed_ms: 1250, playback_ms: 250 });
+  assert.equal(logs.find(x => x.event === 'opening.speech_detected').during_playback, true);
+  const count = logs.length;
+  m.event({ type: 'input_audio_buffer.speech_started' }); m.close();
+  assert.equal(logs.length, count, 'later conversation is not monitored');
+});
+
+test('opening monitor records successful completion without storing transcript content', () => {
+  const logs = [];
+  const m = createOpeningAudioMonitor({ log: (event, fields) => logs.push({ event, ...fields }) });
+  m.event({ type: 'response.output_audio_transcript.done', transcript: 'private customer content' });
+  m.event({ type: 'output_audio_buffer.started', response_id: 'auto' });
+  m.event({ type: 'output_audio_buffer.stopped', response_id: 'auto' });
+  assert.equal(logs[0].identified_greeting, false);
+  assert.equal(logs.at(-1).event, 'opening.playback_completed');
+  assert.doesNotMatch(JSON.stringify(logs), /private customer content/);
+});
+
+test('opening monitor reports disconnect before audio and watchdog stops on socket close', async () => {
+  const c = clock(), logs = [];
+  const m = createOpeningAudioMonitor({ ...c, log: (event, fields) => logs.push({ event, ...fields }) });
+  const w = createGreetingWatchdog({ ...c, send() {}, log() {}, fallback: () => assert.fail('disconnected call must not transfer') });
+  w.open(); m.close(); w.stop();
+  await c.tick(); await c.tick();
+  assert.equal(logs.at(-1).event, 'opening.connection_closed');
+  assert.equal(logs.at(-1).audio_started, false);
+  const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  assert.match(source, /ws.on\("close", \(\) => \{ openingAudio.close\(\); greeting.stop\(\); transferHold.stop\(\); \}\)/);
 });
