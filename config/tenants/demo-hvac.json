@@ -66,7 +66,7 @@
     },
     "phone": {
       "type": "sip",
-      "enabled": false,
+      "enabled": true,
       "inboundNumbers": [
         "+14092574186"
       ]
@@ -85,5 +85,10 @@
       "enabled": false
     }
   },
-  "secretsPrefix": "DEMO_HVAC"
+  "secretsPrefix": "DEMO_HVAC",
+  "services": [
+    "HVAC repair",
+    "HVAC maintenance",
+    "HVAC replacement"
+  ]
 }
