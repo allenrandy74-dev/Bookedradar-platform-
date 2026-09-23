@@ -57,9 +57,9 @@ export function createTransferCompanion({ config, log, fetchImpl = fetch,
 
 // Give one brief announcement during the SMS request, delay and REFER.
 // Only transfer-time VAD is paused; the original session settings are restored
-// if REFER fails. Retry interrupted playback, but remain quiet after completion.
-export function createTransferHold({ send: deliver, log, schedule = setTimeout, cancel = clearTimeout }) {
-  let active = false, timer, responseId, originalVad, playing = false, requestNumber = 0;
+// if REFER fails. Missing playback acknowledgments must never replay speech.
+export function createTransferHold({ send: deliver, log }) {
+  let active = false, responseId, originalVad, requestNumber = 0;
   const tag = 'bookedradar_transfer_hold';
   function send(event) {
     try { deliver(event); }
@@ -67,21 +67,13 @@ export function createTransferHold({ send: deliver, log, schedule = setTimeout, 
   }
   function request() {
     if (!active) return;
-    playing = false;
     responseId = undefined;
     requestNumber++;
     send({ type: 'response.create', response: {
       conversation: 'none', input: [], output_modalities: ['audio'], tools: [], tool_choice: 'none',
       metadata: { purpose: tag, sequence: String(requestNumber) },
-      instructions: `Read this holding announcement exactly in a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE}"`,
+      instructions: `Say this holding announcement exactly once, then remain silent. Use a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE}"`,
     } });
-    cancel(timer);
-    timer = schedule(() => {
-      if (!active || playing) return;
-      log('transfer.hold_retry');
-      if (responseId) send({ type: 'response.cancel', response_id: responseId });
-      request();
-    }, 3000);
   }
   return {
     start() {
@@ -103,17 +95,16 @@ export function createTransferHold({ send: deliver, log, schedule = setTimeout, 
       }
       if (!active || !responseId || event.response_id !== responseId) return;
       if (event.type === 'output_audio_buffer.started') {
-        playing = true; cancel(timer); log('transfer.hold_audio');
+        log('transfer.hold_audio');
       }
-      if (event.type === 'output_audio_buffer.stopped') {
-        playing = false; cancel(timer); responseId = undefined;
-        log('transfer.hold_complete');
+      if (['output_audio_buffer.stopped', 'output_audio_buffer.cleared'].includes(event.type)) {
+        responseId = undefined;
+        log(event.type === 'output_audio_buffer.stopped' ? 'transfer.hold_complete' : 'transfer.hold_interrupted');
       }
-      if (event.type === 'output_audio_buffer.cleared') request();
     },
     stop({ restore = false } = {}) {
       if (!active) return;
-      active = false; cancel(timer);
+      active = false;
       if (restore) {
         if (responseId) send({ type: 'response.cancel', response_id: responseId });
         send({ type: 'output_audio_buffer.clear' });
