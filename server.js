@@ -40,6 +40,7 @@ import {
 import { normalizeIntake, isOptOutText } from "./src/intake.js";
 import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
+import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
 
 const {
   PORT = "5050",
@@ -1145,6 +1146,18 @@ app.post("/api/v1/contacts/:key/opt-out", requireAdmin, requireTenant, async (re
 app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) => {
   const actions = await recoveryStore.failedActions(req.bookedRadarTenant.tenantId);
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
+});
+
+app.post("/api/v1/onboarding/prepare", requireAdmin, (req, res) => {
+  try {
+    const result = prepareOnboardingFromWixSubmission(req.body || {});
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      error: String(error?.message || "onboarding_prepare_failed").slice(0, 300),
+    });
+  }
 });
 
 app.post("/api/v1/admin/prune", requireAdmin, async (_req, res) => {
