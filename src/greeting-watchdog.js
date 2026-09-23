@@ -44,3 +44,37 @@ export function createGreetingWatchdog({ send, businessName, log, fallback,
     stop() { stopped = true; cancel(timer); },
   };
 }
+
+// Observe only the opening audio; never collect transcripts or change playback.
+export function createOpeningAudioMonitor({ log, now = Date.now }) {
+  const startedAt = now(), greetingIds = new Set();
+  let closed = false, playbackId, playbackAt, firstAudio = false;
+  const emit = (event, fields = {}) => log(`opening.${event}`, { elapsed_ms: now() - startedAt, ...fields });
+  return {
+    open() { if (!closed) emit('sideband_open'); },
+    event(event) {
+      if (closed) return;
+      if (event.type === 'response.created' && event.response?.metadata?.purpose === 'opening_greeting') {
+        greetingIds.add(event.response.id);
+        emit('generation_started');
+      }
+      if (event.type === 'response.done' && greetingIds.has(event.response?.id)) {
+        emit('generation_finished', { status: event.response.status || 'unknown' });
+      }
+      if (event.type === 'input_audio_buffer.speech_started') emit('speech_detected', { during_playback: firstAudio });
+      if (event.type === 'output_audio_buffer.started' && !firstAudio) {
+        firstAudio = true; playbackId = event.response_id; playbackAt = now();
+        emit('playback_started', { identified_greeting: greetingIds.has(playbackId) });
+      }
+      if (firstAudio && ['output_audio_buffer.stopped', 'output_audio_buffer.cleared'].includes(event.type)
+          && (!event.response_id || !playbackId || event.response_id === playbackId)) {
+        emit(event.type === 'output_audio_buffer.cleared' ? 'playback_interrupted' : 'playback_completed', { playback_ms: now() - playbackAt });
+        closed = true;
+      }
+    },
+    close() {
+      if (!closed) emit('connection_closed', { audio_started: firstAudio });
+      closed = true;
+    },
+  };
+}
