@@ -166,7 +166,7 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.instructions,'existing intake');
   assert.equal(body.audio.input.turn_detection.create_response,true);
   assert.equal(body.audio.input.turn_detection.interrupt_response,false);
-  assert.equal(body.audio.input.turn_detection.threshold,0.35);
+  assert.equal(body.audio.input.turn_detection.threshold,0.5);
 });
 
 // The production handler uses this same controller; no provider calls are made here.
@@ -292,6 +292,7 @@ test('greeting guard protects opening until actual playback ends, not generation
   assert.equal(sent.length, 1);
   assert.equal(sent[0].session.audio.input.turn_detection.interrupt_response, true);
   assert.equal(sent[0].session.audio.input.turn_detection.create_response, true);
+  assert.equal(sent[0].session.audio.input.turn_detection.threshold, 0.5);
   assert.equal(logs[0].reason, 'greeting_completed');
   g.release('duplicate'); assert.equal(sent.length, 1);
   assert.equal(c.timers.size, 0);
