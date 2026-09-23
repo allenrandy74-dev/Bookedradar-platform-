@@ -1,5 +1,5 @@
-export const TRANSFER_DELAY_MS = 10_000;
-export const TRANSFER_HOLD_MESSAGE = "I’m getting someone ready to take your call. Please hold for just a moment.";
+export const TRANSFER_DELAY_MS = 20_000;
+export const TRANSFER_HOLD_MESSAGE = "I’m arranging your transfer. Please stay on the line.";
 
 export function transferSummary(tenant, lead = {}, callerNumber = '') {
   const clean = (value, max) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, max) : '';
@@ -55,9 +55,9 @@ export function createTransferCompanion({ config, log, fetchImpl = fetch,
   return { ready, notifyAndWait };
 }
 
-// Keep the existing SIP media leg alive during the SMS request, delay and REFER.
+// Give one brief announcement during the SMS request, delay and REFER.
 // Only transfer-time VAD is paused; the original session settings are restored
-// if REFER fails. Playback events (not generation completion) control replenishment.
+// if REFER fails. Retry interrupted playback, but remain quiet after completion.
 export function createTransferHold({ send: deliver, log, schedule = setTimeout, cancel = clearTimeout }) {
   let active = false, timer, responseId, originalVad, playing = false, requestNumber = 0;
   const tag = 'bookedradar_transfer_hold';
@@ -73,7 +73,7 @@ export function createTransferHold({ send: deliver, log, schedule = setTimeout, 
     send({ type: 'response.create', response: {
       conversation: 'none', input: [], output_modalities: ['audio'], tools: [], tool_choice: 'none',
       metadata: { purpose: tag, sequence: String(requestNumber) },
-      instructions: `Read this holding announcement exactly in a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE} Thank you for staying on the line. Please stay on the line while I arrange your transfer. I’m still here with you, and I’ll connect your call shortly. Thank you for your patience."`,
+      instructions: `Read this holding announcement exactly in a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE}"`,
     } });
     cancel(timer);
     timer = schedule(() => {
@@ -105,7 +105,11 @@ export function createTransferHold({ send: deliver, log, schedule = setTimeout, 
       if (event.type === 'output_audio_buffer.started') {
         playing = true; cancel(timer); log('transfer.hold_audio');
       }
-      if (['output_audio_buffer.stopped', 'output_audio_buffer.cleared'].includes(event.type)) request();
+      if (event.type === 'output_audio_buffer.stopped') {
+        playing = false; cancel(timer); responseId = undefined;
+        log('transfer.hold_complete');
+      }
+      if (event.type === 'output_audio_buffer.cleared') request();
     },
     stop({ restore = false } = {}) {
       if (!active) return;
