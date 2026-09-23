@@ -198,6 +198,15 @@ for (const tenant of registry.list()) {
     crm_enabled: Boolean(tenant?.integrations?.crm?.enabled),
     crm_credentials_configured: Boolean(wix),
     email_enabled: Boolean(tenant?.integrations?.email?.enabled),
+    resend_global_key_configured: Boolean(process.env.RESEND_API_KEY),
+    resend_tenant_key_configured: Boolean(
+      tenant?.secretsPrefix && process.env[`${tenant.secretsPrefix}_RESEND_API_KEY`]
+    ),
+    resend_sender_configured: Boolean(
+      tenant?.integrations?.email?.from ||
+      process.env.RESEND_FROM_EMAIL ||
+      (tenant?.secretsPrefix && process.env[`${tenant.secretsPrefix}_RESEND_FROM_EMAIL`])
+    ),
     sms_enabled: Boolean(tenant?.integrations?.sms?.enabled),
     dispatch_channels: Object.keys(adapters),
   }));
