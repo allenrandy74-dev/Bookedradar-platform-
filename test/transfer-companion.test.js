@@ -109,15 +109,41 @@ test('hold speaks once, stays quiet during the wait, and restores VAD on failed 
   assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
 });
 
-test('hold watchdog retries absent playback, and stopping cancels retries', async () => {
-  const c = clock(), sent = [];
-  const hold = createTransferHold({ ...c, send: event => sent.push(event), log() {} });
-  hold.start(); await c.advance(3000);
-  assert.equal(sent.filter(x => x.type === 'response.create').length, 2);
+for (const signals of ['none', 'generated_only', 'unmatched_playback', 'cleared']) {
+  test(`hold never replays with ${signals} events throughout SMS timeout and transfer wait`, async () => {
+    const c = clock(), sent = [], logs = [];
+    const hold = createTransferHold({ ...c, send: event => sent.push(event), log: event => logs.push(event) });
+    hold.start();
+    if (signals !== 'none') {
+      hold.event({ type: 'response.created', response: { id: 'hold-1', metadata: { purpose: 'bookedradar_transfer_hold', sequence: '1' } } });
+      hold.event({ type: 'response.done', response: { id: 'hold-1', status: 'completed' } });
+    }
+    if (signals === 'unmatched_playback') {
+      hold.event({ type: 'output_audio_buffer.started', response_id: 'other' });
+      hold.event({ type: 'output_audio_buffer.stopped' });
+    }
+    if (signals === 'cleared') {
+      hold.event({ type: 'output_audio_buffer.started', response_id: 'hold-1' });
+      hold.event({ type: 'output_audio_buffer.cleared', response_id: 'hold-1' });
+    }
+    for (let i = 0; i < 10; i++) {
+      await c.advance(3000);
+      hold.start(); // Duplicate transfer requests cannot restart the announcement.
+      assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
+    }
+    assert.equal(logs.includes('transfer.hold_retry'), false);
+    hold.stop(); await c.advance(30000);
+    assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
+  });
+}
+
+test('a late hold response after stop is cancelled without replay', () => {
+  const sent = [];
+  const hold = createTransferHold({ send: event => sent.push(event), log() {} });
+  hold.start(); hold.stop();
   hold.event({ type: 'response.created', response: { id: 'late', metadata: { purpose: 'bookedradar_transfer_hold', sequence: '1' } } });
   assert.deepEqual(sent.at(-1), { type: 'response.cancel', response_id: 'late' });
-  hold.stop(); await c.advance(9000);
-  assert.equal(sent.filter(x => x.type === 'response.create').length, 2);
+  assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
 });
 
 test('sideband send failure does not throw and cannot prevent transfer execution', () => {
