@@ -43,11 +43,35 @@ export async function findWixContact({
   return data?.contacts?.[0] || null;
 }
 
-export async function createWixContact({ apiKey, siteId, lead, timeoutMs = 8000, retries = 3 }) {
+export async function createWixContact({ apiKey, siteId, lead, previousContactId, previousName, timeoutMs = 8000, retries = 3 }) {
   if (!apiKey || !siteId) return { ok: false, skipped: true, reason: "wix_credentials_not_configured" };
   if (lead.callback_number || lead.email) {
     const existing = await findWixContact({ apiKey, siteId, phone: lead.callback_number || "", email: lead.email || "", timeoutMs, retries });
-    if (existing?.id) return { ok: true, reused: true, contactId: existing.id, contact: existing };
+    if (existing?.id) {
+      const supplied = splitName(lead.name);
+      const current = existing.name || {};
+      const comparable = (name) => [name.first, name.last].filter(Boolean).join(" ").trim().toLowerCase();
+      const sameCallName = previousContactId === existing.id && previousName &&
+        comparable(current) === comparable(splitName(previousName));
+      const emptyName = !current.first && !current.last;
+      const addingSurname = !current.last && current.first && supplied.last &&
+        current.first.toLowerCase() === supplied.first?.toLowerCase();
+      // A phone match alone does not authorize renaming an unrelated person.
+      // Keep an existing surname when this save contains only a first name.
+      const name = { ...current, ...supplied };
+      const shouldUpdate = supplied.first && (sameCallName || emptyName || addingSurname) &&
+        comparable(name) !== comparable(current);
+      if (shouldUpdate) {
+        if (existing.revision == null) throw new Error("Wix contact revision missing for name update");
+        const data = await wixFetch(`https://www.wixapis.com/contacts/v5/contacts/${encodeURIComponent(existing.id)}`, {
+          method: "PATCH", headers: wixHeaders(apiKey, siteId),
+          body: JSON.stringify({ contact: { id: existing.id, revision: existing.revision, name }, allowDuplicates: false }),
+        }, { timeoutMs, retries });
+        if (data?.contact?.id !== existing.id) throw new Error("Wix name update did not return the expected contact");
+        return { ok: true, reused: true, updated: true, contactId: existing.id, contact: data.contact };
+      }
+      return { ok: true, reused: true, contactId: existing.id, contact: existing };
+    }
   }
   const contact = {};
   const name = splitName(lead.name);
