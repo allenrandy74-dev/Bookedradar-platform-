@@ -17,7 +17,7 @@ function baseTenant() {
     },
     policies: { bookingMode: "confirm_only" },
     integrations: {
-      phone: { enabled: false, inboundNumbers: [] },
+      phone: { enabled: true, inboundNumbers: ["+14095550101"] },
       crm: { enabled: false },
       sms: { enabled: false },
       email: { enabled: false },
@@ -36,7 +36,7 @@ test("complete confirm-only tenant is pilot ready", () => {
 
 test("enabled phone without route blocks activation", () => {
   const tenant = baseTenant();
-  tenant.integrations.phone.enabled = true;
+  tenant.integrations.phone.inboundNumbers = [];
   const result = tenantReadiness(tenant, { env: {} });
   assert.equal(result.ready, false);
   assert.ok(result.blockers.some((item) => item.code === "phone_route"));
@@ -70,4 +70,15 @@ test("live booking without adapter blocks activation", () => {
   const result = tenantReadiness(tenant, { env: {} });
   assert.equal(result.ready, false);
   assert.ok(result.blockers.some((item) => item.code === "booking"));
+});
+
+for (const phone of [{ enabled: false, inboundNumbers: ["+14095550101"] }, { enabled: true, inboundNumbers: ["invalid"] }]) {
+  test(`phone activation is blocked for ${JSON.stringify(phone)}`, () => {
+    const tenant = baseTenant(); tenant.integrations.phone = phone;
+    assert.ok(tenantReadiness(tenant, { env: {} }).blockers.some(x => x.code === "phone_route"));
+  });
+}
+test("global-only Wix configuration cannot pass customer readiness", () => {
+  const tenant = baseTenant(); tenant.integrations.crm = { enabled: true, type: "wix" };
+  assert.ok(tenantReadiness(tenant, { env: { WIX_API_KEY: "global", WIX_SITE_ID: "global" } }).blockers.some(x => x.code === "crm"));
 });

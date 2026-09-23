@@ -88,3 +88,9 @@ export function tenantSecret(tenant, suffix, env = process.env) {
 }
 
 export { normPhone };
+
+// No global fallback: a missing customer target must never route to another business.
+export function humanTransferTarget(tenant, env = process.env) {
+  const target = String(tenantSecret(tenant, "HUMAN_TRANSFER_NUMBER", env) || tenant?.escalation?.humanPhone || "").trim();
+  return /^\+[1-9]\d{7,14}$/.test(target) ? target : "";
+}

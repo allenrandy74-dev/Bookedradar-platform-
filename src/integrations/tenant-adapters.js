@@ -59,10 +59,9 @@ export function buildTenantAdapters(tenant, {
     }
   }
 
-  const crm = tenant?.integrations?.crm || {};
-  const wixKey = valueOrSecret(tenant, crm, "apiKey", "WIX_API_KEY", env);
-  const wixSiteId = valueOrSecret(tenant, crm, "siteId", "WIX_SITE_ID", env);
-  if (crm.enabled && crm.type === "wix" && wixKey && wixSiteId) {
+  const wix = wixCredentialsForTenant(tenant, env);
+  if (wix) {
+    const { apiKey: wixKey, siteId: wixSiteId } = wix;
     const human = new WixHumanTaskAdapter({
       apiKey: wixKey,
       siteId: wixSiteId,
@@ -82,12 +81,10 @@ export function wixCredentialsForTenant(tenant, env = process.env) {
   const apiKey =
     crm.apiKey ||
     tenantSecret(tenant, "WIX_API_KEY", env) ||
-    env.WIX_API_KEY ||
     "";
   const siteId =
     crm.siteId ||
     tenantSecret(tenant, "WIX_SITE_ID", env) ||
-    env.WIX_SITE_ID ||
     "";
   return apiKey && siteId ? { apiKey, siteId } : null;
 }
