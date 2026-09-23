@@ -526,6 +526,8 @@ async function executeTool({
           apiKey: wix.apiKey,
           siteId: wix.siteId,
           lead,
+          previousContactId: existingCall?.contactId,
+          previousName: existingCall?.lastLead?.name,
           timeoutMs,
           retries,
         });
