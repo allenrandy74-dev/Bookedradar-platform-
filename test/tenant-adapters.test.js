@@ -57,3 +57,15 @@ test("global Wix credentials configure human CRM adapters when CRM is enabled", 
   assert.ok(adapters.human_task);
   assert.ok(adapters.human_alert);
 });
+
+test("Resend credentials configure native email adapter when enabled", () => {
+  const configured = tenant();
+  configured.integrations.email = { type: "resend", enabled: true };
+  const adapters = buildTenantAdapters(configured, {
+    env: {
+      RESEND_API_KEY: "test-key",
+      RESEND_FROM_EMAIL: "BookedRadar <notifications@mail.bookedradar.com>",
+    },
+  });
+  assert.ok(adapters.email);
+});
