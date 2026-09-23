@@ -37,25 +37,18 @@ test("Wix credentials prefer tenant-specific secrets", () => {
   });
 });
 
-test("Wix credentials fall back to global credentials for pilot tenants", () => {
-  const env = {
-    WIX_API_KEY: "global-key",
-    WIX_SITE_ID: "global-site",
-  };
-  assert.deepEqual(wixCredentialsForTenant(tenant(), env), {
-    apiKey: "global-key",
-    siteId: "global-site",
-  });
+test("global Wix credentials cannot configure an unconfigured customer", () => {
+  const env = { WIX_API_KEY: "global-key", WIX_SITE_ID: "global-site" };
+  assert.equal(wixCredentialsForTenant(tenant(), env), null);
+  const adapters = buildTenantAdapters(tenant(), { env });
+  assert.equal(adapters.human_task, undefined);
+  assert.equal(adapters.human_alert, undefined);
 });
 
-test("global Wix credentials configure human CRM adapters when CRM is enabled", () => {
-  const env = {
-    WIX_API_KEY: "global-key",
-    WIX_SITE_ID: "global-site",
-  };
-  const adapters = buildTenantAdapters(tenant(), { env });
-  assert.ok(adapters.human_task);
-  assert.ok(adapters.human_alert);
+test("partial customer credentials cannot mix with another site", () => {
+  const env = { PILOT_WIX_API_KEY: "tenant-key", WIX_SITE_ID: "global-site", OTHER_WIX_SITE_ID: "other-site" };
+  assert.equal(wixCredentialsForTenant(tenant(), env), null);
+  assert.equal(buildTenantAdapters(tenant(), { env }).human_task, undefined);
 });
 
 test("Resend credentials configure native email adapter when enabled", () => {
@@ -78,7 +71,7 @@ test("Wix follow-up includes the final intake details and caller notes", async (
     task = JSON.parse(options.body).task;
     return Response.json({ task: { id: "task-qa" } });
   });
-  const adapters = buildTenantAdapters(tenant(), { env: { WIX_API_KEY: "test", WIX_SITE_ID: "test" } });
+  const adapters = buildTenantAdapters(tenant(), { env: { PILOT_WIX_API_KEY: "test", PILOT_WIX_SITE_ID: "test" } });
   const result = await adapters.human_task.send({
     action: { template: "phone_lead_review", opportunityId: "opp-qa" },
     contact: { name: "Alex Smith", phone: "+14095550100" },
