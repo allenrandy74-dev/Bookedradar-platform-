@@ -1,3 +1,4 @@
+import { humanTransferTarget } from "../recovery/tenant-registry.js";
 import { validateTenant } from "../recovery/tenant.js";
 import { buildTenantAdapters, bookingAdapterForTenant, wixCredentialsForTenant } from "../integrations/tenant-adapters.js";
 
@@ -25,8 +26,9 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   const phone = tenant?.integrations?.phone || {};
   const inbound = Array.isArray(phone.inboundNumbers) ? phone.inboundNumbers.filter(Boolean) : [];
-  checks.push({ code: "phone_route", ok: !phone.enabled || inbound.length > 0 });
-  if (phone.enabled && !inbound.length) add(blockers, "phone_route", "Phone is enabled but no inbound number is assigned.");
+  const phoneReady = phone.enabled === true && inbound.length > 0 && inbound.every(number => /^\+[1-9]\d{7,14}$/.test(String(number)));
+  checks.push({ code: "phone_route", ok: phoneReady });
+  if (!phoneReady) add(blockers, "phone_route", "Phone must be enabled with valid E.164 inbound numbers before voice activation.");
 
   const adapters = buildTenantAdapters(tenant, { env });
   const crm = tenant?.integrations?.crm || {};
@@ -50,7 +52,7 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   checks.push({ code: "booking", ok: bookingReady });
   if (!bookingReady) add(blockers, "booking", "Live booking is requested but no live booking adapter is configured.");
 
-  const escalationPhone = String(tenant?.escalation?.humanPhone || "").trim();
+  const escalationPhone = humanTransferTarget(tenant, env);
   const escalationReady = /^\+[1-9]\d{7,14}$/.test(escalationPhone);
   checks.push({ code: "human_escalation", ok: escalationReady });
   if (!escalationReady) add(blockers, "human_escalation", "Human escalation phone must be a valid E.164 number.");
