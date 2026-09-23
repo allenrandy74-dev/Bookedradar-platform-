@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { RecoveryStore } from "../src/recovery/store.js";
 import { RecoveryEngine } from "../src/recovery/engine.js";
-import { ActionDispatcher } from "../src/integrations/dispatcher.js";
+import { ActionDispatcher, voiceContactResolver } from "../src/integrations/dispatcher.js";
 
 function tenant() {
   return {
@@ -53,4 +53,27 @@ test("dispatcher executes one due action exactly once", async () => {
   await dispatcher.runOnce({ now: new Date(), limit: 10 });
 
   assert.equal(sends, 1);
+});
+
+
+test("blank intake names cannot erase an existing contact name", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "br-contact-"));
+  const store = new RecoveryStore(path.join(dir, "state.json"));
+  await store.upsertContact("t1:phone", { name: "Alex Smith", optedOut: true });
+  const contact = await store.upsertContact("t1:phone", { name: "", firstName: undefined, optedOut: false });
+  assert.equal(contact.name, "Alex Smith");
+  assert.equal(contact.optedOut, false);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("human follow-up uses its own call identity despite a later call on the same number", async () => {
+  const resolve = voiceContactResolver({ getCall: async id => ({ tenantId: "t1", lastLead: { name: id === "full" ? "Alex Smith" : "", callback_number: "+14095550111" } }) }, "t1");
+  const context = { action: { channel: "human_task" }, contact: { name: "Someone Else", firstName: "Someone", lastName: "Else", optedOut: true }, opportunity: { tenantId: "t1", metadata: { callId: "full" } } };
+  assert.equal((await resolve(context)).name, "Alex Smith");
+  const unnamed = await resolve({ ...context, opportunity: { tenantId: "t1", metadata: { callId: "transfer-only" } } });
+  assert.equal(unnamed.name, "");
+  assert.equal(unnamed.firstName, "");
+  assert.equal(unnamed.optedOut, true);
+  assert.equal(await resolve({ ...context, action: { channel: "sms" } }), context.contact);
+  await assert.rejects(resolve({ ...context, opportunity: { tenantId: "other", metadata: { callId: "full" } } }), /tenant mismatch/);
 });
