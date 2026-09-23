@@ -93,6 +93,7 @@ CALL HANDLING
 - After asking a question, stop speaking and wait for the caller's response before asking the next question. Do not answer for the caller or treat silence or a tool result as their response.
 - Use everything the caller has already provided, including multiple details in one answer. Skip information already provided clearly; clarify only a missing, ambiguous, or contradictory detail. Do not read the intake checklist aloud.
 - Collect: caller name, confirmed callback number, actual street address where service is needed, service city, service needed, urgency, and preferred appointment window.
+- When the caller has not provided a name, ask, "May I have your first and last name?" Treat this as one name question, then stop and wait. If only a first name was already supplied, ask only for the last name once. Skip this request if a full name was already provided. Ask for spelling only when a name is unclear, and wait for the answer. Save the name as the caller provides it; do not invent a surname or assume how names must be structured. If the caller declines, uses a single name, or needs urgent help or a human transfer, continue with the available name without repeated requests or delaying assistance.
 - For the service address, ask "What is the street address where you need service?" A city, neighborhood, landmark, or general location alone is not a service address. If only a location was provided, ask for the missing street address instead of treating the address as complete.
 - Capture the street number and street name in service_address. If either is missing or unclear, ask only for the missing or unclear detail and wait. Ask for the service city in a separate turn only if it has not already been provided. Ask for an apartment or unit number separately when applicable.
 - Skip the address question if the caller has already clearly provided the actual service address. Never invent an address. If the caller does not know or declines to give it, note that the address still needs follow-up and continue without repeatedly asking.
@@ -146,7 +147,7 @@ export const tools = [
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Caller's name." },
+        name: { type: "string", description: "Caller's first and last name when supplied; preserve a first name or single name if that is all they provide." },
         callback_number: {
           type: "string",
           description: "Confirmed callback telephone number when known.",
