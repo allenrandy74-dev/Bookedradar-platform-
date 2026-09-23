@@ -1,6 +1,6 @@
 import "dotenv/config";
 import path from "node:path";
-import { createGreetingWatchdog, createOpeningAudioMonitor } from "./src/greeting-watchdog.js";
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from "./src/greeting-watchdog.js";
 import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
@@ -12,6 +12,7 @@ import {
   referRealtimeCall,
   rejectRealtimeCall,
   hangupRealtimeCall,
+  CONVERSATION_TURN_DETECTION,
 } from "./src/openai-call.js";
 import { appendLead } from "./src/lead-store.js";
 import {
@@ -654,12 +655,14 @@ async function attachSideband({
 
   const handledToolCalls = new Set();
   const voiceLog = (event, fields = {}) => console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
-  const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog });
+  const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog, restoreTurnDetection: CONVERSATION_TURN_DETECTION });
   const openingAudio = createOpeningAudioMonitor({ log: voiceLog });
+  const greetingTurns = createGreetingTurnGuard({ send: event => send(ws, event), log: voiceLog });
   let fallbackStarted = false;
   const greeting = createGreetingWatchdog({
     businessName: tenant.businessName, send: event => send(ws, event), log: voiceLog,
     fallback: async () => {
+      greetingTurns.release("greeting_fallback");
       fallbackStarted = true;
       send(ws, { type: "response.cancel" });
       let leadSaved = false;
@@ -689,7 +692,7 @@ async function attachSideband({
     },
   });
 
-  ws.on("open", () => { openingAudio.open(); greeting.open(); });
+  ws.on("open", () => { openingAudio.open(); greetingTurns.open(); greeting.open(); });
 
   ws.on("message", async (raw) => {
     let event;
@@ -701,6 +704,7 @@ async function attachSideband({
 
     if (fallbackStarted) return;
     openingAudio.event(event);
+    greetingTurns.event(event);
     greeting.event(event);
     transferHold.event(event);
 
@@ -746,6 +750,7 @@ async function attachSideband({
       } catch {}
 
       let output;
+      if (toolCall.name === "transfer_to_human") greetingTurns.release("human_transfer");
       try {
         output = await executeTool({
           name: toolCall.name,
@@ -805,7 +810,7 @@ async function attachSideband({
       message: "websocket_error",
     }));
   });
-  ws.on("close", () => { openingAudio.close(); greeting.stop(); transferHold.stop(); });
+  ws.on("close", () => { openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop(); });
 }
 
 async function handleIncomingCall(event) {
