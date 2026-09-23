@@ -69,6 +69,8 @@ const {
   CRM_SMOKE_TEST_ON_STARTUP = "false",
   EMAIL_SMOKE_TEST_ON_STARTUP = "false",
   E2E_SMOKE_TEST_ON_STARTUP = "false",
+  TWILIO_A2P_DIAGNOSTIC_ON_STARTUP = "false",
+  TWILIO_A2P_MESSAGING_SERVICE_SID = "",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -152,6 +154,75 @@ const transferCompanion = createTransferCompanion({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 console.log(JSON.stringify({ event: "transfer.sms_preflight", scope: "startup", configured: transferCompanion.ready(), delay_ms: TRANSFER_DELAY_MS }));
+if (TWILIO_A2P_DIAGNOSTIC_ON_STARTUP.toLowerCase() === "true") {
+  const serviceSid = String(TWILIO_A2P_MESSAGING_SERVICE_SID || "").trim();
+  const accountSid = String(TWILIO_ACCOUNT_SID || "").trim();
+  const authToken = String(TWILIO_AUTH_TOKEN || "");
+  const expectedFrom = String(TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID || "").trim();
+  const auth = accountSid && authToken
+    ? `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
+    : "";
+
+  const getJson = async (url) => {
+    const response = await fetch(url, {
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok) {
+      throw new Error(`twilio_read_failed_${response.status}`);
+    }
+    return data;
+  };
+
+  try {
+    if (!/^MG[0-9a-f]{32}$/i.test(serviceSid)) throw new Error("messaging_service_sid_invalid");
+    if (!/^AC[0-9a-f]{32}$/i.test(accountSid) || !authToken) throw new Error("twilio_credentials_missing");
+
+    const [service, campaignList, phoneList] = await Promise.all([
+      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}`),
+      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}/Compliance/Usa2p`),
+      getJson(`https://messaging.twilio.com/v1/Services/${serviceSid}/PhoneNumbers?PageSize=100`),
+    ]);
+
+    const campaigns = Array.isArray(campaignList?.usa2p) ? campaignList.usa2p
+      : Array.isArray(campaignList?.us_app_to_person) ? campaignList.us_app_to_person
+      : Array.isArray(campaignList?.resources) ? campaignList.resources
+      : [];
+
+    const phones = Array.isArray(phoneList?.phone_numbers) ? phoneList.phone_numbers
+      : Array.isArray(phoneList?.phoneNumbers) ? phoneList.phoneNumbers
+      : [];
+
+    const normalizedExpected = expectedFrom.replace(/\D/g, "");
+    const sendingNumberPresent = normalizedExpected
+      ? phones.some((item) => String(item?.phone_number || item?.phoneNumber || "").replace(/\D/g, "") === normalizedExpected)
+      : false;
+
+    const campaign = campaigns[0] || null;
+    console.log(JSON.stringify({
+      event: "twilio.a2p_diagnostic",
+      ok: true,
+      messaging_service_found: Boolean(service?.sid),
+      messaging_service_matches: service?.sid === serviceSid,
+      service_a2p_registered: Boolean(service?.us_app_to_person_registered),
+      campaign_count: campaigns.length,
+      campaign_status: campaign?.campaign_status || campaign?.campaignStatus || null,
+      campaign_errors: Array.isArray(campaign?.errors) ? campaign.errors.length : 0,
+      sender_pool_count: phones.length,
+      sending_number_present: sendingNumberPresent,
+    }));
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "twilio.a2p_diagnostic",
+      ok: false,
+      reason: String(error?.message || error).slice(0, 200),
+    }));
+  }
+}
+
 const transferFallbackReady = Boolean(OPENAI_API_KEY && /^\+[1-9]\d{7,14}$/.test(HUMAN_TRANSFER_NUMBER.trim()));
 console.log(JSON.stringify({ event: "transfer.preflight", scope: "startup", ...warmTransfer.preflight(), fallback_ready: transferFallbackReady }));
 app.use("/voice/transfer", createRateLimiter({ max: 1200 }), warmTransfer.router);
