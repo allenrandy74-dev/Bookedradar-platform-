@@ -18,6 +18,7 @@ import {
 import { appendLead } from "./src/lead-store.js";
 import {
   buildOperatorInstructions,
+  operatorRulesForTenant,
   normalizeLead,
   parseSipPhone,
   parseDialedNumber,
@@ -857,6 +858,7 @@ async function handleIncomingCall(event) {
 
   const businessContext = localBusinessContext(tenant);
   const instructions = buildOperatorInstructions({
+    ...operatorRulesForTenant(tenant),
     companyName: tenant.businessName,
     companyTrade: tenant.trade,
     serviceArea: Array.isArray(tenant.serviceArea)

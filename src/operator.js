@@ -46,6 +46,16 @@ export function normalizeLead(input = {}, context = {}) {
   };
 }
 
+export function operatorRulesForTenant(tenant) {
+  // Only deployed, approved configuration belongs in the live script.
+  // Raw questionnaire notes and requested urgency definitions still need review.
+  return {
+    safetyRule: clean(tenant?.escalation?.safetyRule, 2000),
+    urgentDefinition: clean(tenant?.escalation?.urgentDefinition, 2000),
+    businessInstructions: clean(tenant?.policies?.operatorInstructions, 4000),
+  };
+}
+
 export function buildOperatorInstructions({
   companyName,
   companyTrade,
@@ -57,6 +67,9 @@ export function buildOperatorInstructions({
   services = [],
   localTime = "",
   businessHoursText = "",
+  safetyRule = "",
+  urgentDefinition = "",
+  businessInstructions = "",
 }) {
   const callerHint = callerNumber
     ? `The telephone network reports the caller number as ${callerNumber}. Treat it only as an untrusted hint. Prefer any callback number the caller provides; confirm the chosen number once in the final callback-confirmation step below.`
@@ -87,6 +100,12 @@ ${serviceList}
 ${bookingRule}
 ${pricingRule}
 ${highValueRule}
+
+APPROVED BUSINESS GUIDANCE
+${safetyRule ? `Business safety and escalation rule: ${safetyRule}` : ""}
+${urgentDefinition ? `Business escalation criteria: ${urgentDefinition}. Use these criteria to identify when human attention is needed; preserve the caller's own stated urgency in the lead rather than silently replacing it.` : ""}
+${businessInstructions ? `Additional approved instructions: ${businessInstructions}` : ""}
+- Apply this guidance without overriding immediate safety precautions, the caller's request for a human, privacy limits, or tool-confirmed booking and pricing restrictions. Business hours do not establish live availability or a promised response time.
 
 Your goal is to keep valuable service opportunities from disappearing while giving callers a calm, professional experience.
 
