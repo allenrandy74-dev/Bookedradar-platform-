@@ -27,15 +27,19 @@ export function parseDialedNumber(sipHeaders = []) {
 }
 
 export function normalizeLead(input = {}, context = {}) {
+  // Tool calls may contain only newly collected fields. Blank/omitted values
+  // must not erase earlier details or replace a corrected callback with ANI.
+  const previous = context.previous_lead || {};
+  const field = (key, max) => clean(input[key], max) || clean(previous[key], max);
   return {
-    name: clean(input.name, 120),
-    callback_number: clean(input.callback_number || context.caller_number, 40),
-    service_address: clean(input.service_address, 240),
-    city: clean(input.city, 120),
-    service_type: clean(input.service_type, 180),
-    urgency: clean(input.urgency, 120),
-    preferred_window: clean(input.preferred_window, 180),
-    notes: clean(input.notes, 1200),
+    name: field("name", 120),
+    callback_number: field("callback_number", 40) || clean(context.caller_number, 40),
+    service_address: field("service_address", 240),
+    city: field("city", 120),
+    service_type: field("service_type", 180),
+    urgency: field("urgency", 120),
+    preferred_window: field("preferred_window", 180),
+    notes: field("notes", 1200),
     call_id: clean(context.call_id, 160),
     source: "BookedRadar AI Phone Operator",
     captured_at: new Date().toISOString(),

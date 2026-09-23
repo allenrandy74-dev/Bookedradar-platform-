@@ -451,9 +451,11 @@ async function executeTool({
   const engine = engineFor(tenant);
 
   if (name === "capture_lead") {
+    const existingCall = await state.getCall(callId);
     const lead = normalizeLead(args, {
       call_id: callId,
       caller_number: callerNumber,
+      previous_lead: existingCall?.lastLead,
     });
 
     await appendLead(LEADS_FILE, {
@@ -461,7 +463,6 @@ async function executeTool({
       tenant_id: tenant.tenantId,
     });
 
-    const existingCall = await state.getCall(callId);
     let recoveryResult;
 
     if (existingCall?.opportunityId) {
