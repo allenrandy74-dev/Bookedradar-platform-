@@ -14,15 +14,16 @@ function secretPrefix(tenantId) {
 function extractUsPhone(value) {
   const raw = clean(value);
   if (!raw) return "";
-  const plus = raw.match(/\+1\d{10}/);
-  if (plus) return plus[0];
-  const digits = raw.replace(/\D/g, "");
-  const candidate = digits.length >= 11 && digits.includes("1")
-    ? digits.slice(-11)
-    : digits.slice(-10);
-  if (/^1\d{10}$/.test(candidate)) return `+${candidate}`;
-  if (/^\d{10}$/.test(candidate)) return `+1${candidate}`;
-  return "";
+  // Transfers require one direct number. Never truncate a long number or
+  // silently discard an extension and route a caller to the wrong person.
+  if (/(?:\bext(?:ension)?\.?|\bx|#)\s*\d/i.test(raw)) return "";
+  const matches = [...raw.matchAll(/(?<![\d+])(?:\+?1[ .-]?)?\(?[2-9]\d{2}\)?[ .-]?[2-9]\d{2}[ .-]?\d{4}(?!\d)/g)];
+  if (matches.length !== 1) return "";
+  const match = matches[0];
+  const remainder = raw.slice(0, match.index) + raw.slice(match.index + match[0].length);
+  if (/\d|\+/.test(remainder)) return "";
+  const digits = match[0].replace(/\D/g, "");
+  return digits.length === 10 ? `+1${digits}` : `+${digits}`;
 }
 
 export function quickStartInputFromWixSubmission(submission = {}) {
@@ -61,7 +62,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
     input.businessHours && typeof input.businessHours === "object" && !Array.isArray(input.businessHours)
       ? input.businessHours
       : {};
-  const escalationPhone = clean(input.escalationPhone) || extractUsPhone(input.escalationContactText);
+  const escalationPhone = extractUsPhone(input.escalationPhone || input.escalationContactText);
   const bookingChoice = clean(input.bookingPreference).toLowerCase();
   const bookingMode = bookingChoice === "live_booking" || bookingChoice === "live booking"
     ? "live_booking"
