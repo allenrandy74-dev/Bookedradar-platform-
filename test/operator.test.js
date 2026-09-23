@@ -60,3 +60,29 @@ test("later corrections replace previous details without carrying another call's
   assert.equal(updated.urgency, "Declined");
   assert.equal(updated.call_id, "current");
 });
+
+test("approved business guidance reaches the operator without importing raw onboarding notes", async () => {
+  const { operatorRulesForTenant, buildOperatorInstructions } = await import("../src/operator.js");
+  const tenant = {
+    escalation: { safetyRule: "Escalate gas concerns immediately.", urgentDefinition: "No cooling with a vulnerable resident needs human attention." },
+    policies: { operatorInstructions: "Ask callers to keep pets secured before service." },
+    onboarding: { notes: "UNREVIEWED NOTES", urgentDefinition: "UNREVIEWED CRITERIA" },
+  };
+  const rules = operatorRulesForTenant(tenant);
+  const prompt = buildOperatorInstructions({ companyName: "QA HVAC", companyTrade: "HVAC", serviceArea: "Silsbee", businessHoursText: "Mon 08:00-17:00", ...rules });
+  for (const value of Object.values(rules)) assert.ok(prompt.includes(value));
+  assert.ok(prompt.includes("Mon 08:00-17:00"));
+  assert.ok(!prompt.includes("UNREVIEWED"));
+  assert.ok(prompt.includes("preserve the caller's own stated urgency"));
+  assert.ok(prompt.includes("Live booking is not enabled"));
+  assert.ok(prompt.includes("Do not quote or estimate prices"));
+  assert.ok(prompt.includes("Business hours do not establish live availability"));
+});
+
+test("business guidance is isolated to the selected tenant", async () => {
+  const { operatorRulesForTenant } = await import("../src/operator.js");
+  const a = operatorRulesForTenant({ escalation: { safetyRule: "Business A rule" } });
+  const b = operatorRulesForTenant({ onboarding: { notes: "Unapproved rule" } });
+  assert.equal(a.safetyRule, "Business A rule");
+  assert.deepEqual(b, { safetyRule: "", urgentDefinition: "", businessInstructions: "" });
+});
