@@ -30,7 +30,7 @@ import { radarProof } from "./src/recovery/radarproof.js";
 import { renderTemplate } from "./src/recovery/templates.js";
 import { TenantRegistry } from "./src/recovery/tenant-registry.js";
 import { requireBearer } from "./src/auth.js";
-import { ActionDispatcher } from "./src/integrations/dispatcher.js";
+import { ActionDispatcher, voiceContactResolver } from "./src/integrations/dispatcher.js";
 import {
   buildTenantAdapters,
   wixCredentialsForTenant,
@@ -261,6 +261,7 @@ function dispatcherFor(tenant) {
           store: recoveryStore,
           tenant,
           adapters,
+          resolveContact: voiceContactResolver(state, tenant.tenantId),
           workerId: `bookedradar-${tenant.tenantId}-${process.pid}`,
         }),
       }

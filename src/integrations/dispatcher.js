@@ -1,12 +1,25 @@
 import { renderTemplate } from "../recovery/templates.js";
 import { actionAllowed } from "../recovery/compliance.js";
 
+export function voiceContactResolver(state, tenantId) {
+  return async ({ action, contact, opportunity }) => {
+    if (!["human_task", "human_alert"].includes(action.channel) || !opportunity?.metadata?.callId) return contact;
+    if (opportunity.tenantId !== tenantId) throw new Error("Voice follow-up tenant mismatch");
+    const call = await state.getCall(opportunity.metadata.callId);
+    if (!call) return contact;
+    if (call.tenantId !== tenantId) throw new Error("Voice call tenant mismatch");
+    if (!call.lastLead) return contact;
+    return { ...contact, name: call.lastLead.name || "", firstName: "", lastName: "", phone: call.lastLead.callback_number || contact?.phone || "" };
+  };
+}
+
 export class ActionDispatcher {
-  constructor({ store, tenant, adapters = {}, workerId = "bookedradar-dispatcher" }) {
+  constructor({ store, tenant, adapters = {}, workerId = "bookedradar-dispatcher", resolveContact }) {
     this.store = store;
     this.tenant = tenant;
     this.adapters = adapters;
     this.workerId = workerId;
+    this.resolveContact = resolveContact;
   }
 
   async runOnce({ now = new Date(), limit = 25 } = {}) {
@@ -30,7 +43,7 @@ export class ActionDispatcher {
       }
 
       const opportunity = await this.store.getOpportunity(action.opportunityId);
-      const contact = await this.store.getContact(action.contactKey);
+      let contact = await this.store.getContact(action.contactKey);
 
       const decision = actionAllowed({
         action,
@@ -63,6 +76,7 @@ export class ActionDispatcher {
       }
 
       try {
+        if (this.resolveContact) contact = await this.resolveContact({ action, contact, opportunity });
         const content =
           ["sms", "email"].includes(action.channel)
             ? renderTemplate(action.template, { contact, tenant: this.tenant, opportunity })

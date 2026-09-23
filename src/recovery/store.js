@@ -76,6 +76,10 @@ export class RecoveryStore {
 
   async upsertContact(contactKey, patch) {
     await this.load();
+    patch = { ...patch };
+    for (const key of ["name", "firstName", "lastName"]) {
+      if (patch[key] == null || String(patch[key]).trim() === "") delete patch[key];
+    }
     this.data.contacts[contactKey] = {
       ...(this.data.contacts[contactKey] || {}),
       ...patch,
