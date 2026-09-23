@@ -76,8 +76,8 @@
       "enabled": false
     },
     "email": {
-      "type": "webhook",
-      "enabled": false
+      "type": "resend",
+      "enabled": true
     },
     "calendar": {
       "type": "customer_specific",
