@@ -73,7 +73,7 @@ export function createTransferHold({ send: deliver, log, schedule = setTimeout, 
     send({ type: 'response.create', response: {
       conversation: 'none', input: [], output_modalities: ['audio'], tools: [], tool_choice: 'none',
       metadata: { purpose: tag, sequence: String(requestNumber) },
-      instructions: `Read this holding announcement exactly, calmly and continuously, without asking questions or adding facts: "${TRANSFER_HOLD_MESSAGE} Thank you for staying on the line. Please keep the line open while I arrange your transfer. I’m still here with you, and I’ll connect your call shortly. Thank you for your patience."`,
+      instructions: `Read this holding announcement exactly in a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE} Thank you for staying on the line. Please stay on the line while I arrange your transfer. I’m still here with you, and I’ll connect your call shortly. Thank you for your patience."`,
     } });
     cancel(timer);
     timer = schedule(() => {
