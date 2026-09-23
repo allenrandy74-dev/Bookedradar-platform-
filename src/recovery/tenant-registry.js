@@ -64,14 +64,14 @@ export class TenantRegistry {
   }
 
   resolveByPhone(phone) {
-    return this.byPhone.get(normPhone(phone)) || null;
+    const tenant = this.byPhone.get(normPhone(phone));
+    return tenant?.integrations?.phone?.enabled === true ? tenant : null;
   }
 
   resolve({ tenantId = "", phone = "" } = {}) {
     if (tenantId) return this.get(tenantId);
     if (phone) {
-      const byPhone = this.resolveByPhone(phone);
-      if (byPhone) return byPhone;
+      return this.resolveByPhone(phone);
     }
     return this.byId.size === 1 ? [...this.byId.values()][0] : null;
   }

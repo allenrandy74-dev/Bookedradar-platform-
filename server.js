@@ -831,7 +831,7 @@ async function handleIncomingCall(event) {
   const sipHeaders = event?.data?.sip_headers || [];
   const callerNumber = parseSipPhone(sipHeaders);
   const dialedNumber = parseDialedNumber(sipHeaders);
-  const tenant = registry.resolve({ phone: dialedNumber });
+  const tenant = registry.resolveByPhone(dialedNumber);
 
   if (!tenant) {
     callLifecycle.end(callId);
