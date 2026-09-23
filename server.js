@@ -1,6 +1,6 @@
 import "dotenv/config";
 import path from "node:path";
-import { createGreetingWatchdog } from "./src/greeting-watchdog.js";
+import { createGreetingWatchdog, createOpeningAudioMonitor } from "./src/greeting-watchdog.js";
 import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
@@ -655,6 +655,7 @@ async function attachSideband({
   const handledToolCalls = new Set();
   const voiceLog = (event, fields = {}) => console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
   const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog });
+  const openingAudio = createOpeningAudioMonitor({ log: voiceLog });
   let fallbackStarted = false;
   const greeting = createGreetingWatchdog({
     businessName: tenant.businessName, send: event => send(ws, event), log: voiceLog,
@@ -688,7 +689,7 @@ async function attachSideband({
     },
   });
 
-  ws.on("open", () => greeting.open());
+  ws.on("open", () => { openingAudio.open(); greeting.open(); });
 
   ws.on("message", async (raw) => {
     let event;
@@ -699,6 +700,7 @@ async function attachSideband({
     }
 
     if (fallbackStarted) return;
+    openingAudio.event(event);
     greeting.event(event);
     transferHold.event(event);
 
@@ -803,10 +805,11 @@ async function attachSideband({
       message: "websocket_error",
     }));
   });
-  ws.on("close", () => transferHold.stop());
+  ws.on("close", () => { openingAudio.close(); greeting.stop(); transferHold.stop(); });
 }
 
 async function handleIncomingCall(event) {
+  const receivedAt = Date.now();
   const callId = event?.data?.call_id;
   if (!callId) throw new Error("Incoming call webhook had no call_id.");
 
@@ -863,6 +866,7 @@ async function handleIncomingCall(event) {
 
   console.log(JSON.stringify({
     event: "call.accepted",
+    acceptance_ms: Date.now() - receivedAt,
     tenant_id: tenant.tenantId,
     call_id: callId,
     caller_hint: maskPhone(callerNumber) || null,
