@@ -28,7 +28,7 @@ import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import { renderTemplate } from "./src/recovery/templates.js";
-import { TenantRegistry } from "./src/recovery/tenant-registry.js";
+import { TenantRegistry, humanTransferTarget } from "./src/recovery/tenant-registry.js";
 import { requireBearer } from "./src/auth.js";
 import { ActionDispatcher, voiceContactResolver } from "./src/integrations/dispatcher.js";
 import {
@@ -46,7 +46,6 @@ const {
   OPENAI_WEBHOOK_SECRET = "",
   OPENAI_REALTIME_MODEL = "gpt-realtime-2.1",
   OPENAI_VOICE = "marin",
-  HUMAN_TRANSFER_NUMBER = "",
   WARM_TRANSFER_ENABLED = "false",
   WARM_TRANSFER_SIP_DOMAIN = "",
   VOICE_PUBLIC_BASE_URL = "",
@@ -230,7 +229,7 @@ if (TWILIO_A2P_DIAGNOSTIC_ON_STARTUP.toLowerCase() === "true") {
   }
 }
 
-const transferFallbackReady = Boolean(OPENAI_API_KEY && /^\+[1-9]\d{7,14}$/.test(HUMAN_TRANSFER_NUMBER.trim()));
+const transferFallbackReady = Boolean(OPENAI_API_KEY && registry.list().every(tenant => humanTransferTarget(tenant)));
 console.log(JSON.stringify({ event: "transfer.preflight", scope: "startup", ...warmTransfer.preflight(), fallback_ready: transferFallbackReady }));
 app.use("/voice/transfer", createRateLimiter({ max: 1200 }), warmTransfer.router);
 const logTranscripts = LOG_TRANSCRIPTS.toLowerCase() === "true";
@@ -616,7 +615,7 @@ async function executeTool({
   }
 
   if (name === "transfer_to_human") {
-    const target = String(HUMAN_TRANSFER_NUMBER || tenant?.escalation?.humanPhone || "").trim();
+    const target = humanTransferTarget(tenant);
     if (!target) {
       return {
         ok: false,
@@ -688,7 +687,7 @@ async function attachSideband({
           ws.close();
           return "twilio_announcement_requested";
         }
-        const target = String(HUMAN_TRANSFER_NUMBER || tenant?.escalation?.humanPhone || "").trim();
+        const target = humanTransferTarget(tenant);
         if (!/^\+[1-9]\d{7,14}$/.test(target)) throw new Error("no_fallback_target");
         await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: `tel:${target}` });
         ws.close();
