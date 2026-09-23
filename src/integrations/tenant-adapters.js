@@ -10,7 +10,6 @@ function valueOrSecret(tenant, object, field, suffix, env) {
   return (
     object?.[field] ||
     tenantSecret(tenant, suffix, env) ||
-    env[suffix] ||
     ""
   );
 }
