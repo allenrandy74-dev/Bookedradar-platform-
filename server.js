@@ -1,3 +1,4 @@
+import { createCallLifecycle } from "./src/call-lifecycle.js";
 import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from "./src/greeting-watchdog.js";
@@ -646,6 +647,11 @@ async function executeTool({
   return { ok: false, reason: `unknown_tool:${name}` };
 }
 
+const callLifecycle = createCallLifecycle({
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+  exit: code => process.exit(code),
+});
+
 async function attachSideband({
   callId,
   callerNumber,
@@ -813,6 +819,7 @@ async function attachSideband({
       message: "websocket_error",
     }));
   });
+  ws.on("close", () => callLifecycle.end(callId));
   ws.on("close", () => { openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop(); });
 }
 
@@ -827,6 +834,7 @@ async function handleIncomingCall(event) {
   const tenant = registry.resolve({ phone: dialedNumber });
 
   if (!tenant) {
+    callLifecycle.end(callId);
     console.error(JSON.stringify({
       event: "call.no_tenant_route",
       call_id: callId,
@@ -1166,6 +1174,8 @@ app.get("/health", (_req, res) => {
     transferMode: warmTransfer.ready() ? "screened_with_refer_fallback" : "refer_fallback",
     tenants: registry.list().length,
     voiceEnabled,
+    activeVoiceCalls: callLifecycle.count(),
+    draining: callLifecycle.isDraining(),
   });
 });
 
@@ -1203,6 +1213,8 @@ app.post("/openai/webhook", async (req, res) => {
     return res.status(400).send("Invalid signature");
   }
 
+  if (callLifecycle.isDraining()) return res.status(503).send("Service restarting; retry shortly");
+
   const webhookId = req.header("webhook-id") || event?.id;
   if (!(await state.markWebhookOnce(webhookId))) {
     return res.status(200).send("duplicate ignored");
@@ -1211,7 +1223,10 @@ app.post("/openai/webhook", async (req, res) => {
   res.status(200).send("ok");
 
   if (event.type === "realtime.call.incoming") {
+    const callId = event?.data?.call_id;
+    if (!callLifecycle.begin(callId)) return;
     handleIncomingCall(event).catch((error) => {
+      callLifecycle.end(callId);
       console.error(JSON.stringify({
         event: "incoming_call.failed",
         call_id: event?.data?.call_id || null,
@@ -1333,8 +1348,7 @@ const server = app.listen(Number(PORT), "0.0.0.0", () => {
 async function shutdown(signal) {
   if (dispatchTimer) clearInterval(dispatchTimer);
   console.log(JSON.stringify({ event: "server.shutdown", signal }));
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
+  callLifecycle.shutdown(done => server.close(done));
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
