@@ -32,16 +32,19 @@ export function quickStartInputFromWixSubmission(submission = {}) {
     businessName: clean(values.business_name),
     email: clean(values.email),
     phone: clean(values.phone),
+    website: clean(values.website),
     trade: clean(values.business_type),
     serviceArea: clean(values.service_area),
     businessHoursText: clean(values.business_hours),
     services: clean(values.services),
     coverageMode: clean(values.coverage),
+    phoneProvider: clean(values.phone_provider),
     escalationContactText: clean(values.urgent_contact),
     escalationPhone: extractUsPhone(values.urgent_contact),
     urgentDefinition: clean(values.urgent_definition),
     customerTrackingSystem: clean(values.customer_tracking),
     bookingPreference: clean(values.booking),
+    emailReplyAddress: clean(values.email_reply_address),
     notes: clean(values.anything_else),
     wixSubmissionId: clean(submission?.id),
     source: "wix_quick_start",
@@ -85,9 +88,18 @@ export function buildTenantDraftFromQuickStart(input = {}) {
     economics: {},
     integrations: {
       crm: { type: "customer_specific", enabled: false },
-      phone: { type: "sip", enabled: false, inboundNumbers: [] },
+      phone: {
+        type: "sip",
+        enabled: false,
+        inboundNumbers: [],
+        provider: clean(input.phoneProvider),
+      },
       sms: { type: "twilio", enabled: false },
-      email: { type: "webhook", enabled: false },
+      email: {
+        type: "resend",
+        enabled: false,
+        replyTo: clean(input.emailReplyAddress),
+      },
       calendar: { type: "customer_specific", enabled: false },
     },
     secretsPrefix: secretPrefix(tenantId),
@@ -95,12 +107,14 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       firstName: clean(input.firstName),
       email: clean(input.email),
       phone: clean(input.phone),
-      coverageMode: clean(input.coverageMode) || "after_hours_overflow",
       website: clean(input.website),
+      coverageMode: clean(input.coverageMode) || "after_hours_overflow",
+      phoneProvider: clean(input.phoneProvider),
       businessHoursText,
       escalationContactText: clean(input.escalationContactText),
       customerTrackingSystem: clean(input.customerTrackingSystem),
       urgentDefinition: clean(input.urgentDefinition),
+      emailReplyAddress: clean(input.emailReplyAddress),
       notes: clean(input.notes),
       wixSubmissionId: clean(input.wixSubmissionId),
       source: clean(input.source) || "quick_start",
@@ -123,15 +137,46 @@ export function buildTenantDraftFromQuickStart(input = {}) {
   if (!tenant.onboarding.website) internalPreparation.push("website_optional_not_provided");
 
   const optionalFollowup = [];
+  if (!tenant.onboarding.phoneProvider) optionalFollowup.push("phone_provider_for_forwarding_instructions");
   if (!tenant.onboarding.customerTrackingSystem) optionalFollowup.push("where_customer_information_is_kept");
   if (!tenant.onboarding.urgentDefinition) optionalFollowup.push("what_counts_as_urgent");
+  if (!tenant.onboarding.emailReplyAddress) optionalFollowup.push("preferred_reply_to_email");
+
+  const providerInstructionsNeeded = [];
+  if (tenant.onboarding.phoneProvider) {
+    providerInstructionsNeeded.push(`phone_forwarding:${tenant.onboarding.phoneProvider}`);
+  } else {
+    providerInstructionsNeeded.push("phone_forwarding:provider_unknown");
+  }
+  if (tenant.onboarding.customerTrackingSystem) {
+    providerInstructionsNeeded.push(`crm_or_dispatch:${tenant.onboarding.customerTrackingSystem}`);
+  }
 
   return {
     tenant,
     needsFromCustomer,
     internalPreparation,
     optionalFollowup,
+    providerInstructionsNeeded,
     canGenerateTenant: needsFromCustomer.length === 0,
+    setupPlan: {
+      customerSteps: [
+        "complete_quick_start",
+        "approve_business_rules",
+        "follow_phone_forwarding_instructions",
+        "provide_provider_access_only_when_needed",
+        "complete_acceptance_test",
+      ],
+      bookedRadarSteps: [
+        "generate_tenant_config",
+        "normalize_hours_and_rules",
+        "configure_isolated_secrets",
+        "assign_phone_route",
+        "activate_crm_email_and_sms_when_ready",
+        "run_readiness_gate",
+        "run_acceptance_tests",
+      ],
+    },
     next: needsFromCustomer.length
       ? "ASK_ONLY_FOR_MISSING_REQUIRED_ANSWERS"
       : "INTERNAL_ENRICHMENT_AND_READINESS",
