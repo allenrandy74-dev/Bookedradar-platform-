@@ -68,6 +68,7 @@ const {
   ACTION_RETENTION_DAYS = "180",
   CRM_SMOKE_TEST_ON_STARTUP = "false",
   EMAIL_SMOKE_TEST_ON_STARTUP = "false",
+  E2E_SMOKE_TEST_ON_STARTUP = "false",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -1131,6 +1132,78 @@ app.post("/openai/webhook", async (req, res) => {
     });
   }
 });
+
+if (E2E_SMOKE_TEST_ON_STARTUP.toLowerCase() === "true") {
+  for (const tenant of registry.list()) {
+    try {
+      const e2eKey = `internal-e2e:${tenant.tenantId}:2026-09-23-v1`;
+      const intake = await engineFor(tenant).ingest({
+        idempotencyKey: e2eKey,
+        occurredAt: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+        type: "web_lead",
+        source: "internal_e2e_smoke_test",
+        serviceType: "repair",
+        urgency: "test",
+        contact: {
+          name: "BookedRadar E2E Test",
+          email: "delivered@resend.dev",
+        },
+        metadata: {
+          notes: "Internal synthetic end-to-end production verification.",
+        },
+      });
+
+      if (intake?.duplicate || !intake?.opportunity?.id) {
+        console.log(JSON.stringify({
+          event: "e2e.smoke_test",
+          tenant_id: tenant.tenantId,
+          ok: true,
+          duplicate: true,
+          reason: intake?.reason || "existing_test_event",
+        }));
+        continue;
+      }
+
+      const { dispatcher } = dispatcherFor(tenant);
+      const dispatchResults = await dispatcher.runOnce({
+        now: new Date(),
+        limit: 25,
+      });
+
+      await engineFor(tenant).ingest({
+        idempotencyKey: `${e2eKey}:close`,
+        type: "opportunity_lost",
+        opportunityId: intake.opportunity.id,
+        source: "internal_e2e_smoke_test_cleanup",
+      });
+
+      console.log(JSON.stringify({
+        event: "e2e.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: true,
+        opportunity_id: intake.opportunity.id,
+        actions: dispatchResults
+          .filter((item) => item?.action?.opportunityId === intake.opportunity.id)
+          .map((item) => ({
+            channel: item.action.channel,
+            dispatched: Boolean(item.dispatched),
+            provider: item.result?.provider || null,
+            email_id: item.result?.id || null,
+            wix_contact_id: item.result?.contactId || null,
+            wix_task_id: item.result?.taskId || null,
+            error: item.error || null,
+          })),
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "e2e.smoke_test",
+        tenant_id: tenant.tenantId,
+        ok: false,
+        message: String(error?.message || error).slice(0, 500),
+      }));
+    }
+  }
+}
 
 let dispatchTimer = null;
 let dispatchRunning = false;
