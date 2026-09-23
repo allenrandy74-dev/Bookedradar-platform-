@@ -27,7 +27,10 @@ export class WixHumanTaskAdapter {
       preferred_window: opportunity?.metadata?.preferredWindow || "",
       service_address: opportunity?.metadata?.serviceAddress || "",
       city: opportunity?.metadata?.city || "",
-      notes: `Recovery action ${action.template} for opportunity ${action.opportunityId}`,
+      notes: [
+        opportunity?.metadata?.notes || "",
+        `Recovery action ${action.template} for opportunity ${action.opportunityId}`,
+      ].filter(Boolean).join("\n\n"),
       call_id: opportunity?.metadata?.callId || "",
     };
 

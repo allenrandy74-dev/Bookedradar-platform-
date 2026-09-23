@@ -69,3 +69,27 @@ test("Resend credentials configure native email adapter when enabled", () => {
   });
   assert.ok(adapters.email);
 });
+
+test("Wix follow-up includes the final intake details and caller notes", async (t) => {
+  let task;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    if (url.includes("find-matching")) return Response.json({ contacts: [{ id: "contact-qa", name: { first: "Alex", last: "Smith" } }] });
+    assert.equal(url, "https://www.wixapis.com/crm/tasks/v2/tasks");
+    task = JSON.parse(options.body).task;
+    return Response.json({ task: { id: "task-qa" } });
+  });
+  const adapters = buildTenantAdapters(tenant(), { env: { WIX_API_KEY: "test", WIX_SITE_ID: "test" } });
+  const result = await adapters.human_task.send({
+    action: { template: "phone_lead_review", opportunityId: "opp-qa" },
+    contact: { name: "Alex Smith", phone: "+14095550100" },
+    opportunity: { serviceType: "AC repair", urgency: "Urgent", metadata: {
+      serviceAddress: "123 Oak Lane, Unit 2", city: "Silsbee", preferredWindow: "Tomorrow morning",
+      notes: "Use the side entrance. Caller corrected the unit to 2.", callId: "call-qa",
+    } },
+  });
+  assert.equal(result.taskId, "task-qa");
+  assert.equal(task.contact.id, "contact-qa");
+  for (const value of ["Alex Smith", "+14095550100", "AC repair", "Urgent", "123 Oak Lane, Unit 2", "Silsbee", "Tomorrow morning", "Use the side entrance. Caller corrected the unit to 2.", "opp-qa", "call-qa"]) {
+    assert.ok(task.description.includes(value), `Missing task detail: ${value}`);
+  }
+});
