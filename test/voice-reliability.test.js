@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import express from 'express';
-import { createGreetingWatchdog, createOpeningAudioMonitor } from '../src/greeting-watchdog.js';
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
 
 test('transfer request preserves captured intake and only fills missing name or service', async () => {
@@ -165,7 +165,7 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.model,'existing-model'); assert.equal(body.audio.output.voice,'marin');
   assert.equal(body.instructions,'existing intake');
   assert.equal(body.audio.input.turn_detection.create_response,true);
-  assert.equal(body.audio.input.turn_detection.interrupt_response,true);
+  assert.equal(body.audio.input.turn_detection.interrupt_response,false);
   assert.equal(body.audio.input.turn_detection.threshold,0.35);
 });
 
@@ -274,5 +274,49 @@ test('opening monitor reports disconnect before audio and watchdog stops on sock
   assert.equal(logs.at(-1).event, 'opening.connection_closed');
   assert.equal(logs.at(-1).audio_started, false);
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
-  assert.match(source, /ws.on\("close", \(\) => \{ openingAudio.close\(\); greeting.stop\(\); transferHold.stop\(\); \}\)/);
+  assert.match(source, /ws.on\("close", \(\) => \{ openingAudio.close\(\); greetingTurns.stop\(\); greeting.stop\(\); transferHold.stop\(\); \}\)/);
+});
+
+
+test('greeting guard protects opening until actual playback ends, not generation completion', () => {
+  const c = clock(), sent = [], logs = [];
+  const g = createGreetingTurnGuard({ ...c, send: e => sent.push(e), log: (event, fields) => logs.push({ event, ...fields }) });
+  g.open(); g.open();
+  g.event({ type: 'response.created', response: { id: 'g', metadata: { purpose: 'opening_greeting' } } });
+  g.event({ type: 'output_audio_buffer.started', response_id: 'g' });
+  g.event({ type: 'input_audio_buffer.speech_started' });
+  g.event({ type: 'response.done', response: { id: 'g', status: 'completed' } });
+  g.event({ type: 'output_audio_buffer.stopped', response_id: 'other' });
+  assert.equal(sent.length, 0, 'speech and generation events cannot unlock the opening');
+  g.event({ type: 'output_audio_buffer.stopped', response_id: 'g' });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].session.audio.input.turn_detection.interrupt_response, true);
+  assert.equal(sent[0].session.audio.input.turn_detection.create_response, true);
+  assert.equal(logs[0].reason, 'greeting_completed');
+  g.release('duplicate'); assert.equal(sent.length, 1);
+  assert.equal(c.timers.size, 0);
+});
+
+test('greeting guard restores normal listening on missing playback events or explicit transfer', async () => {
+  for (const mode of ['timeout', 'transfer', 'interrupted']) {
+    const c = clock(), sent = [];
+    const g = createGreetingTurnGuard({ ...c, send: e => sent.push(e), log() {} });
+    g.open();
+    if (mode === 'timeout') await c.tick();
+    if (mode === 'transfer') g.release('human_transfer');
+    if (mode === 'interrupted') {
+      g.event({ type: 'response.created', response: { id: 'g', metadata: { purpose: 'opening_greeting' } } });
+      g.event({ type: 'output_audio_buffer.started', response_id: 'g' });
+      g.event({ type: 'output_audio_buffer.cleared', response_id: 'g' });
+    }
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].session.audio.input.turn_detection.interrupt_response, true);
+    await c.tick(); assert.equal(sent.length, 1);
+  }
+});
+
+test('greeting guard cancels its release on socket close', async () => {
+  const c = clock();
+  const g = createGreetingTurnGuard({ ...c, send: () => assert.fail('closed socket'), log() {} });
+  g.open(); g.stop(); await c.tick();
 });
