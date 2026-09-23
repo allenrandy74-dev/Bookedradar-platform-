@@ -1,5 +1,6 @@
 import { TwilioSmsAdapter } from "./twilio-sms.js";
 import { EmailWebhookAdapter } from "./email-webhook.js";
+import { ResendEmailAdapter } from "./resend-email.js";
 import { WixHumanTaskAdapter } from "./wix-human-task.js";
 import { tenantSecret } from "../recovery/tenant-registry.js";
 import { ConfirmOnlyBookingAdapter } from "./booking.js";
@@ -34,13 +35,28 @@ export function buildTenantAdapters(tenant, {
   }
 
   const email = tenant?.integrations?.email || {};
-  const emailUrl = valueOrSecret(tenant, email, "webhookUrl", "EMAIL_WEBHOOK_URL", env);
-  const emailToken = valueOrSecret(tenant, email, "webhookToken", "EMAIL_WEBHOOK_TOKEN", env);
-  if (email.enabled && email.type === "webhook" && emailUrl) {
-    adapters.email = new EmailWebhookAdapter({
-      url: emailUrl,
-      token: emailToken,
-    });
+  if (email.enabled && email.type === "webhook") {
+    const emailUrl = valueOrSecret(tenant, email, "webhookUrl", "EMAIL_WEBHOOK_URL", env);
+    const emailToken = valueOrSecret(tenant, email, "webhookToken", "EMAIL_WEBHOOK_TOKEN", env);
+    if (emailUrl) {
+      adapters.email = new EmailWebhookAdapter({
+        url: emailUrl,
+        token: emailToken,
+      });
+    }
+  }
+
+  if (email.enabled && email.type === "resend") {
+    const apiKey = valueOrSecret(tenant, email, "apiKey", "RESEND_API_KEY", env);
+    const from = valueOrSecret(tenant, email, "from", "RESEND_FROM_EMAIL", env);
+    const replyTo = valueOrSecret(tenant, email, "replyTo", "RESEND_REPLY_TO", env);
+    if (apiKey && from) {
+      adapters.email = new ResendEmailAdapter({
+        apiKey,
+        from,
+        replyTo,
+      });
+    }
   }
 
   const crm = tenant?.integrations?.crm || {};
