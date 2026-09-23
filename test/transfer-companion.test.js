@@ -153,3 +153,13 @@ test('sideband send failure does not throw and cannot prevent transfer execution
   assert.ok(logs.includes('transfer.hold_failed'));
   hold.stop();
 });
+
+
+test('failed early transfer restores conversation settings rather than protected greeting settings', () => {
+  const sent = [];
+  const normal = { type: 'server_vad', create_response: true, interrupt_response: true };
+  const hold = createTransferHold({ send: e => sent.push(e), log() {}, restoreTurnDetection: normal });
+  hold.event({ type: 'session.created', session: { audio: { input: { turn_detection: { ...normal, interrupt_response: false } } } } });
+  hold.start(); hold.stop({ restore: true });
+  assert.deepEqual(sent.at(-1).session.audio.input.turn_detection, normal);
+});

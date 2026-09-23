@@ -58,7 +58,7 @@ export function createTransferCompanion({ config, log, fetchImpl = fetch,
 // Give one brief announcement during the SMS request, delay and REFER.
 // Only transfer-time VAD is paused; the original session settings are restored
 // if REFER fails. Missing playback acknowledgments must never replay speech.
-export function createTransferHold({ send: deliver, log }) {
+export function createTransferHold({ send: deliver, log, restoreTurnDetection }) {
   let active = false, responseId, originalVad, requestNumber = 0;
   const tag = 'bookedradar_transfer_hold';
   function send(event) {
@@ -108,7 +108,8 @@ export function createTransferHold({ send: deliver, log }) {
       if (restore) {
         if (responseId) send({ type: 'response.cancel', response_id: responseId });
         send({ type: 'output_audio_buffer.clear' });
-        if (originalVad) send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: originalVad } } } });
+        const restoredVad = restoreTurnDetection || originalVad;
+        if (restoredVad) send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: restoredVad } } } });
       }
     },
   };
