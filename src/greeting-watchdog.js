@@ -1,3 +1,36 @@
+import { CONVERSATION_TURN_DETECTION } from './openai-call.js';
+
+// Call acceptance disables barge-in for the welcome. Restore normal conversation
+// after playback, with a bounded release if playback events are missing.
+export function createGreetingTurnGuard({ send, log, schedule = setTimeout, cancel = clearTimeout, maxMs = 12000 }) {
+  let timer, released = false, opened = false, playbackId;
+  const greetingIds = new Set();
+  function release(reason) {
+    if (released) return;
+    released = true; cancel(timer);
+    send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: { ...CONVERSATION_TURN_DETECTION } } } } });
+    log('greeting.interruption_restored', { reason });
+  }
+  return {
+    open() {
+      if (opened || released) return;
+      opened = true;
+      timer = schedule(() => release('playback_timeout'), maxMs);
+      timer?.unref?.();
+    },
+    event(event) {
+      if (released) return;
+      if (event.type === 'response.created' && event.response?.metadata?.purpose === 'opening_greeting') greetingIds.add(event.response.id);
+      if (event.type === 'output_audio_buffer.started' && greetingIds.has(event.response_id)) playbackId = event.response_id;
+      if (playbackId && event.response_id === playbackId && ['output_audio_buffer.stopped', 'output_audio_buffer.cleared'].includes(event.type)) {
+        release(event.type === 'output_audio_buffer.stopped' ? 'greeting_completed' : 'greeting_interrupted');
+      }
+    },
+    release,
+    stop() { released = true; cancel(timer); },
+  };
+}
+
 /** Observes SIP playback, not text generation or response.created. */
 export function createGreetingWatchdog({ send, businessName, log, fallback,
   timeoutMs = 4000, schedule = setTimeout, cancel = clearTimeout, now = Date.now }) {
