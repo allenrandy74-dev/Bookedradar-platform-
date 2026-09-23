@@ -73,7 +73,6 @@ const {
   EMAIL_SMOKE_TEST_ON_STARTUP = "false",
   E2E_SMOKE_TEST_ON_STARTUP = "false",
   TWILIO_A2P_DIAGNOSTIC_ON_STARTUP = "false",
-  SMS_SMOKE_TEST_ON_STARTUP = "false",
   TWILIO_A2P_MESSAGING_SERVICE_SID = "",
   TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
 } = process.env;
@@ -159,46 +158,6 @@ const transferCompanion = createTransferCompanion({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 console.log(JSON.stringify({ event: "transfer.sms_preflight", scope: "startup", configured: transferCompanion.ready(), delay_ms: TRANSFER_DELAY_MS }));
-if (SMS_SMOKE_TEST_ON_STARTUP.toLowerCase() === "true") {
-  for (const tenant of registry.list()) {
-    const target = humanTransferTarget(tenant);
-    if (!/^\+[1-9]\d{7,14}$/.test(target || "")) {
-      console.error(JSON.stringify({ event: "transfer.sms_smoke_test", tenant_id: tenant.tenantId, ok: false, reason: "target_not_configured" }));
-      continue;
-    }
-    const smokeEvents = [];
-    const smokeCompanion = createTransferCompanion({
-      config: {
-        accountSid: TWILIO_ACCOUNT_SID,
-        authToken: TWILIO_AUTH_TOKEN,
-        fromNumber: TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID,
-      },
-      log: (event, fields) => smokeEvents.push({ event, ...fields }),
-    });
-    await smokeCompanion.notifyAndWait({
-      callId: "internal-sms-smoke",
-      tenant,
-      target,
-      lead: {
-        name: "BookedRadar Internal Test",
-        service_type: "production verification",
-        urgency: "test",
-        preferred_window: "no action required",
-      },
-      callerNumber: "",
-    });
-    const sent = smokeEvents.some(item => item.event === "transfer.sms_sent");
-    const failed = smokeEvents.find(item => item.event === "transfer.sms_failed");
-    console.log(JSON.stringify({
-      event: "transfer.sms_smoke_test",
-      tenant_id: tenant.tenantId,
-      ok: sent,
-      provider_accepted: sent,
-      reason: failed?.reason || null,
-      delay_ms: TRANSFER_DELAY_MS,
-    }));
-  }
-}
 if (TWILIO_A2P_DIAGNOSTIC_ON_STARTUP.toLowerCase() === "true") {
   const serviceSid = String(TWILIO_A2P_MESSAGING_SERVICE_SID || "").trim();
   const accountSid = String(TWILIO_ACCOUNT_SID || "").trim();
