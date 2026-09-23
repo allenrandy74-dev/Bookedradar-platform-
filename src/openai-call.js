@@ -1,6 +1,6 @@
 const API_BASE = "https://api.openai.com/v1";
 
-export const CONVERSATION_TURN_DETECTION = Object.freeze({ type: "server_vad", threshold: 0.35, prefix_padding_ms: 300, silence_duration_ms: 450, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 });
+export const CONVERSATION_TURN_DETECTION = Object.freeze({ type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 450, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 });
 
 function authHeaders(apiKey) {
   return {
