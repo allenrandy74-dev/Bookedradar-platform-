@@ -34,7 +34,7 @@ test('summary uses captured fields, omits missing values and does not include ar
 });
 
 for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_configured', 'invalid_response']) {
-  test(`SMS ${mode}: one REFER only after the full twenty-second window`, async () => {
+  test(`SMS ${mode}: one REFER only after the full ten-second window`, async () => {
     const c = clock(), logs = [], calls = [], requests = [];
     let acceptRequest;
     const companion = createTransferCompanion({ config: mode === 'not_configured' ? {} : config, ...c,
@@ -66,11 +66,11 @@ for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_con
     }
     const start = c.now();
     assert.equal(logs.filter(x => x.event === 'transfer.delay_started').length, 1);
-    await c.advance(19999);
+    await c.advance(9999);
     assert.equal(calls.length, 0, 'REFER must not begin early');
     await c.advance(1);
     assert.equal((await result).transferred, true);
-    assert.deepEqual(calls, [{ callId: 'call', targetUri: 'tel:+15555550101', at: start + 20000 }]);
+    assert.deepEqual(calls, [{ callId: 'call', targetUri: 'tel:+15555550101', at: start + 10000 }]);
     assert.equal(logs.filter(x => x.event === 'transfer.delay_complete').length, 1);
     assert.equal(logs.filter(x => x.event === `transfer.sms_${mode === 'accepted' ? 'sent' : 'failed'}`).length, 1);
     assert.doesNotMatch(JSON.stringify(logs), /Jane|urgent|555555|private-token|Burst pipe/);
