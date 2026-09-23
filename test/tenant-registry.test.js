@@ -13,7 +13,7 @@ function tenant(id, number) {
     escalation: { humanPhone: "+14095550000" },
     policies: { bookingMode: "confirm_only" },
     integrations: {
-      phone: { inboundNumbers: [number] },
+      phone: { enabled: true, inboundNumbers: [number] },
     },
   };
 }
@@ -42,4 +42,34 @@ test("human transfer selects each business target and never a global target", ()
   assert.equal(humanTransferTarget(b, env), "+14095550199");
   assert.equal(humanTransferTarget({ escalation: {} }, env), "");
   assert.equal(humanTransferTarget(a, { ...env, A_HUMAN_TRANSFER_NUMBER: "invalid" }), "");
+});
+
+
+test("unknown dialed number never falls back to the only business", () => {
+  const registry = new TenantRegistry([tenant("pilot", "+14095550101")]);
+  assert.equal(registry.resolve({ phone: "+14095550999" }), null);
+  assert.equal(registry.resolveByPhone(""), null);
+  assert.equal(registry.resolveByPhone("invalid"), null);
+  assert.equal(registry.resolveByPhone("+1 (409) 555-0101").tenantId, "pilot");
+  // Administrative selection without a dialed number keeps its legacy default.
+  assert.equal(registry.resolve({}).tenantId, "pilot");
+});
+
+test("disabled and unactivated phone routes cannot receive calls", () => {
+  for (const enabled of [false, undefined]) {
+    const t = tenant("pilot", "+14095550101"); t.integrations.phone.enabled = enabled;
+    const registry = new TenantRegistry([t]);
+    assert.equal(registry.resolveByPhone("+14095550101"), null);
+    assert.equal(registry.resolve({ phone: "+14095550101" }), null);
+    assert.equal(registry.get("pilot"), t);
+  }
+});
+
+test("two enabled businesses resolve only their assigned numbers", () => {
+  const a = tenant("a", "+14095550101"), b = tenant("b", "+14095550102");
+  const registry = new TenantRegistry([a, b]);
+  assert.equal(registry.resolveByPhone("+14095550101"), a);
+  assert.equal(registry.resolveByPhone("+14095550102"), b);
+  assert.equal(registry.resolveByPhone("+14095550999"), null);
+  assert.throws(() => new TenantRegistry([a, tenant("c", "+14095550101")]), /multiple tenants/);
 });
