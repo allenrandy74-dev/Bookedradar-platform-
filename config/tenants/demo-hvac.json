@@ -77,7 +77,8 @@
     },
     "email": {
       "type": "resend",
-      "enabled": true
+      "enabled": true,
+      "from": "BookedRadar <notifications@mail.bookedradar.com>"
     },
     "calendar": {
       "type": "customer_specific",
