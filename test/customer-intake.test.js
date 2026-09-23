@@ -5,6 +5,22 @@ import {
   quickStartInputFromWixSubmission,
 } from "../src/onboarding/customer-intake.js";
 
+test("urgent contact accepts one direct US number and normalizes formatting", () => {
+  for (const urgent_contact of ["Randy (409) 555-0100", "+1 409-555-0100", "4095550100"]) {
+    assert.equal(quickStartInputFromWixSubmission({ submissions: { urgent_contact } }).escalationPhone, "+14095550100");
+  }
+  assert.equal(buildTenantDraftFromQuickStart({ escalationPhone: "(409) 555-0100" }).tenant.escalation.humanPhone, "+14095550100");
+});
+
+test("ambiguous or extension-based urgent contacts require clarification instead of misrouting", () => {
+  for (const urgent_contact of ["409-555-0100 ext 123", "409-555-0100 x123", "409-555-0100 / 409-555-0199", "9994095550100", "+44 20 7946 0958", "ask Randy"]) {
+    const input = quickStartInputFromWixSubmission({ submissions: { urgent_contact } });
+    assert.equal(input.escalationPhone, "", urgent_contact);
+    const result = buildTenantDraftFromQuickStart(input);
+    assert.ok(result.needsFromCustomer.includes("urgent_contact"), urgent_contact);
+  }
+});
+
 test("quick start turns plain-language answers into a tenant draft", () => {
   const result = buildTenantDraftFromQuickStart({
     businessName: "Allen Air & Heat",
