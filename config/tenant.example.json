@@ -73,7 +73,7 @@
       "enabled": false
     },
     "email": {
-      "type": "gmail_or_provider",
+      "type": "resend",
       "enabled": false
     },
     "calendar": {
@@ -81,4 +81,4 @@
       "enabled": false
     }
   }
-}
+}\n
