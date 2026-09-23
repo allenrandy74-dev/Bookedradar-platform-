@@ -56,8 +56,8 @@ test("Resend credentials configure native email adapter when enabled", () => {
   configured.integrations.email = { type: "resend", enabled: true };
   const adapters = buildTenantAdapters(configured, {
     env: {
-      RESEND_API_KEY: "test-key",
-      RESEND_FROM_EMAIL: "BookedRadar <notifications@mail.bookedradar.com>",
+      PILOT_RESEND_API_KEY: "test-key",
+      PILOT_RESEND_FROM_EMAIL: "BookedRadar <notifications@mail.bookedradar.com>",
     },
   });
   assert.ok(adapters.email);
@@ -84,5 +84,47 @@ test("Wix follow-up includes the final intake details and caller notes", async (
   assert.equal(task.contact.id, "contact-qa");
   for (const value of ["Alex Smith", "+14095550100", "AC repair", "Urgent", "123 Oak Lane, Unit 2", "Silsbee", "Tomorrow morning", "Use the side entrance. Caller corrected the unit to 2.", "opp-qa", "call-qa"]) {
     assert.ok(task.description.includes(value), `Missing task detail: ${value}`);
+  }
+});
+
+
+test("unconfigured customer cannot inherit global email, webhook, or SMS settings", () => {
+  const env = { RESEND_API_KEY: "global", RESEND_FROM_EMAIL: "global@example.com", RESEND_REPLY_TO: "global-replies@example.com", EMAIL_WEBHOOK_URL: "https://global.example.com", EMAIL_WEBHOOK_TOKEN: "global", TWILIO_ACCOUNT_SID: "global", TWILIO_AUTH_TOKEN: "global", TWILIO_SMS_FROM: "+14095550100" };
+  for (const type of ["resend", "webhook"]) {
+    const configured = tenant();
+    configured.integrations.email = { type, enabled: true };
+    configured.integrations.sms = { type: "twilio", enabled: true };
+    const adapters = buildTenantAdapters(configured, { env });
+    assert.equal(adapters.email, undefined);
+    assert.equal(adapters.sms, undefined);
+  }
+});
+
+test("partial customer sender settings cannot borrow global sender or token", () => {
+  const configured = tenant();
+  configured.integrations.email = { type: "resend", enabled: true };
+  configured.integrations.sms = { type: "twilio", enabled: true };
+  const adapters = buildTenantAdapters(configured, { env: { PILOT_RESEND_API_KEY: "own-key", RESEND_FROM_EMAIL: "global@example.com", PILOT_TWILIO_ACCOUNT_SID: "own-account", PILOT_TWILIO_SMS_FROM: "+14095550101", TWILIO_AUTH_TOKEN: "global-token" } });
+  assert.equal(adapters.email, undefined);
+  assert.equal(adapters.sms, undefined);
+});
+
+test("two customers keep their own sender, reply address, and provider credentials", () => {
+  const env = { RESEND_REPLY_TO: "global@example.com" };
+  for (const prefix of ["A", "B"]) {
+    Object.assign(env, { [prefix+"_RESEND_API_KEY"]: prefix+"-key", [prefix+"_RESEND_FROM_EMAIL"]: prefix+"@example.com", [prefix+"_TWILIO_ACCOUNT_SID"]: prefix+"-account", [prefix+"_TWILIO_AUTH_TOKEN"]: prefix+"-token", [prefix+"_TWILIO_SMS_FROM"]: prefix === "A" ? "+14095550101" : "+14095550102" });
+  }
+  env.A_RESEND_REPLY_TO = "a-replies@example.com";
+  for (const prefix of ["A", "B"]) {
+    const configured = tenant(); configured.secretsPrefix = prefix;
+    configured.integrations.email = { type: "resend", enabled: true };
+    configured.integrations.sms = { type: "twilio", enabled: true };
+    const a = buildTenantAdapters(configured, { env });
+    assert.equal(a.email.apiKey, prefix+"-key");
+    assert.equal(a.email.from, prefix+"@example.com");
+    assert.equal(a.email.replyTo, prefix === "A" ? "a-replies@example.com" : "");
+    assert.equal(a.sms.accountSid, prefix+"-account");
+    assert.equal(a.sms.authToken, prefix+"-token");
+    assert.equal(a.sms.fromNumber, prefix === "A" ? "+14095550101" : "+14095550102");
   }
 });
