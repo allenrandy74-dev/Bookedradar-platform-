@@ -45,8 +45,8 @@ export async function findWixContact({
 
 export async function createWixContact({ apiKey, siteId, lead, timeoutMs = 8000, retries = 3 }) {
   if (!apiKey || !siteId) return { ok: false, skipped: true, reason: "wix_credentials_not_configured" };
-  if (lead.callback_number) {
-    const existing = await findWixContactByPhone({ apiKey, siteId, phone: lead.callback_number, timeoutMs, retries });
+  if (lead.callback_number || lead.email) {
+    const existing = await findWixContact({ apiKey, siteId, phone: lead.callback_number || "", email: lead.email || "", timeoutMs, retries });
     if (existing?.id) return { ok: true, reused: true, contactId: existing.id, contact: existing };
   }
   const contact = {};
@@ -54,7 +54,7 @@ export async function createWixContact({ apiKey, siteId, lead, timeoutMs = 8000,
   if (name.first || name.last) contact.name = name;
   if (lead.callback_number) contact.phone = { phone: lead.callback_number };
   if (lead.email) contact.email = { email: lead.email };
-  if (!contact.name && !contact.phone) return { ok: false, skipped: true, reason: "insufficient_contact_identity" };
+  if (!contact.name && !contact.phone && !contact.email) return { ok: false, skipped: true, reason: "insufficient_contact_identity" };
   const data = await wixFetch("https://www.wixapis.com/contacts/v5/contacts", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ contact }) }, { timeoutMs, retries });
   return { ok: true, reused: false, contactId: data?.contact?.id || null, contact: data?.contact || null };
 }
