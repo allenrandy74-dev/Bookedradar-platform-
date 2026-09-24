@@ -94,3 +94,27 @@ test('live booking needs a separate approved commercial scope, even when request
   assert.equal(result.blockers.some(x=>x.code==='scheduling_scope'),false);
   assert.equal(result.blockers.some(x=>x.code==='booking'),true);
 });
+
+
+test("web chat requires entitlement and HTTPS origin", () => {
+  const tenant=baseTenant();
+  tenant.integrations.webChat={enabled:true,allowedOrigins:["https://customer.example"]};
+  tenant.features={webChat:true};
+  assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="web_chat"),false);
+
+  tenant.features.webChat=false;
+  assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="web_chat"),true);
+
+  tenant.features.webChat=true;
+  tenant.integrations.webChat.allowedOrigins=["http://customer.example"];
+  assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="web_chat"),true);
+});
+
+test("transcript history requires explicit retention approval", () => {
+  const tenant=baseTenant();
+  tenant.features={transcriptHistory:true};
+  tenant.policies.transcriptRetentionApproved=false;
+  assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="transcript_retention"),true);
+  tenant.policies.transcriptRetentionApproved=true;
+  assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="transcript_retention"),false);
+});
