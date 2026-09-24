@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildTenantAdapters,
+  bookingAdapterForTenant,
   wixCredentialsForTenant,
 } from "../src/integrations/tenant-adapters.js";
 
@@ -127,4 +128,24 @@ test("two customers keep their own sender, reply address, and provider credentia
     assert.equal(a.sms.authToken, prefix+"-token");
     assert.equal(a.sms.fromNumber, prefix === "A" ? "+14095550101" : "+14095550102");
   }
+});
+
+
+test("Google Calendar live booking requires tenant-specific OAuth credentials", () => {
+  const configured=tenant();
+  configured.policies.bookingMode="live_booking";
+  configured.integrations.calendar={type:"google_calendar",enabled:true,calendarId:"primary"};
+  let adapter=bookingAdapterForTenant(configured,{env:{
+    PILOT_GOOGLE_CALENDAR_CLIENT_ID:"client",
+    PILOT_GOOGLE_CALENDAR_CLIENT_SECRET:"secret",
+    PILOT_GOOGLE_CALENDAR_REFRESH_TOKEN:"refresh",
+  }});
+  assert.equal(adapter.constructor.name,"GoogleCalendarBookingAdapter");
+
+  adapter=bookingAdapterForTenant(configured,{env:{
+    GOOGLE_CALENDAR_CLIENT_ID:"global",
+    GOOGLE_CALENDAR_CLIENT_SECRET:"global",
+    GOOGLE_CALENDAR_REFRESH_TOKEN:"global",
+  }});
+  assert.equal(adapter.constructor.name,"ConfirmOnlyBookingAdapter");
 });
