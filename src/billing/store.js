@@ -3,13 +3,32 @@ import path from 'node:path';
 
 // One Render instance owns this disk. Move to a transactional database before scaling.
 export class BillingStore {
-  constructor(file) { this.file = file; this.queue = Promise.resolve(); this.data = { version: 1, mode: 'test', accounts: {}, events: {} }; }
+  constructor(file, { mode = 'test' } = {}) {
+    if (!['test', 'live'].includes(mode)) throw new Error('invalid_billing_mode');
+    this.file = file;
+    this.mode = mode;
+    this.queue = Promise.resolve();
+    this.data = { version: 1, mode, accounts: {}, events: {} };
+  }
+
   async load() {
-    try { this.data = JSON.parse(await readFile(this.file, 'utf8')); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    if (this.data.version !== 1 || this.data.mode !== 'test' || !this.data.accounts || !this.data.events) throw new Error('invalid_billing_store');
+    try {
+      this.data = JSON.parse(await readFile(this.file, 'utf8'));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+
+    if (
+      this.data.version !== 1 ||
+      this.data.mode !== this.mode ||
+      !this.data.accounts ||
+      !this.data.events
+    ) {
+      throw new Error('invalid_billing_store');
+    }
     return this;
   }
+
   transaction(fn) {
     const operation = this.queue.then(async () => {
       const draft = structuredClone(this.data);
