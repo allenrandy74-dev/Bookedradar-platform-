@@ -73,3 +73,6 @@ intentionally disabled in the app. No test call or handset SMS delivery is marke
 complete by this closeout.
 
 Deployment verification: commit `0dea5f4` is live on Render; `/health` returned 200, billingMode=test, voiceEnabled=true, and no application error logs were returned for the deployment window. All 133 tests passed before deployment. Wix Quick Start schema update succeeded; this does not verify the form is attached to a public page.
+
+- [x] Encrypted backup helper covers all five state files; synthetic isolated restore, wrong-key rejection and overwrite protection verified.
+- [ ] Provision protected offsite destination/key recovery and demonstrate a consistent production-data restore (no live restore performed).

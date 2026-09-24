@@ -26,8 +26,9 @@ Billing past_due is an operator attention state, not automatic permission to sus
 voice. Follow only the final customer agreement's notice and cure procedure.
 
 ## Backups and recovery
-The current script is a local file-copy helper, not proof of protected production
-backups or an offsite restore. Production restore acceptance remains OPEN.
+The backup helper now encrypts state with AES-256-GCM and covers recovery, voice,
+lead, transfer and billing state. A synthetic isolated restore passed, including wrong-key
+and overwrite rejection. Production restore acceptance remains OPEN.
 Before launch, establish a protected backup destination, retention and access policy;
 include recovery state, voice state/transfer state, lead records, billing state and
 customer configuration. Never include API credentials in a customer-facing export.
@@ -44,3 +45,25 @@ validate the agreed allowance. Broader coverage requires explicit review.
 Record: tenant; UTC/local time; symptom; call/event ID; provider delivery state; operator;
 change/rollback; acceptance result. Keep personal information and credentials out of
 shared launch reports. Customer-ready tagging remains pending the afternoon calls.
+
+## Backup tooling (operator only)
+Use `npm run backup` only against a stopped writer or an isolated consistent snapshot.
+Set `BACKUP_QUIESCED=yes` only after establishing that condition; the helper does not
+pause the service itself. Do not stop production during Randy’s call tests.
+Supply `BACKUP_ENCRYPTION_KEY` as a 64-character hex secret through the approved secret
+manager, never in chat or a committed file. Keep its protected recovery copy separate
+from the archives. Set `BACKUP_DIRECTORY` to protected storage. Existing STATE_FILE,
+RECOVERY_STATE_FILE, LEADS_FILE and BILLING_STATE_FILE overrides are honored.
+The result lists missing stores and complete=false if any are absent; an empty backup
+is rejected. Investigate missing files before accepting a production snapshot.
+
+For isolated verification, set BACKUP_ARCHIVE, the same encryption key and a new
+RESTORE_DIRECTORY, then run `node scripts/backup.js restore`. The directory must not
+already exist. Restoration only writes files; it does not start the application or
+replay events. Confirm expected tenants, event markers and pending actions before any
+separately planned recovery. Source files must contain valid JSON/JSONL.
+
+This archive excludes environment secrets and tenant configuration. Recover tenant
+configuration from the protected versioned configuration and credentials from the
+secret manager; establish and test those recovery paths separately. Offsite upload,
+retention, scheduling, alert delivery and a production-data restore remain unverified.
