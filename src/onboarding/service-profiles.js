@@ -91,7 +91,7 @@ export const SERVICE_PROFILES = Object.freeze({
   schedule: Object.freeze({
     id: "schedule",
     name: "RadarSchedule",
-    description: "Recovery plus separately approved live calendar booking; full dispatch remains a different custom scope.",
+    description: "Everything in RadarGrow plus separately approved simple live calendar booking; full dispatch remains a different custom scope.",
     pricing: { monthlyUsd: 897, standardSetupUsd: 999, foundingMonthlyUsd: 797, foundingSetupUsd: 0 },
     features: Object.freeze({
       callerMemory: true,
@@ -101,8 +101,8 @@ export const SERVICE_PROFILES = Object.freeze({
       twoWaySms: true,
       webChat: true,
       knowledgeGapLearning: true,
-      membershipRadar: false,
-      noShowGuard: false,
+      membershipRadar: true,
+      noShowGuard: true,
       reviewRadar: true,
       languages: ["en", "es"],
     }),
