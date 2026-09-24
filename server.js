@@ -54,6 +54,7 @@ import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
 import { deploymentPlan } from "./src/onboarding/deployment-plan.js";
+import { tenantReadiness } from "./src/onboarding/readiness.js";
 import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
 import {
   WebChatStore,
@@ -183,6 +184,20 @@ const webChatStore = new WebChatStore(WEB_CHAT_STATE_FILE, {
 await webChatStore.load();
 
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
+for (const tenant of registry.list()) {
+  const readiness = tenantReadiness(tenant);
+  console.log(JSON.stringify({
+    event: "tenant.readiness.startup",
+    tenant_id: tenant.tenantId,
+    service_profile: tenant?.commercial?.serviceProfile || null,
+    ready: readiness.ready,
+    status: readiness.status,
+    blocker_codes: [...new Set(readiness.blockers.map(item => item.code))],
+    warning_codes: [...new Set(readiness.warnings.map(item => item.code))],
+    configured_adapters: readiness.configuredAdapters,
+    booking_adapter: readiness.bookingAdapter,
+  }));
+}
 const billing = await createBilling({
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
   tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
@@ -192,6 +207,11 @@ app.post('/stripe/webhook', (req, res) => billing
   ? billing.webhook(req, res)
   : res.status(503).json({ ok: false, error: 'test_billing_disabled' }));
 if (billing) app.use('/api/v1/billing', billing.api);
+console.log(JSON.stringify({
+  event: "billing.package_prices.startup",
+  enabled: Boolean(billing),
+  configured: billing?.configuredPackagePrices || null,
+}));
 app.get('/billing/return', (_req, res) => res.type('html').send(
   '<!doctype html><html lang="en"><meta charset="utf-8"><title>BookedRadar test billing</title><h1>BookedRadar test billing</h1><p>Your payment submission has returned from Stripe. Bank payments can take time to confirm. BookedRadar updates billing status only after confirmation from Stripe.</p><p>No live telephone service is changed by this test.</p></html>'
 ));
