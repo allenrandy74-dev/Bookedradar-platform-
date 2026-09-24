@@ -57,6 +57,7 @@ export class BillingService {
     portalConfiguration,
     baseUrl,
     tenantExists,
+    mode = 'test',
   }) {
     Object.assign(this, {
       stripe,
@@ -67,7 +68,10 @@ export class BillingService {
       portalConfiguration,
       baseUrl,
       tenantExists,
+      mode,
     });
+    if (!['test', 'live'].includes(this.mode)) throw new Error('invalid_billing_mode');
+    this.live = this.mode === 'live';
   }
 
   resolvePlan({ tenantId, profileId = '', foundingPartner } = {}) {
@@ -75,9 +79,9 @@ export class BillingService {
       Boolean(String(profileId || '').trim()) ||
       typeof foundingPartner === 'boolean';
 
-    // Preserve the existing validated $497 test-pilot lane when callers do not
-    // request package billing explicitly.
+    // Preserve the existing validated $497 test-pilot lane only in test mode.
     if (!explicitPackageRequest) {
+      if (this.live) throw new BillingError('package_selection_required', 400);
       if (!this.priceId) throw new BillingError('legacy_test_price_not_configured', 503);
       return normalizedPlan({
         profileId: 'recover',
@@ -129,14 +133,14 @@ export class BillingService {
     if (!plan?.priceId) throw new BillingError('package_price_not_configured', 503);
     const p = await this.stripe.prices.retrieve(plan.priceId);
     if (
-      p.livemode !== false ||
+      p.livemode !== this.live ||
       !p.active ||
       p.currency !== 'usd' ||
       p.unit_amount !== plan.expectedAmountCents ||
       p.recurring?.interval !== 'month' ||
       p.recurring?.interval_count !== 1
     ) {
-      throw new BillingError('invalid_test_package_price', 503);
+      throw new BillingError(this.live ? 'invalid_live_package_price' : 'invalid_test_package_price', 503);
     }
   }
 
@@ -160,6 +164,7 @@ export class BillingService {
     if (qualified !== true || agreementAccepted !== true) {
       throw new BillingError('qualification_and_agreement_required', 400);
     }
+    if (testClock && this.live) throw new BillingError('test_clock_not_allowed_in_live_mode', 400);
     if (testClock && !/^clock_[a-zA-Z0-9]+$/.test(testClock)) {
       throw new BillingError('invalid_test_clock', 400);
     }
@@ -177,22 +182,24 @@ export class BillingService {
 
       const key = createHash('sha256').update(tenantId).digest('hex');
       const customer = await this.stripe.customers.create({
-        name: `TEST BookedRadar ${tenantId}`,
+        name: `${this.live ? '' : 'TEST '}BookedRadar ${tenantId}`,
         metadata: {
           bookedradar_tenant_id: tenantId,
-          bookedradar_mode: 'test',
+          bookedradar_mode: this.mode,
           bookedradar_profile: plan.profileId,
           bookedradar_billing_tier: plan.billingTier,
         },
         ...(testClock ? { test_clock: testClock } : {}),
-      }, { idempotencyKey: `br-test-enroll-v2-${key}-${plan.profileId}-${plan.billingTier}` });
+      }, { idempotencyKey: `br-${this.mode}-enroll-v2-${key}-${plan.profileId}-${plan.billingTier}` });
 
-      if (customer.livemode !== false) throw new BillingError('live_object_rejected');
+      if (customer.livemode !== this.live) {
+        throw new BillingError(this.live ? 'test_object_rejected' : 'live_object_rejected');
+      }
 
       const foundingPartnerNumber = plan.foundingPartner ? foundingAccounts.length + 1 : null;
       return data.accounts[tenantId] = {
         tenantId,
-        mode: 'test',
+        mode: this.mode,
         customerId: customer.id,
         status: 'onboarding',
         profileId: plan.profileId,
@@ -240,7 +247,7 @@ export class BillingService {
           return {
             url: previous.url,
             sessionId: previous.id,
-            mode: 'test',
+            mode: this.mode,
             profileId: plan.profileId,
             billingTier: plan.billingTier,
           };
@@ -273,14 +280,14 @@ export class BillingService {
         subscription_data: {
           metadata: {
             bookedradar_tenant_id: tenantId,
-            bookedradar_mode: 'test',
+            bookedradar_mode: this.mode,
             bookedradar_profile: plan.profileId,
             bookedradar_billing_tier: plan.billingTier,
           },
         },
         metadata: {
           bookedradar_tenant_id: tenantId,
-          bookedradar_mode: 'test',
+          bookedradar_mode: this.mode,
           bookedradar_profile: plan.profileId,
           bookedradar_billing_tier: plan.billingTier,
         },
@@ -292,10 +299,12 @@ export class BillingService {
         success_url: `${this.baseUrl}/billing/return?result=submitted`,
         cancel_url: `${this.baseUrl}/billing/return?result=cancelled`,
       }, {
-        idempotencyKey: `br-test-checkout-v2-${a.customerId}-${a.checkoutGeneration}-${method}-${plan.profileId}-${plan.billingTier}`,
+        idempotencyKey: `br-${this.mode}-checkout-v2-${a.customerId}-${a.checkoutGeneration}-${method}-${plan.profileId}-${plan.billingTier}`,
       });
 
-      if (session.livemode !== false) throw new BillingError('live_object_rejected');
+      if (session.livemode !== this.live) {
+        throw new BillingError(this.live ? 'test_object_rejected' : 'live_object_rejected');
+      }
 
       if (
         a.subscriptionId &&
@@ -314,7 +323,7 @@ export class BillingService {
       return {
         url: session.url,
         sessionId: session.id,
-        mode: 'test',
+        mode: this.mode,
         profileId: plan.profileId,
         billingTier: plan.billingTier,
         monthlyUsd: plan.monthlyUsd,
@@ -329,11 +338,13 @@ export class BillingService {
       configuration: this.portalConfiguration,
       return_url: `${this.baseUrl}/billing/return`,
     });
-    return { url: session.url, mode: 'test' };
+    return { url: session.url, mode: this.mode };
   }
 
   processEvent(event) {
-    if (event.livemode !== false) throw new BillingError('live_event_rejected', 400);
+    if (event.livemode !== this.live) {
+      throw new BillingError(this.live ? 'test_event_rejected' : 'live_event_rejected', 400);
+    }
     if (!BILLING_EVENTS.includes(event.type)) return { ignored: true };
 
     return this.store.transaction(async data => {
@@ -357,10 +368,10 @@ export class BillingService {
       const plan = this.accountPlan(a);
 
       if (
-        sub.livemode !== false ||
+        sub.livemode !== this.live ||
         id(sub.customer) !== a.customerId ||
         sub.metadata?.bookedradar_tenant_id !== a.tenantId ||
-        sub.metadata?.bookedradar_mode !== 'test'
+        sub.metadata?.bookedradar_mode !== this.mode
       ) throw new BillingError('subscription_ownership_mismatch');
 
       if (
