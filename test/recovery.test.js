@@ -107,3 +107,39 @@ test("answered phone lead schedules review and follow-up instead of web-lead flo
   assert.ok(result.actions.some((a) => a.template === "phone_lead_followup"));
   assert.equal(result.actions.some((a) => a.template === "web_lead_ack"), false);
 });
+
+
+test("optional growth automation is feature-gated", async () => {
+  const { engine } = await makeEngine();
+  const membership=await engine.ingest({
+    idempotencyKey:"m",
+    type:"membership_renewal_due",
+    contact:{name:"Alex",email:"a@example.com"},
+    metadata:{membershipId:"m1",renewalDate:"2026-10-01"}
+  });
+  assert.ok(membership.actions.some(a=>a.template==="membership_renewal_review"));
+  assert.equal(membership.actions.some(a=>a.template==="membership_renewal_notice"),false);
+
+  const reminder=await engine.ingest({
+    idempotencyKey:"r",
+    type:"appointment_reminder_due",
+    contact:{name:"Alex",phone:"+14095550100",transactionalSmsAllowed:true},
+    metadata:{appointmentId:"a1",scheduledFor:"2026-09-25T14:00:00Z"}
+  });
+  assert.ok(reminder.actions.some(a=>a.template==="appointment_reminder_review"));
+  assert.equal(reminder.actions.some(a=>a.template==="appointment_reminder"),false);
+});
+
+test("enabled no-show guard can schedule approved transactional reminder", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"br-recovery-feature-"));
+  const store=new RecoveryStore(path.join(dir,"state.json"));await store.load();
+  const configured=tenant(); configured.features={noShowGuard:true};
+  const engine=new RecoveryEngine({store,tenant:configured});
+  const reminder=await engine.ingest({
+    idempotencyKey:"r2",
+    type:"appointment_reminder_due",
+    contact:{name:"Alex",phone:"+14095550100",transactionalSmsAllowed:true},
+    metadata:{appointmentId:"a2",scheduledFor:"2026-09-25T14:00:00Z"}
+  });
+  assert.ok(reminder.actions.some(a=>a.template==="appointment_reminder" && a.channel==="sms"));
+});
