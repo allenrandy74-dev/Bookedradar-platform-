@@ -6,6 +6,10 @@ export const RECOVERY_TYPES = Object.freeze({
   ESTIMATE_SENT: "estimate_sent",
   APPOINTMENT_CANCELLED: "appointment_cancelled",
   CUSTOMER_DORMANT: "customer_dormant",
+  MEMBERSHIP_RENEWAL_DUE: "membership_renewal_due",
+  APPOINTMENT_REMINDER_DUE: "appointment_reminder_due",
+  JOB_COMPLETED: "job_completed",
+  EARLIER_SLOT_REQUESTED: "earlier_slot_requested",
 });
 
 export const TERMINAL_EVENTS = new Set([
@@ -55,6 +59,20 @@ export const DEFAULT_PLAYBOOKS = Object.freeze({
     { offsetMs: 0, channel: "email", template: "reactivation_1", purpose: "marketing" },
     { offsetMs: days(7), channel: "email", template: "reactivation_2", purpose: "marketing" },
     { offsetMs: days(21), channel: "human_task", template: "reactivation_review", purpose: "service" },
+  ],
+  membership_renewal_due: [
+    { offsetMs: 0, channel: "human_task", template: "membership_renewal_review", purpose: "service" },
+    { offsetMs: 0, channel: "email", template: "membership_renewal_notice", purpose: "transactional", feature: "membershipRadar" },
+  ],
+  appointment_reminder_due: [
+    { offsetMs: 0, channel: "sms", template: "appointment_reminder", purpose: "transactional", feature: "noShowGuard" },
+    { offsetMs: 0, channel: "human_task", template: "appointment_reminder_review", purpose: "service" },
+  ],
+  job_completed: [
+    { offsetMs: hours(2), channel: "human_task", template: "review_eligibility_review", purpose: "service", feature: "reviewRadar" },
+  ],
+  earlier_slot_requested: [
+    { offsetMs: 0, channel: "human_task", template: "earlier_slot_waitlist_review", purpose: "service" },
   ],
 });
 
