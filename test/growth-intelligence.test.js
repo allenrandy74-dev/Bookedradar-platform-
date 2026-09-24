@@ -7,12 +7,14 @@ import { RecoveryStore } from "../src/recovery/store.js";
 import { RecoveryEngine } from "../src/recovery/engine.js";
 import {
   cancellationBackfillCandidates,
+  customer360,
   membershipRadar,
   ownerDailyBrief,
   opportunityTimeline,
   radarTrust,
   revenueLeakRadar,
   reviewRadar,
+  searchCustomers,
 } from "../src/growth-intelligence.js";
 
 const tenant={tenantId:"t1",businessName:"Acme",timeZone:"America/Chicago",policies:{bookingMode:"confirm_only",quotePrices:false,recordCalls:false,transcriptRetentionApproved:true,sms:{allowTransactionalWhenInbound:true}},commercial:{schedulingApproved:false},features:{callerMemory:true,spamScreening:true},integrations:{sms:{enabled:false},webChat:{enabled:true},calendar:{enabled:false}},economics:{defaultAverageJobValue:500}};
@@ -105,4 +107,34 @@ test("Membership Radar orders upcoming renewals", async()=>{
   const result=await membershipRadar(store,"t1",{now:new Date("2026-09-24T00:00:00Z")});
   assert.equal(result.renewalCount,2);
   assert.equal(result.renewals[0].membershipId,"m2");
+});
+
+
+test("Customer 360 summarizes tenant-isolated history and masks contact channels", async()=>{
+  const {store,engine}=await fixture();
+  await engine.ingest({
+    idempotencyKey:"c360",
+    type:"phone_lead",
+    serviceType:"AC repair",
+    urgency:"urgent",
+    contact:{name:"Alex Smith",phone:"+14095550123",email:"alex@example.com",transactionalSmsAllowed:true},
+    metadata:{serviceAddress:"123 Oak",city:"Silsbee",notes:"Gate on left",preferredWindow:"today"}
+  });
+  const key="t1:+14095550123";
+  const profile=await customer360(store,"t1",key);
+  assert.equal(profile.customer.name,"Alex Smith");
+  assert.equal(profile.customer.phone,"***0123");
+  assert.equal(profile.customer.email,"a***@example.com");
+  assert.equal(profile.properties[0].city,"Silsbee");
+  assert.equal(profile.technicianBrief.lastServiceType,"AC repair");
+  assert.equal(await customer360(store,"other",key),null);
+});
+
+test("Customer search returns masked tenant-scoped matches", async()=>{
+  const {store,engine}=await fixture();
+  await engine.ingest({idempotencyKey:"s",type:"phone_lead",contact:{name:"Jordan Lee",phone:"+14095550199",transactionalSmsAllowed:true}});
+  const results=await searchCustomers(store,"t1","Jordan");
+  assert.equal(results.length,1);
+  assert.equal(results[0].phone,"***0199");
+  assert.equal((await searchCustomers(store,"other","Jordan")).length,0);
 });
