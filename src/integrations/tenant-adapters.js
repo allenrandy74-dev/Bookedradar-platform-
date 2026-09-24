@@ -5,6 +5,7 @@ import { WixHumanTaskAdapter } from "./wix-human-task.js";
 import { tenantSecret } from "../recovery/tenant-registry.js";
 import { ConfirmOnlyBookingAdapter } from "./booking.js";
 import { BookingWebhookAdapter } from "./booking-webhook.js";
+import { GoogleCalendarBookingAdapter } from "./google-calendar-booking.js";
 
 function valueOrSecret(tenant, object, field, suffix, env) {
   return (
@@ -107,6 +108,24 @@ export function bookingAdapterForTenant(tenant, {
 
   if (calendar.enabled && calendar.type === "webhook" && url) {
     return new BookingWebhookAdapter({ url, token, timeoutMs });
+  }
+
+  if (calendar.enabled && calendar.type === "google_calendar") {
+    const clientId = calendar.clientId || tenantSecret(tenant, "GOOGLE_CALENDAR_CLIENT_ID", env);
+    const clientSecret = calendar.clientSecret || tenantSecret(tenant, "GOOGLE_CALENDAR_CLIENT_SECRET", env);
+    const refreshToken = calendar.refreshToken || tenantSecret(tenant, "GOOGLE_CALENDAR_REFRESH_TOKEN", env);
+    const calendarId = calendar.calendarId || tenantSecret(tenant, "GOOGLE_CALENDAR_ID", env) || "primary";
+    const adapter = new GoogleCalendarBookingAdapter({
+      clientId,
+      clientSecret,
+      refreshToken,
+      calendarId,
+      timeZone: tenant?.timeZone || "America/Chicago",
+      defaultDurationMinutes: Number(calendar.defaultDurationMinutes || 60),
+      slotIncrementMinutes: Number(calendar.slotIncrementMinutes || 30),
+      timeoutMs,
+    });
+    if (adapter.ready()) return adapter;
   }
 
   return new ConfirmOnlyBookingAdapter();
