@@ -94,6 +94,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       callerTexting: true,
       twoWaySms: true,
       webChat: true,
+      knowledgeGapLearning: true,
       languages: ["en", "es"],
     },
     commercial: {
