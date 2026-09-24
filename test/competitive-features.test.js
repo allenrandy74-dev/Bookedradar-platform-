@@ -21,7 +21,10 @@ test("competitive features are off by default without changing the proven call p
 });
 
 test("Spanish, transcript history and spam screening are opt-in tenant features", () => {
-  const tenant = { features: { languages: ["en", "es", "xx"], transcriptHistory: true, spamScreening: true } };
+  const tenant = {
+    features: { languages: ["en", "es", "xx"], transcriptHistory: true, spamScreening: true },
+    policies: { transcriptRetentionApproved: true },
+  };
   assert.deepEqual(competitiveFeaturesForTenant(tenant).languages, ["en", "es"]);
   assert.deepEqual(inputTranscriptionForTenant(tenant), {
     model: "gpt-transcribe",
@@ -50,4 +53,14 @@ test("returning caller memory is private, tenant-isolated and caller-ID cautious
   assert.match(memory, /AC repair/);
   assert.doesNotMatch(memory, /Plumbing/);
   assert.match(memory, /not identity proof/i);
+});
+
+
+test("transcript history remains disabled until explicitly approved", () => {
+  const requested = {
+    features: { transcriptHistory: true, languages: ["en", "es"] },
+    policies: { transcriptRetentionApproved: false },
+  };
+  assert.equal(competitiveFeaturesForTenant(requested).transcriptHistory, false);
+  assert.equal(inputTranscriptionForTenant(requested), null);
 });
