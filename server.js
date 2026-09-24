@@ -1572,6 +1572,7 @@ app.get("/api/v1/radarproof", async (req, res) => {
 });
 
 app.use("/dashboard", express.static("public"));
+app.use("/assets", express.static("public"));
 
 app.get("/health", (_req, res) => {
   res.json({
