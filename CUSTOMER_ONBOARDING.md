@@ -4,6 +4,19 @@
 
 Make onboarding feel simple to the customer and repeatable for BookedRadar. A customer should answer a short Quick Start once. BookedRadar should do the technical translation, configuration, testing, and provider-specific instructions.
 
+## Package-to-tenant deployment rule
+
+The signed service order is the commercial source of truth for the customer's package. Before generating the tenant configuration:
+
+1. Confirm the selected package: RadarAnswer, RadarRecover, RadarGrow, RadarSchedule, or approved RadarDispatch scope.
+2. Apply the corresponding service profile and package pricing.
+3. Record package entitlements separately from active capabilities.
+4. Keep provider-, consent-, and acceptance-dependent capabilities gated until their requirements pass.
+5. Generate the customer deployment plan showing ACTIVE, GATED, and NOT INCLUDED capabilities.
+6. Do not allow an active feature that is outside the selected package entitlement.
+
+A customer's Quick Start answers describe how their business operates; they do not silently upgrade or change the package.
+
 ## Customer Quick Start — required
 
 Only six answers are required before BookedRadar can generate a tenant draft:
@@ -39,7 +52,7 @@ BookedRadar translates their answers into the technical setup.
 
 The customer keeps their existing business number unless there is a specific reason to change it.
 
-BookRadar should ask for the phone provider and coverage mode, then provide provider-specific forwarding instructions. Typical setup:
+BookedRadar should ask for the phone provider and coverage mode, then provide provider-specific forwarding instructions. Typical setup:
 
 - **After-hours:** forward calls outside business hours.
 - **Overflow/no-answer:** forward after the business does not answer.
@@ -87,21 +100,23 @@ Enable live booking only after the customer's actual calendar/dispatch system is
 
 For each new customer:
 
-1. Create tenant ID and isolated secrets prefix.
-2. Generate tenant config from Quick Start.
-3. Normalize business hours and service area.
-4. Add service catalog and business-specific safety rule.
-5. Configure human escalation number.
-6. Assign inbound BookedRadar route/number.
-7. Configure provider-specific phone forwarding instructions.
-8. Connect CRM if selected.
-9. Enable Resend email only after sender verification and synthetic delivery.
-10. Enable SMS only after carrier/campaign approval and STOP/HELP tests.
-11. Configure booking adapter only if live booking is requested.
-12. Run `tenantReadiness()`.
-13. Run controlled CRM, email, and end-to-end smoke tests.
-14. Run one live acceptance call with the customer.
-15. Mark tenant pilot-ready only after all required checks pass.
+1. Confirm signed package/service order.
+2. Create tenant ID and isolated secrets prefix.
+3. Generate tenant config from Quick Start and apply the selected service profile.
+4. Normalize business hours and service area.
+5. Add service catalog and business-specific safety rule.
+6. Configure human escalation number.
+7. Assign inbound BookedRadar route/number.
+8. Configure provider-specific phone forwarding instructions.
+9. Connect CRM if selected.
+10. Enable Resend email only after sender verification and synthetic delivery.
+11. Enable SMS only after carrier/campaign approval and STOP/HELP tests.
+12. Configure web chat only for approved customer origins when included.
+13. Configure booking adapter only if live booking is included, separately approved, and requested.
+14. Run the deployment-plan report and `tenantReadiness()`.
+15. Run controlled CRM, email, and end-to-end smoke tests.
+16. Run one live acceptance call with the customer.
+17. Mark tenant ready only after all required checks for its active features pass.
 
 ## Customer acceptance test
 
@@ -159,7 +174,7 @@ Before BookedRadar can quote or activate full-time scheduling/dispatch, collect 
 - Systems of record for calendar, dispatch, estimates, customer data, and job status.
 - What the AI may confirm directly versus what requires human approval.
 
-BookRadar must then:
+BookedRadar must then:
 1. Map the scheduling rules into a documented customer-specific operating policy.
 2. Connect and test the actual scheduling/dispatch system.
 3. Validate travel-time and duration assumptions with the customer.
