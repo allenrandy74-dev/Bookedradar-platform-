@@ -42,6 +42,20 @@ export function renderTemplate(template, { contact = {}, tenant = {}, opportunit
     reactivation_2:
       `A quick follow-up from ${company}, ${name}. If there's anything around your home or business ` +
       `you've been meaning to have checked, reply and we'll point you in the right direction.`,
+    membership_renewal_notice:
+      `Hi ${name}, this is ${company}. Your service agreement is coming up for renewal. ` +
+      `If you have questions or want help with the next step, reply here and the team will assist.`,
+    appointment_reminder:
+      `Hi ${name}, this is ${company} with a reminder about your upcoming service appointment. ` +
+      `If you need to change the timing, reply here and we'll help get the request to the team.`,
+    membership_renewal_review:
+      `Review ${name}'s upcoming service-agreement renewal and confirm the approved renewal outreach.`,
+    appointment_reminder_review:
+      `Review the upcoming appointment reminder for ${name} and confirm any changes or special instructions.`,
+    review_eligibility_review:
+      `Review the completed job for ${name} before requesting a public review. Do not request a review when a complaint is open or satisfaction is uncertain.`,
+    earlier_slot_waitlist_review:
+      `${name} asked for an earlier appointment. Keep this request available for cancellation-backfill matching.`,
   };
 
   return templates[template] || `[${template}] ${company}`;
