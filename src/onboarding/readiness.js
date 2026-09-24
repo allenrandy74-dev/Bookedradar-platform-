@@ -69,6 +69,12 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   checks.push({ code: "safety_rule", ok: safetyReady });
   if (!safetyReady) add(warnings, "safety_rule", "No tenant-specific safety/escalation rule is configured.");
 
+  const transcriptRequested = tenant?.features?.transcriptHistory === true;
+  const transcriptApproved = tenant?.policies?.transcriptRetentionApproved === true;
+  const transcriptReady = !transcriptRequested || transcriptApproved;
+  checks.push({ code: "transcript_retention", ok: transcriptReady });
+  if (!transcriptReady) add(blockers, "transcript_retention", "Transcript history requires explicit customer approval before activation.");
+
   const secretPrefixReady = Boolean(String(tenant?.secretsPrefix || "").trim());
   checks.push({ code: "secret_isolation", ok: secretPrefixReady });
   if (!secretPrefixReady) add(blockers, "secret_isolation", "A tenant-specific secretsPrefix is required for isolated customer credentials.");
