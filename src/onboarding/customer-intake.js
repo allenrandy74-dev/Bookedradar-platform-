@@ -1,3 +1,5 @@
+import { applyServiceProfile } from "./service-profiles.js";
+
 function clean(value) {
   return String(value ?? "").trim();
 }
@@ -45,6 +47,7 @@ export function quickStartInputFromWixSubmission(submission = {}) {
     urgentDefinition: clean(values.urgent_definition),
     customerTrackingSystem: clean(values.customer_tracking),
     bookingPreference: clean(values.booking),
+    serviceProfile: clean(values.service_profile || values.package || values.plan),
     emailReplyAddress: clean(values.email_reply_address),
     notes: clean(values.anything_else),
     wixSubmissionId: clean(submission?.id),
@@ -67,8 +70,9 @@ export function buildTenantDraftFromQuickStart(input = {}) {
   // Customer interest is not commercial approval or permission to write a calendar.
   const bookingMode = "confirm_only";
   const schedulingRequested = /live.?booking|schedul|dispatch/.test(bookingChoice);
+  const selectedServiceProfile = clean(input.serviceProfile || "recover").toLowerCase();
 
-  const tenant = {
+  let tenant = {
     tenantId,
     businessName,
     trade: clean(input.trade),
@@ -130,6 +134,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       phone: clean(input.phone),
       website: clean(input.website),
       requestedBookingPreference: clean(input.bookingPreference),
+      requestedServiceProfile: selectedServiceProfile,
       schedulingReviewRequired: schedulingRequested,
       coverageMode: clean(input.coverageMode) || "after_hours_overflow",
       phoneProvider: clean(input.phoneProvider),
@@ -143,6 +148,8 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       source: clean(input.source) || "quick_start",
     },
   };
+
+  tenant = applyServiceProfile(tenant, selectedServiceProfile);
 
   const needsFromCustomer = [];
   if (!businessName) needsFromCustomer.push("business_name");
