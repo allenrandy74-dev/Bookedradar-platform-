@@ -2,6 +2,18 @@
 
 This is the customer-facing onboarding script/form outline.
 
+## Your BookedRadar package
+
+BookedRadar will confirm the package selected in the service order before setup begins:
+
+- **RadarAnswer** — Answer the opportunity.
+- **RadarRecover** — Recover the opportunity.
+- **RadarGrow** — Grow and retain the customer.
+- **RadarSchedule** — Book the work.
+- **RadarDispatch** — Custom field-operations scope.
+
+The customer does not need to choose technical feature flags. BookedRadar translates the signed package and approved options into the tenant configuration. Capabilities that require a provider, consent, or acceptance test remain gated until that step passes.
+
 ## Step 1 — Tell us about your business
 
 **Required**
@@ -35,11 +47,12 @@ This is the customer-facing onboarding script/form outline.
 ## What happens next
 
 BookedRadar will:
-1. Build your business configuration.
-2. Send you exact phone-forwarding instructions for your provider.
-3. Connect only the systems you choose.
-4. Test CRM/email/SMS features before enabling them.
-5. Run one acceptance call with you.
-6. Activate the agreed coverage after you approve the test.
+1. Confirm your selected package and the capabilities that are active now versus included-but-gated.
+2. Build your business configuration.
+3. Send you exact phone-forwarding instructions for your provider.
+4. Connect only the systems you choose.
+5. Test CRM/email/SMS/web-chat/scheduling features before enabling the ones included in your package.
+6. Run one acceptance call with you.
+7. Activate the agreed coverage after you approve the test.
 
 You keep your existing business number unless we specifically agree otherwise.
