@@ -62,7 +62,7 @@ export class BillingService {
       if (a.checkoutId) {
         const previous = await this.stripe.checkout.sessions.retrieve(a.checkoutId);
         if (previous.status === 'open' && a.checkoutMethod === method) return { url: previous.url, sessionId: previous.id, mode: 'test' };
-        if (previous.status === 'complete') throw new BillingError('checkout_already_completed');
+        if (previous.status === 'complete' && !subscriptions.data.some(s => s.id === a.subscriptionId && ['canceled', 'incomplete_expired'].includes(s.status))) throw new BillingError('checkout_already_completed');
         if (previous.status === 'open') await this.stripe.checkout.sessions.expire(previous.id);
       }
       a.checkoutGeneration += 1;
@@ -76,6 +76,10 @@ export class BillingService {
         success_url: `${this.baseUrl}/billing/return?result=submitted`, cancel_url: `${this.baseUrl}/billing/return?result=cancelled`,
       }, { idempotencyKey: `br-test-checkout-${a.customerId}-${a.checkoutGeneration}-${method}` });
       if (session.livemode !== false) throw new BillingError('live_object_rejected');
+      if (a.subscriptionId && subscriptions.data.some(s => s.id === a.subscriptionId && ['canceled', 'incomplete_expired'].includes(s.status))) {
+        a.retiredSubscriptionIds = [...(a.retiredSubscriptionIds || []), a.subscriptionId];
+        a.subscriptionId = null;
+      }
       a.checkoutId = session.id; a.checkoutMethod = method; a.status = 'payment_pending';
       return { url: session.url, sessionId: session.id, mode: 'test' };
     });
@@ -95,10 +99,17 @@ export class BillingService {
       if (!a) return { ignored: true };
       let subscriptionId = event.type.startsWith('customer.subscription.') ? object.id : id(object.subscription) || id(object.parent?.subscription_details?.subscription);
       if (!subscriptionId) return { ignored: true };
-      const sub = await this.stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
+      let sub = await this.stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
       if (sub.livemode !== false || id(sub.customer) !== a.customerId || sub.metadata?.bookedradar_tenant_id !== a.tenantId || sub.metadata?.bookedradar_mode !== 'test') throw new BillingError('subscription_ownership_mismatch');
       const items = sub.items?.data || [];
       if (items.length !== 1 || id(items[0].price) !== this.priceId || items[0].quantity !== 1) throw new BillingError('unexpected_subscription_price');
+      // Checkout offers ACH first, while recurring invoices and portal updates accept cards too.
+      if (!['canceled', 'incomplete_expired'].includes(sub.status) &&
+          (!sub.payment_settings?.payment_method_types?.includes('card') || !sub.payment_settings?.payment_method_types?.includes('us_bank_account'))) {
+        sub = await this.stripe.subscriptions.update(sub.id, {
+          payment_settings: { payment_method_types: ['us_bank_account', 'card'] }, expand: ['latest_invoice'],
+        });
+      }
       // Once replaced, delayed events from an older subscription cannot overwrite the new one.
       if (a.subscriptionId && a.subscriptionId !== sub.id && a.status !== 'cancelled') return { ignored: true };
       if ((a.retiredSubscriptionIds || []).includes(sub.id)) return { ignored: true };

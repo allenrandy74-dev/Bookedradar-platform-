@@ -14,7 +14,7 @@ async function fixture(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const store = await new BillingStore(path.join(dir, 'state.json')).load();
   let customerCount = 0, checkouts = [], expired = [];
-  const sub = { id: 'sub_1', livemode: false, customer: 'cus_1', status: 'active', metadata: { bookedradar_tenant_id: 'tenant1', bookedradar_mode: 'test' }, items: { data: [{ price: { id: 'price_pilot' }, quantity: 1, current_period_end: 2000000000 }] }, latest_invoice: { id: 'in_1', status: 'paid', amount_paid: 49700, currency: 'usd' } };
+  const sub = { id: 'sub_1', livemode: false, customer: 'cus_1', status: 'active', payment_settings: { payment_method_types: ['us_bank_account', 'card'] }, metadata: { bookedradar_tenant_id: 'tenant1', bookedradar_mode: 'test' }, items: { data: [{ price: { id: 'price_pilot' }, quantity: 1, current_period_end: 2000000000 }] }, latest_invoice: { id: 'in_1', status: 'paid', amount_paid: 49700, currency: 'usd' } };
   const stripe = {
     customers: { create: async () => ({ id: `cus_${++customerCount}`, livemode: false }) },
     prices: { retrieve: async () => ({ livemode: false, active: true, currency: 'usd', unit_amount: 49700, recurring: { interval: 'month', interval_count: 1 } }) },
@@ -113,4 +113,38 @@ test('raw signed webhook works, invalid signature and unauthorized admin calls f
   assert.equal((await fetch(`${url}/stripe/webhook`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload })).status, 400);
   const signature = Stripe.webhooks.generateTestHeaderString({ payload, secret: env.STRIPE_WEBHOOK_SECRET });
   assert.equal((await fetch(`${url}/stripe/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'stripe-signature': signature }, body: payload })).status, 200);
+});
+
+test('a cancelled subscription can restart without a delayed old event taking ownership', async t => {
+  const f = await fixture(t); await f.enroll(); await f.service.checkout('tenant1');
+  await f.service.processEvent(f.event('evt_initial'));
+  f.sub.status = 'canceled'; await f.service.processEvent(f.event('evt_cancel'));
+  f.checkouts[0].status = 'complete';
+  f.stripe.subscriptions.list = async () => ({ data: [{ id: 'sub_1', status: 'canceled' }] });
+  await f.service.checkout('tenant1', 'card');
+  // The old account stays cancelled until a new subscription is confirmed.
+  f.sub.id = 'sub_2'; f.sub.status = 'active';
+  const next = f.event('evt_next', 'checkout.session.completed'); next.data.object.subscription = 'sub_2';
+  await f.service.processEvent(next);
+  assert.equal((await f.service.get('tenant1')).subscriptionId, 'sub_2');
+  f.sub.status = 'canceled'; await f.service.processEvent(f.event('evt_end_new'));
+  f.sub.id = 'sub_1';
+  await f.service.processEvent(f.event('evt_delayed_old'));
+  assert.equal((await f.service.get('tenant1')).subscriptionId, 'sub_2');
+});
+
+
+test('ACH-first Checkout subscriptions also accept later card updates through the portal', async t => {
+  const f = await fixture(t); await f.enroll();
+  f.sub.payment_settings.payment_method_types = ['us_bank_account'];
+  let updates = 0;
+  f.stripe.subscriptions.update = async (id, params) => {
+    assert.equal(id, 'sub_1'); updates++;
+    f.sub.payment_settings = params.payment_settings;
+    return structuredClone(f.sub);
+  };
+  await f.service.processEvent(f.event('evt_checkout', 'checkout.session.completed'));
+  await f.service.processEvent(f.event('evt_second'));
+  assert.equal(updates, 1);
+  assert.deepEqual(f.sub.payment_settings.payment_method_types, ['us_bank_account', 'card']);
 });
