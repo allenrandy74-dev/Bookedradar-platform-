@@ -123,6 +123,8 @@ export async function ownerDailyBrief(store, tenantId, { now = new Date(), callA
     .filter(item => new Date(item.confirmedAt || 0).getTime() >= sinceMs)
     .reduce((sum, item) => sum + Number(item.confirmedRevenue || 0), 0);
   const leaks = await revenueLeakRadar(store, tenantId, { now });
+  const memberships = await membershipRadar(store, tenantId, { now });
+  const reviews = await reviewRadar(store, tenantId);
 
   return {
     generatedAt: now.toISOString(),
@@ -134,6 +136,9 @@ export async function ownerDailyBrief(store, tenantId, { now = new Date(), callA
     humanTransfers: Number(callActivity?.humanTransfers || 0),
     spamScreened: Number(callActivity?.spamScreened || 0),
     knowledgeGaps: Number(callActivity?.knowledgeGaps || 0),
+    membershipRenewalsDue: memberships.renewalCount,
+    reviewEligibleJobs: reviews.eligibleCount,
+    reviewNeedsHumanCheck: reviews.needsReviewCount,
     openRevenueLeaks: leaks.leakCount,
     estimatedValueAtRisk: leaks.estimatedValueAtRisk,
     topAttentionItems: leaks.leaks.slice(0, 5),
