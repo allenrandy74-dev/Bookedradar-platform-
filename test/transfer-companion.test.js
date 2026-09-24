@@ -163,3 +163,23 @@ test('failed early transfer restores conversation settings rather than protected
   hold.start(); hold.stop({ restore: true });
   assert.deepEqual(sent.at(-1).session.audio.input.turn_detection, normal);
 });
+
+
+test('hold does not cancel when no conversation response is active', () => {
+  const sent = [];
+  const hold = createTransferHold({ send: event => sent.push(event), log() {} });
+  hold.start();
+  assert.equal(sent.filter(x => x.type === 'response.cancel').length, 0);
+});
+
+test('hold cancels a known active conversation response before announcement', () => {
+  const sent = [];
+  const hold = createTransferHold({ send: event => sent.push(event), log() {} });
+  hold.event({ type: 'response.created', response: { id: 'conversation-1' } });
+  hold.start();
+  assert.deepEqual(sent.find(x => x.type === 'response.cancel'), {
+    type: 'response.cancel',
+    response_id: 'conversation-1',
+  });
+  assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
+});
