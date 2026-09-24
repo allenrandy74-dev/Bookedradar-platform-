@@ -1,8 +1,31 @@
 # BookedRadar Service Scope & Pricing
 
+## Recommended launch pricing
+
+| Package | Standard monthly | Standard setup | Founding Partner monthly | Founding setup |
+| --- | ---: | ---: | ---: | ---: |
+| RadarAnswer | $149 | $199 | $149 | Waived |
+| RadarRecover | $497 | $499 | $397 | Waived |
+| RadarGrow | $697 | $749 | $597 | Waived |
+| RadarSchedule | $897 | $999 | $797 | Waived |
+| RadarDispatch | Custom | Custom | Custom | Custom |
+
+These prices position BookedRadar above commodity answering services while remaining in the same general range as higher-touch AI receptionist/automation offerings. The pricing assumes BookedRadar is being sold as an operating and revenue-recovery layer, not simply by the minute.
+
+**Important:** Do not publish unlimited-use or call-volume promises yet. Included usage/overage terms should be set only after production provider costs and pilot call volume are measured. Founding Partner pilots should use a clearly stated fair-use provision with no surprise overage billing unless separately agreed.
+
+### Package intent
+
+- **RadarAnswer:** answering, intake, escalation, caller continuity, spam screening, bilingual handling, Knowledge Gap Radar and owner visibility.
+- **RadarRecover:** RadarAnswer plus missed-call/web-lead/estimate/cancellation recovery, RadarProof, Revenue Leak Radar, Owner Brief, Opportunity Timeline, Customer 360 and Review Radar.
+- **RadarGrow:** RadarRecover plus membership-renewal intelligence and No-Show Guard after messaging/provider approval.
+- **RadarSchedule:** RadarRecover plus separately approved simple live-calendar booking. It does **not** include technician routing or full field dispatch.
+- **RadarDispatch:** custom full-time scheduling/dispatch scope with technician skills, geography, travel time, buffers, capacity and override rules.
+
 ## Founding Partner Pilot
 
-**Price:** $497/month  
+**Standard RadarRecover price:** $497/month  
+**Founding Partner RadarRecover price:** $397/month  
 **Setup fee:** Waived for approved Founding Partners  
 **Preferred payment method:** ACH; card available
 
