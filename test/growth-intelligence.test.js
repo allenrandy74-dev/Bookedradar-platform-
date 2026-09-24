@@ -5,7 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import { RecoveryStore } from "../src/recovery/store.js";
 import { RecoveryEngine } from "../src/recovery/engine.js";
-import { ownerDailyBrief, opportunityTimeline, radarTrust, revenueLeakRadar } from "../src/growth-intelligence.js";
+import {
+  cancellationBackfillCandidates,
+  membershipRadar,
+  ownerDailyBrief,
+  opportunityTimeline,
+  radarTrust,
+  revenueLeakRadar,
+  reviewRadar,
+} from "../src/growth-intelligence.js";
 
 const tenant={tenantId:"t1",businessName:"Acme",timeZone:"America/Chicago",policies:{bookingMode:"confirm_only",quotePrices:false,recordCalls:false,transcriptRetentionApproved:true,sms:{allowTransactionalWhenInbound:true}},commercial:{schedulingApproved:false},features:{callerMemory:true,spamScreening:true},integrations:{sms:{enabled:false},webChat:{enabled:true},calendar:{enabled:false}},economics:{defaultAverageJobValue:500}};
 
@@ -54,4 +62,47 @@ test("RadarTrust exposes permissions and blocked automation evidence without sec
   assert.equal(trust.callActivity.knowledgeGaps,2);
   assert.ok(trust.actionAudit.totalActions>=1);
   assert.doesNotMatch(JSON.stringify(trust),/secret|token|apiKey/i);
+});
+
+
+test("Cancellation backfill returns matching earlier-slot requests without contacting them", async()=>{
+  const {store,engine}=await fixture();
+  const wait=await engine.ingest({
+    idempotencyKey:"wait",
+    type:"earlier_slot_requested",
+    serviceType:"AC repair",
+    contact:{name:"Pat",phone:"+14095550111",transactionalSmsAllowed:true},
+    metadata:{city:"Silsbee",preferredWindow:"any morning"}
+  });
+  const cancelled=await engine.ingest({
+    idempotencyKey:"cancel",
+    type:"appointment_cancelled",
+    serviceType:"AC repair",
+    contact:{name:"Other",phone:"+14095550112",transactionalSmsAllowed:true},
+    metadata:{city:"Silsbee",scheduledFor:"2026-09-25T14:00:00Z"}
+  });
+  const result=await cancellationBackfillCandidates(store,"t1",cancelled.opportunity.id,{now:new Date("2026-09-24T18:00:00Z")});
+  assert.equal(result.candidateCount,1);
+  assert.equal(result.candidates[0].opportunityId,wait.opportunity.id);
+  assert.equal(result.candidates[0].contact.phone,"***0111");
+  assert.match(result.action,/Review candidates/);
+});
+
+test("Review Radar excludes complaints and unknown satisfaction", async()=>{
+  const {store,engine}=await fixture();
+  await engine.ingest({idempotencyKey:"good",type:"job_completed",contact:{name:"Happy",email:"h@example.com"},metadata:{jobId:"j1",customerSatisfactionKnown:true,customerSatisfied:true,complaintOpen:false}});
+  await engine.ingest({idempotencyKey:"bad",type:"job_completed",contact:{name:"Concern",email:"c@example.com"},metadata:{jobId:"j2",customerSatisfactionKnown:true,customerSatisfied:false,complaintOpen:true}});
+  const result=await reviewRadar(store,"t1");
+  assert.equal(result.eligibleCount,1);
+  assert.equal(result.needsReviewCount,1);
+  assert.equal(result.needsReview[0].reason,"open_complaint");
+});
+
+test("Membership Radar orders upcoming renewals", async()=>{
+  const {store,engine}=await fixture();
+  await engine.ingest({idempotencyKey:"m1",type:"membership_renewal_due",contact:{name:"A",email:"a@example.com"},metadata:{membershipId:"m1",membershipName:"Gold",renewalDate:"2026-09-30T00:00:00Z"}});
+  await engine.ingest({idempotencyKey:"m2",type:"membership_renewal_due",contact:{name:"B",email:"b@example.com"},metadata:{membershipId:"m2",membershipName:"Silver",renewalDate:"2026-09-27T00:00:00Z"}});
+  const result=await membershipRadar(store,"t1",{now:new Date("2026-09-24T00:00:00Z")});
+  assert.equal(result.renewalCount,2);
+  assert.equal(result.renewals[0].membershipId,"m2");
 });
