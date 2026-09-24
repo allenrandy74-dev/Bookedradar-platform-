@@ -46,7 +46,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] CRM/email/SMS/live-booking adapters cannot be treated as ready without tenant-specific configuration.
 - [x] Full-time scheduling discovery requirements documented.
 - [x] Final customer-facing Quick Start form verified in Wix (BookedRadar Quick Start, revision 3).
-- [ ] Customer-facing welcome/onboarding email finalized.
+- [x] Customer-facing welcome/onboarding email finalized.
 - [ ] Provider-specific phone-forwarding instructions prepared for the first customer's carrier.
 - [ ] First customer tenant passes `tenantReadiness()`.
 - [ ] First customer completes live acceptance call.
