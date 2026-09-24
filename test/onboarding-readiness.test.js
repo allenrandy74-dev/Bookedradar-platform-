@@ -16,6 +16,8 @@ function baseTenant() {
       safetyRule: "Escalate emergencies appropriately."
     },
     policies: { bookingMode: "confirm_only" },
+    commercial: { serviceProfile: "recover", serviceTier: "founding_partner_pilot", schedulingApproved: false, schedulingAgreementReference: "" },
+    features: { callerMemory: true, spamScreening: true, knowledgeGapLearning: true, reviewRadar: true, languages: ["en","es"] },
     integrations: {
       phone: { enabled: true, inboundNumbers: ["+14095550101"] },
       crm: { enabled: false },
@@ -117,4 +119,22 @@ test("transcript history requires explicit retention approval", () => {
   assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="transcript_retention"),true);
   tenant.policies.transcriptRetentionApproved=true;
   assert.equal(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==="transcript_retention"),false);
+});
+
+
+test("invalid service profile blocks activation", () => {
+  const tenant=baseTenant();
+  tenant.commercial.serviceProfile="unknown";
+  const result=tenantReadiness(tenant,{env:{}});
+  assert.equal(result.ready,false);
+  assert.ok(result.blockers.some(x=>x.code==="service_profile"));
+});
+
+test("active feature outside package entitlement blocks activation", () => {
+  const tenant=baseTenant();
+  tenant.commercial.serviceProfile="answer";
+  tenant.features.webChat=true;
+  tenant.integrations.webChat={enabled:true,allowedOrigins:["https://customer.example"]};
+  const result=tenantReadiness(tenant,{env:{}});
+  assert.ok(result.blockers.some(x=>x.code==="service_profile_entitlement"));
 });
