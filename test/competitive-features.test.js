@@ -17,6 +17,7 @@ test("competitive features are off by default without changing the proven call p
     callerTexting: false,
     twoWaySms: false,
     webChat: false,
+    knowledgeGapLearning: false,
     languages: ["en"],
   });
   assert.equal(inputTranscriptionForTenant({}), null);
@@ -87,4 +88,11 @@ test("two-way SMS feature remains off by default and can be enabled explicitly",
 test("web chat feature can be entitled explicitly", () => {
   assert.equal(competitiveFeaturesForTenant({}).webChat, false);
   assert.equal(competitiveFeaturesForTenant({ features: { webChat: true } }).webChat, true);
+});
+
+
+test("knowledge gap tool is opt-in", () => {
+  const base=[{name:"capture_lead"}];
+  assert.equal(toolsForTenant(base,{}).some(tool=>tool.name==="flag_knowledge_gap"),false);
+  assert.equal(toolsForTenant(base,{features:{knowledgeGapLearning:true}}).some(tool=>tool.name==="flag_knowledge_gap"),true);
 });
