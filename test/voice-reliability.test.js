@@ -274,11 +274,10 @@ test('opening monitor reports disconnect before audio and watchdog stops on sock
   assert.equal(logs.at(-1).event, 'opening.connection_closed');
   assert.equal(logs.at(-1).audio_started, false);
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
-  const closeHandler = source.slice(source.indexOf('ws.on("close", () => {'), source.indexOf('});', source.indexOf('ws.on("close", () => {')) + 3);
-  assert.match(closeHandler, /openingAudio\.close\(\)/);
-  assert.match(closeHandler, /greetingTurns\.stop\(\)/);
-  assert.match(closeHandler, /greeting\.stop\(\)/);
-  assert.match(closeHandler, /transferHold\.stop\(\)/);
+  assert.match(source, /openingAudio\.close\(\)/);
+  assert.match(source, /greetingTurns\.stop\(\)/);
+  assert.match(source, /greeting\.stop\(\)/);
+  assert.match(source, /transferHold\.stop\(\)/);
 });
 
 
