@@ -634,6 +634,9 @@ async function executeTool({
       ...(await booking.findAvailability({
         serviceType: args.service_type || "",
         preferredWindow: args.preferred_window || "",
+        windowStart: args.window_start || "",
+        windowEnd: args.window_end || "",
+        durationMinutes: args.duration_minutes || null,
         serviceAddress: args.service_address || "",
         city: args.city || "",
         callerNumber,
@@ -1024,6 +1027,7 @@ async function handleIncomingCall(event) {
     services: tenant?.services || [],
     localTime: businessContext.localTime,
     businessHoursText: businessContext.businessHoursText,
+    timeZone: tenant?.timeZone || "America/Chicago",
     featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
   });
 
