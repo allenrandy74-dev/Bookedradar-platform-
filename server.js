@@ -43,6 +43,12 @@ import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
 import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
+import {
+  WebChatStore,
+  allowedWebChatOrigin,
+  runWebChatTurn,
+  webChatEnabled,
+} from "./src/web-chat.js";
 import { CallHistoryStore } from "./src/call-history.js";
 import {
   competitiveFeaturesForTenant,
@@ -89,6 +95,8 @@ const {
   CALL_HISTORY_RETENTION_DAYS = "30",
   SMS_PUBLIC_BASE_URL = "",
   SMS_RESPONSE_MODEL = "gpt-5.6-luna",
+  WEB_CHAT_STATE_FILE = "./data/web-chat.json",
+  WEB_CHAT_RESPONSE_MODEL = "gpt-5.6-luna",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -156,6 +164,11 @@ const callHistory = new CallHistoryStore(CALL_HISTORY_FILE, {
   retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
 });
 await callHistory.load();
+
+const webChatStore = new WebChatStore(WEB_CHAT_STATE_FILE, {
+  retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
+});
+await webChatStore.load();
 
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
 const billing = await createBilling({
@@ -1109,6 +1122,147 @@ app.post("/api/v1/intake/reply", requireIngest, requireTenant, async (req, res) 
       ok: false,
       error: String(error?.message || "reply_intake_failed"),
     });
+  }
+});
+
+function webChatCors(req, res) {
+  const tenant = registry.get(String(req.query?.tenant || "").trim());
+  const origin = String(req.get("Origin") || "");
+  if (!tenant || !webChatEnabled(tenant) || !allowedWebChatOrigin(tenant, origin)) return null;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  return tenant;
+}
+
+app.options("/api/v1/public/chat", (req, res) => {
+  const tenant = webChatCors(req, res);
+  return tenant ? res.sendStatus(204) : res.sendStatus(403);
+});
+
+app.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res) => {
+  const tenant = webChatCors(req, res);
+  if (!tenant) return res.status(403).json({ ok: false, error: "chat_origin_not_allowed" });
+  if (!openai) return res.status(503).json({ ok: false, error: "chat_ai_not_configured" });
+
+  try {
+    const message = String(req.body?.message || "").trim().slice(0, 1600);
+    if (!message) return res.status(400).json({ ok: false, error: "message_required" });
+    let session = await webChatStore.getOrCreate(tenant.tenantId, String(req.body?.sessionId || ""));
+    const turn = await runWebChatTurn({
+      client: openai,
+      model: WEB_CHAT_RESPONSE_MODEL,
+      tenant,
+      session,
+      message,
+    });
+
+    const messages = [
+      ...(session.messages || []),
+      { role: "visitor", text: message, at: new Date().toISOString() },
+      { role: "assistant", text: turn.reply, at: new Date().toISOString() },
+    ].slice(-24);
+
+    const fields = turn.fields || {};
+    let opportunityId = session.opportunityId || null;
+    const validPhone = /^\+[1-9]\d{7,14}$/.test(String(fields.phone || ""));
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(fields.email || ""));
+    const canCapture = Boolean(fields.service_type && (validPhone || validEmail));
+
+    if (canCapture) {
+      const contactKey = validPhone
+        ? `${tenant.tenantId}:${fields.phone}`
+        : `${tenant.tenantId}:${String(fields.email).toLowerCase()}`;
+
+      if (opportunityId) {
+        const existing = await recoveryStore.getOpportunity(opportunityId);
+        if (existing?.tenantId === tenant.tenantId) {
+          await recoveryStore.upsertContact(existing.contactKey, {
+            name: fields.name || undefined,
+            phone: validPhone ? fields.phone : undefined,
+            email: validEmail ? fields.email : undefined,
+          });
+          await recoveryStore.patchOpportunity(opportunityId, {
+            serviceType: fields.service_type || existing.serviceType,
+            urgency: fields.urgency || existing.urgency,
+            metadata: {
+              ...(existing.metadata || {}),
+              serviceAddress: fields.service_address || existing.metadata?.serviceAddress || "",
+              city: fields.city || existing.metadata?.city || "",
+              preferredWindow: fields.preferred_window || existing.metadata?.preferredWindow || "",
+              sourceSessionId: session.id,
+            },
+          });
+        } else {
+          opportunityId = null;
+        }
+      }
+
+      if (!opportunityId) {
+        const captured = await engineFor(tenant).ingest({
+          idempotencyKey: `web-chat:${tenant.tenantId}:${session.id}`,
+          type: "web_lead",
+          source: "web_chat",
+          serviceType: fields.service_type,
+          urgency: fields.urgency || "",
+          contact: {
+            name: fields.name || "",
+            phone: validPhone ? fields.phone : "",
+            email: validEmail ? fields.email : "",
+          },
+          metadata: {
+            serviceAddress: fields.service_address || "",
+            city: fields.city || "",
+            preferredWindow: fields.preferred_window || "",
+            sourceSessionId: session.id,
+          },
+        });
+        opportunityId = captured?.opportunity?.id || null;
+      }
+    }
+
+    if (turn.needsHuman && opportunityId) {
+      const existingActions = Object.values((await recoveryStore.snapshot()).actions || {});
+      const alreadyQueued = existingActions.some(action =>
+        action.opportunityId === opportunityId &&
+        action.channel === "human_alert" &&
+        ["pending","processing","completed"].includes(action.status)
+      );
+      if (!alreadyQueued) {
+        const opportunity = await recoveryStore.getOpportunity(opportunityId);
+        await recoveryStore.scheduleAction({
+          tenantId: tenant.tenantId,
+          opportunityId,
+          contactKey: opportunity?.contactKey || "",
+          channel: "human_alert",
+          template: "web_chat_human_request",
+          purpose: "service",
+          dueAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    session = await webChatStore.update(session.id, {
+      fields,
+      messages,
+      opportunityId,
+    });
+
+    return res.json({
+      ok: true,
+      sessionId: session.id,
+      reply: turn.reply,
+      leadCaptured: Boolean(opportunityId),
+      needsHuman: turn.needsHuman,
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "web_chat.failed",
+      tenant_id: tenant.tenantId,
+      message: String(error?.message || error).slice(0, 200),
+    }));
+    return res.status(503).json({ ok: false, error: "chat_unavailable" });
   }
 });
 
