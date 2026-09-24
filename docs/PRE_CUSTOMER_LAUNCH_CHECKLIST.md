@@ -33,9 +33,9 @@ Updated: 2026-09-24
 - [ ] Publish/attach Quick Start to a polished customer-facing onboarding entry point
 - [ ] Wire live Quick Start submission event automatically into the protected provisioning preparation workflow
 - [ ] Add customer-facing plain-language setup progress/status view
-- [ ] Final controlled current-production voice intake acceptance call
-- [ ] Final controlled transfer acceptance call: SMS summary -> 10-second hold -> REFER -> receiving-phone behavior
-- [ ] Confirm handset delivery/content of the transfer companion SMS during the controlled transfer call
+- [x] Final controlled current-production voice intake acceptance call
+- [x] Final controlled transfer acceptance call: SMS summary -> 10-second hold -> REFER -> receiving-phone behavior
+- [x] Confirm handset delivery/content of the transfer companion SMS during the controlled transfer call
 - [ ] Complete final external failure/retry drills that are safe to perform without customer traffic
 - [ ] Freeze/tag first customer-ready release after voice/transfer acceptance passes
 - [ ] Finalize service agreement/privacy/terms review for commercial launch
