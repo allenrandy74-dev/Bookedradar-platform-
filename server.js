@@ -2,7 +2,7 @@ import { createCallLifecycle } from "./src/call-lifecycle.js";
 import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from "./src/greeting-watchdog.js";
-import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
+import { createWarmTransfer, createTransferController, validTwilioSignature } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
 import { createBilling } from "./src/billing/http.js";
@@ -30,7 +30,7 @@ import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import { renderTemplate } from "./src/recovery/templates.js";
-import { TenantRegistry, humanTransferTarget } from "./src/recovery/tenant-registry.js";
+import { TenantRegistry, humanTransferTarget, tenantSecret } from "./src/recovery/tenant-registry.js";
 import { requireBearer } from "./src/auth.js";
 import { ActionDispatcher, voiceContactResolver } from "./src/integrations/dispatcher.js";
 import {
@@ -42,6 +42,7 @@ import { normalizeIntake, isOptOutText } from "./src/intake.js";
 import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
+import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
 import { CallHistoryStore } from "./src/call-history.js";
 import {
   competitiveFeaturesForTenant,
@@ -86,6 +87,8 @@ const {
   TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
   CALL_HISTORY_FILE = "./data/call-history.json",
   CALL_HISTORY_RETENTION_DAYS = "30",
+  SMS_PUBLIC_BASE_URL = "",
+  SMS_RESPONSE_MODEL = "gpt-5.6-luna",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -96,7 +99,7 @@ if (voiceEnabled && !OPENAI_WEBHOOK_SECRET) {
   throw new Error("OPENAI_WEBHOOK_SECRET is required when VOICE_ENABLED=true.");
 }
 
-const openai = voiceEnabled ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 const app = express();
 app.disable("x-powered-by");
 
@@ -278,6 +281,17 @@ function engineFor(tenant) {
     );
   }
   return engines.get(tenant.tenantId);
+}
+
+async function latestOpenOpportunityForContact(tenantId, contactKey) {
+  const snapshot = await recoveryStore.snapshot();
+  return Object.values(snapshot.opportunities || {})
+    .filter(item =>
+      item.tenantId === tenantId &&
+      item.contactKey === contactKey &&
+      item.status !== "closed"
+    )
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0] || null;
 }
 
 function dispatcherFor(tenant) {
@@ -1095,6 +1109,116 @@ app.post("/api/v1/intake/reply", requireIngest, requireTenant, async (req, res) 
       ok: false,
       error: String(error?.message || "reply_intake_failed"),
     });
+  }
+});
+
+app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), async (req, res) => {
+  const emptyTwiml = () => res.type("text/xml").send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  try {
+    const tenantId = String(req.query?.tenant || "").trim();
+    const tenant = registry.get(tenantId);
+    if (!tenant) return res.sendStatus(404);
+
+    const sms = tenant?.integrations?.sms || {};
+    const accountSid = String(sms.accountSid || tenantSecret(tenant, "TWILIO_ACCOUNT_SID") || "").trim();
+    const authToken = String(sms.authToken || tenantSecret(tenant, "TWILIO_AUTH_TOKEN") || "");
+    const expectedTo = String(sms.fromNumber || tenantSecret(tenant, "TWILIO_SMS_FROM") || "").trim();
+    const publicBase = String(SMS_PUBLIC_BASE_URL || VOICE_PUBLIC_BASE_URL || "").replace(/\/$/, "");
+
+    if (!sms.enabled || sms.type !== "twilio" || !accountSid || !authToken || !publicBase) {
+      return res.sendStatus(503);
+    }
+    if (req.body?.AccountSid !== accountSid) return res.sendStatus(403);
+    if (expectedTo && req.body?.To !== expectedTo) return res.sendStatus(403);
+    if (!validTwilioSignature({
+      token: authToken,
+      url: publicBase + req.originalUrl,
+      body: req.body,
+      signature: req.get("X-Twilio-Signature"),
+    })) return res.sendStatus(403);
+
+    const from = String(req.body?.From || "").trim();
+    const text = String(req.body?.Body || "").trim().slice(0, 1600);
+    const messageSid = String(req.body?.MessageSid || "").trim();
+    if (!/^\+[1-9]\d{7,14}$/.test(from) || !text) return emptyTwiml();
+
+    const engine = engineFor(tenant);
+    const contactKey = `${tenant.tenantId}:${from}`;
+
+    if (isOptOutText(text)) {
+      await engine.ingest({
+        idempotencyKey: `twilio-optout:${tenant.tenantId}:${messageSid || from}`,
+        type: "contact_opted_out",
+        contactKey,
+        source: "twilio_sms",
+        contact: { phone: from },
+      });
+      return emptyTwiml();
+    }
+
+    if (/^(START|UNSTOP|HELP|INFO)$/i.test(text)) return emptyTwiml();
+
+    let opportunity = await latestOpenOpportunityForContact(tenant.tenantId, contactKey);
+    if (opportunity) {
+      const result = await engine.ingest({
+        idempotencyKey: `twilio-reply:${tenant.tenantId}:${messageSid || Date.now()}`,
+        type: "customer_replied",
+        opportunityId: opportunity.id,
+        source: "twilio_sms",
+        contactKey,
+        contact: { phone: from, transactionalSmsAllowed: true },
+        metadata: { text },
+      });
+      opportunity = result.opportunity || opportunity;
+    } else {
+      const result = await engine.ingest({
+        idempotencyKey: `twilio-new:${tenant.tenantId}:${messageSid || Date.now()}`,
+        type: "phone_lead",
+        source: "twilio_sms",
+        serviceType: "SMS inquiry",
+        contact: { phone: from, transactionalSmsAllowed: true },
+        metadata: { notes: text },
+      });
+      opportunity = result.opportunity || null;
+    }
+
+    const { adapters } = dispatcherFor(tenant);
+    if (smsConversationEnabled(tenant) && adapters.sms && openai && opportunity) {
+      const contact = await recoveryStore.getContact(contactKey);
+      try {
+        const reply = await generateSmsReply({
+          client: openai,
+          model: SMS_RESPONSE_MODEL,
+          tenant,
+          opportunity,
+          contact,
+          customerText: text,
+        });
+        await adapters.sms.send({ contact: { phone: from }, content: reply });
+        console.log(JSON.stringify({
+          event: "sms.conversation_reply",
+          tenant_id: tenant.tenantId,
+          opportunity_id: opportunity.id,
+          to: maskPhone(from),
+          provider: "twilio",
+        }));
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "sms.conversation_reply_failed",
+          tenant_id: tenant.tenantId,
+          opportunity_id: opportunity.id,
+          message: String(error?.message || error).slice(0, 200),
+        }));
+      }
+    }
+
+    return emptyTwiml();
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "sms.inbound_failed",
+      message: String(error?.message || error).slice(0, 200),
+    }));
+    return res.sendStatus(500);
   }
 });
 
