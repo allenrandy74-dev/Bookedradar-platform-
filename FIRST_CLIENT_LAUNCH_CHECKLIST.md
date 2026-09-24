@@ -24,7 +24,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Confirm-only scheduling is included in the base pilot.
 - [x] Full-time scheduling/dispatch is separated from the base pilot.
 - [x] Full-time scheduling/dispatch requires a custom quote and separate approval.
-- [ ] Customer-facing agreement/terms explicitly reflect the service scope and limitations.
+- [x] Customer-facing service agreement draft explicitly reflects the service scope and limitations; final legal review remains required before signature.
 - [ ] Refund/cancellation/billing effective-date language reviewed for consistency with Stripe behavior.
 
 ## C. Billing
@@ -45,7 +45,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Customer-specific secret isolation required.
 - [x] CRM/email/SMS/live-booking adapters cannot be treated as ready without tenant-specific configuration.
 - [x] Full-time scheduling discovery requirements documented.
-- [ ] Final customer-facing Quick Start form verified in Wix.
+- [x] Final customer-facing Quick Start form verified in Wix (BookedRadar Quick Start, revision 3).
 - [ ] Customer-facing welcome/onboarding email finalized.
 - [ ] Provider-specific phone-forwarding instructions prepared for the first customer's carrier.
 - [ ] First customer tenant passes `tenantReadiness()`.
