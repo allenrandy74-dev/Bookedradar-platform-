@@ -169,6 +169,24 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.audio.input.turn_detection.threshold,0.5);
 });
 
+
+test('call acceptance can enable input transcription without changing VAD', async () => {
+  const { acceptRealtimeCall } = await import('../src/openai-call.js');
+  const saved = globalThis.fetch; let body;
+  globalThis.fetch = async (_url, options) => { body = JSON.parse(options.body); return new Response(''); };
+  try {
+    await acceptRealtimeCall({
+      apiKey:'test', callId:'test', model:'existing-model', voice:'marin',
+      instructions:'existing intake', tools:[],
+      inputTranscription:{ model:'gpt-transcribe', languages:['en','es'] },
+    });
+  } finally { globalThis.fetch = saved; }
+  assert.equal(body.audio.input.transcription.model,'gpt-transcribe');
+  assert.deepEqual(body.audio.input.transcription.languages,['en','es']);
+  assert.equal(body.audio.input.turn_detection.type,'server_vad');
+  assert.equal(body.audio.input.turn_detection.create_response,true);
+});
+
 // The production handler uses this same controller; no provider calls are made here.
 import { createTransferController } from '../src/warm-transfer.js';
 function controllerFixture(overrides = {}) {
