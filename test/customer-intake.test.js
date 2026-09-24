@@ -79,3 +79,28 @@ test("Wix Quick Start submission maps directly into onboarding input", () => {
   assert.equal(result.tenant.onboarding.businessHoursText, "Mon-Fri 8am-5pm");
   assert.ok(result.internalPreparation.includes("normalize_business_hours"));
 });
+
+
+test("quick start defaults to RadarRecover deployment profile", () => {
+  const result=buildTenantDraftFromQuickStart({
+    businessName:"Launch HVAC",trade:"HVAC",serviceArea:"Silsbee",services:"AC repair",
+    businessHours:{mon:["08:00","17:00"]},escalationPhone:"+14095550100"
+  });
+  assert.equal(result.tenant.commercial.serviceProfile,"recover");
+  assert.equal(result.tenant.commercial.serviceProfileName,"RadarRecover");
+  assert.equal(result.tenant.commercial.pricing.monthlyUsd,497);
+  assert.equal(result.tenant.commercial.pricing.foundingMonthlyUsd,397);
+  assert.equal(result.tenant.features.twoWaySms,false);
+  assert.equal(result.tenant.commercial.entitlements.twoWaySms,true);
+});
+
+test("sales-selected package applies during tenant draft generation", () => {
+  const result=buildTenantDraftFromQuickStart({
+    businessName:"Growth Plumbing",trade:"Plumbing",serviceArea:"Beaumont",services:"Plumbing repair",
+    businessHours:{mon:["08:00","17:00"]},escalationPhone:"+14095550100",serviceProfile:"grow"
+  });
+  assert.equal(result.tenant.commercial.serviceProfile,"grow");
+  assert.equal(result.tenant.features.membershipRadar,true);
+  assert.equal(result.tenant.features.noShowGuard,false);
+  assert.equal(result.tenant.commercial.entitlements.noShowGuard,true);
+});
