@@ -15,6 +15,7 @@ export function competitiveFeaturesForTenant(tenant = {}) {
     transcriptHistory:
       features.transcriptHistory === true &&
       tenant?.policies?.transcriptRetentionApproved === true,
+    callerTexting: features.callerTexting === true,
     languages,
   };
 }
@@ -78,8 +79,31 @@ export function competitiveFeatureGuidance(tenant = {}, { returningCaller = "" }
     );
   }
 
+  if (features.callerTexting && tenant?.integrations?.sms?.enabled === true) {
+    guidance.push(
+      "IN-CALL TEXTING: If the caller asks you to text approved transactional information such as a scheduling link, directions, or a business-provided resource, you may use send_caller_text. Confirm the callback number first. Never use this tool for marketing, unsolicited promotions, passwords, payment-card data, or invented information."
+    );
+  }
+
   return guidance.join("\n");
 }
+
+export const sendCallerTextTool = {
+  type: "function",
+  name: "send_caller_text",
+  description: "Send approved transactional information to the current caller by SMS when the tenant SMS channel is enabled.",
+  parameters: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description: "Short approved transactional message requested or useful in the current service conversation. Never include sensitive payment data or marketing.",
+      },
+    },
+    required: ["content"],
+    additionalProperties: false,
+  },
+};
 
 export const endCallTool = {
   type: "function",
@@ -99,7 +123,11 @@ export const endCallTool = {
 };
 
 export function toolsForTenant(baseTools, tenant = {}) {
-  return competitiveFeaturesForTenant(tenant).spamScreening
-    ? [...baseTools, endCallTool]
-    : baseTools;
+  const features = competitiveFeaturesForTenant(tenant);
+  const extra = [];
+  if (features.callerTexting && tenant?.integrations?.sms?.enabled === true) {
+    extra.push(sendCallerTextTool);
+  }
+  if (features.spamScreening) extra.push(endCallTool);
+  return [...baseTools, ...extra];
 }
