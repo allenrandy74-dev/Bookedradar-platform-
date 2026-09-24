@@ -5,6 +5,7 @@ import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGu
 import { createWarmTransfer, createTransferController } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
+import { createBilling } from "./src/billing/http.js";
 import OpenAI from "openai";
 import WebSocket from "ws";
 
@@ -129,6 +130,7 @@ app.use("/openai/webhook", createRateLimiter({ max: 1200 }));
 
 // OpenAI signature verification requires raw JSON text.
 app.use("/openai/webhook", express.text({ type: "application/json", limit: "256kb" }));
+app.use('/stripe/webhook', express.raw({ type: 'application/json', limit: '256kb' }));
 app.use(express.json({ limit: "256kb" }));
 
 const state = new JsonStateStore(STATE_FILE);
@@ -138,6 +140,18 @@ const recoveryStore = new RecoveryStore(RECOVERY_STATE_FILE);
 await recoveryStore.load();
 
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
+const billing = await createBilling({
+  tenantExists: tenantId => Boolean(registry.get(tenantId)),
+  defaultStateFile: path.join(path.dirname(STATE_FILE), 'billing-test-state.json'),
+});
+app.post('/stripe/webhook', (req, res) => billing
+  ? billing.webhook(req, res)
+  : res.status(503).json({ ok: false, error: 'test_billing_disabled' }));
+if (billing) app.use('/api/v1/billing', billing.api);
+app.get('/billing/return', (_req, res) => res.type('html').send(
+  '<!doctype html><html lang="en"><meta charset="utf-8"><title>BookedRadar test billing</title><h1>BookedRadar test billing</h1><p>Your payment submission has returned from Stripe. Bank payments can take time to confirm. BookedRadar updates billing status only after confirmation from Stripe.</p><p>No live telephone service is changed by this test.</p></html>'
+));
+
 const transferStore = new JsonStateStore(path.join(path.dirname(STATE_FILE), "voice-transfers.json"));
 await transferStore.load();
 const warmTransfer = createWarmTransfer({
@@ -1181,6 +1195,7 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "bookedradar-platform",
     version: "2.0.0",
+    billingMode: billing ? 'test' : 'disabled',
     voiceReliabilityRevision: "2026-09-22.2",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
