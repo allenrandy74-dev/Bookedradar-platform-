@@ -30,10 +30,13 @@ import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import {
+  cancellationBackfillCandidates,
+  membershipRadar,
   ownerDailyBrief,
   opportunityTimeline,
   radarTrust,
   revenueLeakRadar,
+  reviewRadar,
 } from "./src/growth-intelligence.js";
 import { renderTemplate } from "./src/recovery/templates.js";
 import { TenantRegistry, humanTransferTarget, tenantSecret } from "./src/recovery/tenant-registry.js";
@@ -1084,6 +1087,10 @@ for (const kind of [
   "web-lead",
   "estimate",
   "cancellation",
+  "membership-renewal",
+  "appointment-reminder",
+  "job-completed",
+  "earlier-slot",
   "dormant",
 ]) {
   app.post(`/api/v1/intake/${kind}`, requireIngest, requireTenant, async (req, res) => {
@@ -1577,6 +1584,43 @@ app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) =
   } catch (error) {
     console.error("Dispatch run failed:", error);
     return res.status(500).json({ ok: false, error: "dispatch_failed" });
+  }
+});
+
+app.get("/api/v1/membership-radar", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    return res.json({
+      ok: true,
+      report: await membershipRadar(recoveryStore, req.bookedRadarTenant.tenantId),
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "membership_radar_failed" });
+  }
+});
+
+app.get("/api/v1/review-radar", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    return res.json({
+      ok: true,
+      report: await reviewRadar(recoveryStore, req.bookedRadarTenant.tenantId),
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "review_radar_failed" });
+  }
+});
+
+app.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const report = await cancellationBackfillCandidates(
+      recoveryStore,
+      req.bookedRadarTenant.tenantId,
+      req.params.id
+    );
+    return report
+      ? res.json({ ok: true, report })
+      : res.status(404).json({ ok: false, error: "cancellation_opportunity_not_found" });
+  } catch {
+    return res.status(500).json({ ok: false, error: "backfill_candidate_query_failed" });
   }
 });
 
