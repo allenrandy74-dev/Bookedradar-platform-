@@ -57,3 +57,24 @@ test("service profile pricing is explicit and founding pricing is not higher tha
   assert.equal(serviceProfile("grow").pricing.monthlyUsd,697);
   assert.equal(serviceProfile("schedule").pricing.monthlyUsd,897);
 });
+
+
+test("higher packages preserve lower-tier entitlements", () => {
+  const answer=serviceProfile("answer").features;
+  const recover=serviceProfile("recover").features;
+  const grow=serviceProfile("grow").features;
+  const schedule=serviceProfile("schedule").features;
+  const keys=["callerMemory","spamScreening","transcriptHistory","knowledgeGapLearning"];
+  for(const key of keys){
+    assert.equal(answer[key]===true && recover[key]===true && grow[key]===true && schedule[key]===true,true,key);
+  }
+  for(const key of ["callerTexting","twoWaySms","webChat","reviewRadar"]){
+    assert.equal(recover[key],true,key);
+    assert.equal(grow[key],true,key);
+    assert.equal(schedule[key],true,key);
+  }
+  for(const key of ["membershipRadar","noShowGuard"]){
+    assert.equal(grow[key],true,key);
+    assert.equal(schedule[key],true,key);
+  }
+});
