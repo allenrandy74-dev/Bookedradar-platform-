@@ -5,6 +5,7 @@ export const SERVICE_PROFILES = Object.freeze({
     id: "answer",
     name: "RadarAnswer",
     description: "AI answering, intake, escalation and owner visibility without automated recovery outreach.",
+    pricing: { monthlyUsd: 149, standardSetupUsd: 199, foundingMonthlyUsd: 149, foundingSetupUsd: 0 },
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
@@ -33,6 +34,7 @@ export const SERVICE_PROFILES = Object.freeze({
     id: "recover",
     name: "RadarRecover",
     description: "Voice + recovery + owner intelligence, with optional web chat and approved messaging.",
+    pricing: { monthlyUsd: 497, standardSetupUsd: 499, foundingMonthlyUsd: 397, foundingSetupUsd: 0 },
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
@@ -61,6 +63,7 @@ export const SERVICE_PROFILES = Object.freeze({
     id: "grow",
     name: "RadarGrow",
     description: "Recovery plus memberships, no-show prevention and review intelligence after the required provider/consent checks.",
+    pricing: { monthlyUsd: 697, standardSetupUsd: 749, foundingMonthlyUsd: 597, foundingSetupUsd: 0 },
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
@@ -89,6 +92,7 @@ export const SERVICE_PROFILES = Object.freeze({
     id: "schedule",
     name: "RadarSchedule",
     description: "Recovery plus separately approved live calendar booking; full dispatch remains a different custom scope.",
+    pricing: { monthlyUsd: 897, standardSetupUsd: 999, foundingMonthlyUsd: 797, foundingSetupUsd: 0 },
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
