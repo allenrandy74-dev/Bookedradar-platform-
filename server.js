@@ -29,6 +29,12 @@ import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
+import {
+  ownerDailyBrief,
+  opportunityTimeline,
+  radarTrust,
+  revenueLeakRadar,
+} from "./src/growth-intelligence.js";
 import { renderTemplate } from "./src/recovery/templates.js";
 import { TenantRegistry, humanTransferTarget, tenantSecret } from "./src/recovery/tenant-registry.js";
 import { requireBearer } from "./src/auth.js";
@@ -1571,6 +1577,56 @@ app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) =
   } catch (error) {
     console.error("Dispatch run failed:", error);
     return res.status(500).json({ ok: false, error: "dispatch_failed" });
+  }
+});
+
+app.get("/api/v1/revenue-leaks", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    return res.json({
+      ok: true,
+      report: await revenueLeakRadar(recoveryStore, req.bookedRadarTenant.tenantId),
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "revenue_leak_report_failed" });
+  }
+});
+
+app.get("/api/v1/owner-brief", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const callActivity = await callHistory.stats(req.bookedRadarTenant.tenantId);
+    return res.json({
+      ok: true,
+      brief: await ownerDailyBrief(recoveryStore, req.bookedRadarTenant.tenantId, { callActivity }),
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "owner_brief_failed" });
+  }
+});
+
+app.get("/api/v1/opportunities/:id/timeline", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const result = await opportunityTimeline(
+      recoveryStore,
+      req.bookedRadarTenant.tenantId,
+      req.params.id
+    );
+    return result
+      ? res.json({ ok: true, result })
+      : res.status(404).json({ ok: false, error: "opportunity_not_found" });
+  } catch {
+    return res.status(500).json({ ok: false, error: "opportunity_timeline_failed" });
+  }
+});
+
+app.get("/api/v1/radartrust", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const callActivity = await callHistory.stats(req.bookedRadarTenant.tenantId);
+    return res.json({
+      ok: true,
+      report: await radarTrust(recoveryStore, req.bookedRadarTenant, { callActivity }),
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "radartrust_failed" });
   }
 });
 
