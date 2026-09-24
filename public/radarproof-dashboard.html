@@ -31,6 +31,7 @@ main{max-width:1120px;margin:auto;padding:28px 18px 60px}header{display:flex;jus
 <div class="card"><div class="label">Human transfers</div><div class="value" id="humanTransfers">—</div></div>
 <div class="card"><div class="label">Spam screened</div><div class="value" id="spamScreened">—</div></div>
 <div class="card"><div class="label">Calls with transcript</div><div class="value" id="callsWithTranscript">—</div></div>
+<div class="card"><div class="label">Knowledge gaps found</div><div class="value accent" id="knowledgeGaps">—</div></div>
 <div class="card wide"><div class="label">Recovery rate</div><div class="value" id="rate">—</div></div>
 <div class="card wide"><div class="label">Open work</div><div class="value" id="pending">—</div><div class="muted" id="blocked"></div></div>
 <div class="card full"><div class="label">Recovery by source</div><div id="sources" class="empty">No data yet.</div></div>
@@ -66,6 +67,7 @@ async function load(){
     humanTransfers.textContent=report.callActivity?.humanTransfers??0;
     spamScreened.textContent=report.callActivity?.spamScreened??0;
     callsWithTranscript.textContent=report.callActivity?.callsWithTranscript??0;
+    knowledgeGaps.textContent=report.callActivity?.knowledgeGaps??0;
     rate.textContent=pct(report.recoveryRate);
     pending.textContent=report.pendingActions;
     blocked.textContent=`${report.blockedActions} blocked by policy or consent`;
