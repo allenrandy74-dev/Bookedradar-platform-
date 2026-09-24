@@ -24,6 +24,8 @@ main{max-width:1180px;margin:auto;padding:28px 18px 60px}.top{display:flex;justi
 <div class="card"><div class="label">Calls handled</div><div class="value" id="calls">—</div></div>
 <div class="card"><div class="label">Human transfers</div><div class="value" id="transfers">—</div></div>
 <div class="card"><div class="label">Knowledge gaps</div><div class="value" id="gaps">—</div></div>
+<div class="card"><div class="label">Membership renewals</div><div class="value" id="memberships">—</div></div>
+<div class="card"><div class="label">Review-ready jobs</div><div class="value" id="reviews">—</div></div>
 <div class="card"><div class="label">Estimated value at risk</div><div class="value" id="risk">—</div></div>
 <div class="card full"><div class="label">Top attention items</div><div id="attention" class="attention empty">No attention items loaded.</div></div>
 </section>
@@ -42,7 +44,7 @@ async function load(){
   const r=await fetch("/api/v1/owner-brief?tenant="+encodeURIComponent(tenant),{cache:"no-store",headers:token?{Authorization:"Bearer "+token}:{}});
   if(!r.ok)throw new Error();const {brief}=await r.json();
   newOpp.textContent=brief.newOpportunities;recovered.textContent=brief.recoveredOpportunities;revenue.textContent=money(brief.confirmedRevenue);
-  leaks.textContent=brief.openRevenueLeaks;calls.textContent=brief.callsHandled;transfers.textContent=brief.humanTransfers;gaps.textContent=brief.knowledgeGaps;risk.textContent=money(brief.estimatedValueAtRisk);
+  leaks.textContent=brief.openRevenueLeaks;calls.textContent=brief.callsHandled;transfers.textContent=brief.humanTransfers;gaps.textContent=brief.knowledgeGaps;memberships.textContent=brief.membershipRenewalsDue;reviews.textContent=brief.reviewEligibleJobs;risk.textContent=money(brief.estimatedValueAtRisk);
   const items=brief.topAttentionItems||[];attention.className=items.length?"attention":"attention empty";
   attention.innerHTML=items.length?items.map(x=>'<div class="item"><span class="pill '+esc(x.priority)+'">'+esc(x.priority)+'</span><div><b>'+esc(x.type.replaceAll("_"," "))+'</b><div class="muted">'+esc(x.serviceType||x.source)+' · '+esc(x.ageHours)+'h open</div><div>'+esc(x.recommendedNextAction)+'</div></div><div class="money">'+money(x.estimatedOpportunityValue)+'</div></div>').join(""):"No current revenue-leak items need attention.";
   $("status").textContent="Live";
