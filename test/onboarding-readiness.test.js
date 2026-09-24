@@ -82,3 +82,15 @@ test("global-only Wix configuration cannot pass customer readiness", () => {
   const tenant = baseTenant(); tenant.integrations.crm = { enabled: true, type: "wix" };
   assert.ok(tenantReadiness(tenant, { env: { WIX_API_KEY: "global", WIX_SITE_ID: "global" } }).blockers.some(x => x.code === "crm"));
 });
+
+test('live booking needs a separate approved commercial scope, even when requested', () => {
+  const tenant=baseTenant(); tenant.policies.bookingMode='live_booking';
+  for (const commercial of [{}, {serviceTier:'founding_partner_pilot',schedulingApproved:true,schedulingAgreementReference:'order-1'}, {serviceTier:'scheduling',schedulingApproved:true}]) {
+    tenant.commercial=commercial;
+    assert.ok(tenantReadiness(tenant,{env:{}}).blockers.some(x=>x.code==='scheduling_scope'));
+  }
+  tenant.commercial={serviceTier:'scheduling',schedulingApproved:true,schedulingAgreementReference:'order-1'};
+  const result=tenantReadiness(tenant,{env:{}});
+  assert.equal(result.blockers.some(x=>x.code==='scheduling_scope'),false);
+  assert.equal(result.blockers.some(x=>x.code==='booking'),true);
+});

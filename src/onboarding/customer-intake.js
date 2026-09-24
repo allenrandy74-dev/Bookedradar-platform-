@@ -64,9 +64,9 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       : {};
   const escalationPhone = extractUsPhone(input.escalationPhone || input.escalationContactText);
   const bookingChoice = clean(input.bookingPreference).toLowerCase();
-  const bookingMode = bookingChoice === "live_booking" || bookingChoice === "live booking"
-    ? "live_booking"
-    : "confirm_only";
+  // Customer interest is not commercial approval or permission to write a calendar.
+  const bookingMode = "confirm_only";
+  const schedulingRequested = /live.?booking|schedul|dispatch/.test(bookingChoice);
 
   const tenant = {
     tenantId,
@@ -85,6 +85,11 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       bookingMode,
       quotePrices: Boolean(input.quotePrices),
       recordCalls: Boolean(input.recordCalls),
+    },
+    commercial: {
+      serviceTier: "founding_partner_pilot",
+      schedulingApproved: false,
+      schedulingAgreementReference: "",
     },
     economics: {},
     integrations: {
@@ -109,6 +114,8 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       email: clean(input.email),
       phone: clean(input.phone),
       website: clean(input.website),
+      requestedBookingPreference: clean(input.bookingPreference),
+      schedulingReviewRequired: schedulingRequested,
       coverageMode: clean(input.coverageMode) || "after_hours_overflow",
       phoneProvider: clean(input.phoneProvider),
       businessHoursText,
@@ -131,6 +138,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
   if (!escalationPhone) needsFromCustomer.push("urgent_contact");
 
   const internalPreparation = [];
+  if (schedulingRequested) internalPreparation.push("prepare_separate_scheduling_scope_and_quote");
   if (businessHoursText && !Object.keys(structuredBusinessHours).length) {
     internalPreparation.push("normalize_business_hours");
   }

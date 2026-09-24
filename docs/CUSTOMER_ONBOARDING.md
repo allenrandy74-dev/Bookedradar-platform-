@@ -11,7 +11,7 @@ Collect:
 - Primary and backup escalation contacts
 - Emergency/safety rules and situations BookedRadar must not diagnose
 - Quote/pricing policy
-- Booking mode: confirm-only or approved live booking
+- Booking mode: appointment requests by default; direct booking requires a separate scheduling agreement
 - Average job values for RadarProof reporting
 - Existing business phone number and desired routing: after-hours, overflow, or broader coverage
 - CRM, email, SMS, calendar/booking systems
@@ -76,3 +76,11 @@ Report leads handled, recoveries, booked/recovered value where attributable, res
 
 ## Activation rule
 No customer capability is sold or enabled merely because code exists. It must be configured for that tenant and pass the applicable acceptance test first.
+
+## Commercial readiness for direct scheduling
+Quick Start captures interest only and always produces a confirm-only tenant draft.
+A scheduling operator must separately set commercial.serviceTier to scheduling or
+scheduling_and_dispatch, schedulingApproved to true, and schedulingAgreementReference
+to the approved order. The readiness gate also requires a working booking adapter.
+These checks do not establish that travel-aware scheduling exists: each contracted
+capability still needs its own rules, implementation and acceptance evidence.

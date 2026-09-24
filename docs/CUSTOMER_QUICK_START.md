@@ -23,6 +23,7 @@ A website is optional. If supplied, BookedRadar can use it to prepare informatio
    - When nobody answers
    - When your team is busy
    - A combination
+   - Full-time coverage — scope review required
    - I'm not sure — recommend a setup
 7. Who should we contact when a caller needs a person?
 8. In your business, what usually counts as urgent?
@@ -40,6 +41,9 @@ Do not ask the customer to configure phone technology during this step.
    - Yes
    - No
    - Sometimes
+   Follow-up: Should we collect appointment requests for your team, or would you like
+   a separate quote for direct scheduling/dispatch? The $497 pilot collects requests;
+   it does not confirm calendar appointments.
 11. Anything else you want BookedRadar to know?
 
 ## Step 4 — Review

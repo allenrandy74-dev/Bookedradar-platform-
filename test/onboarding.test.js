@@ -57,3 +57,14 @@ test("Tenant draft is generatable from the minimal business answers and defaults
   assert.ok(draft.optionalFollowup.includes("preferred_reply_to_email"));
   assert.equal(draft.next, "INTERNAL_ENRICHMENT_AND_READINESS");
 });
+
+test('a Quick Start request for full scheduling never authorizes calendar writes', () => {
+  for (const bookingPreference of ['live_booking', 'Full time scheduler', 'Scheduling and dispatch']) {
+    const draft = buildTenantDraftFromQuickStart({businessName:'Test HVAC',bookingPreference});
+    assert.equal(draft.tenant.policies.bookingMode,'confirm_only');
+    assert.equal(draft.tenant.commercial.schedulingApproved,false);
+    assert.equal(draft.tenant.onboarding.requestedBookingPreference,bookingPreference);
+    assert.equal(draft.tenant.onboarding.schedulingReviewRequired,true);
+    assert.ok(draft.internalPreparation.includes('prepare_separate_scheduling_scope_and_quote'));
+  }
+});

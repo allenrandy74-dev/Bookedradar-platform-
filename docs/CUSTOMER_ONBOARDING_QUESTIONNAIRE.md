@@ -57,7 +57,7 @@ Use this once with the customer. Answers become the tenant configuration and acc
 35. Other information the receptionist/operator normally needs:
 
 ## Booking
-36. Mode: confirm-only / live booking
+36. Requested service: appointment requests (pilot) / separately quoted scheduling / separately quoted scheduling and dispatch
 37. Existing calendar/dispatch/booking system:
 38. Approved appointment windows:
 39. Lead times or scheduling restrictions:
@@ -105,3 +105,16 @@ Use this once with the customer. Answers become the tenant configuration and acc
 - Customer acceptance call passed
 - Rollback/escalation path confirmed
 - Activation approved
+
+## Conditional scheduling assessment
+Complete only when the customer requests a separate scheduling quote; see
+SCHEDULING_SCOPE.md. Do not enable live booking from a form answer alone.
+- Job types: duration range, setup/cleanup, diagnostic vs repair, uncertainty and buffers.
+- Staff: skills, shifts, breaks, location, equipment, crew size and approved assignments.
+- Travel: prior/next stop, service boundaries, approved maps provider, traffic assumptions,
+  parking/access allowances and maximum travel time.
+- Calendar: source of truth, concurrent bookings, lead time, time zone, holidays,
+  emergency reserves, cancellation/rescheduling rules and human override.
+- Required job information, customer access, parts/deposits and authorized price language.
+- Separate scope/order reference, agreed setup/monthly/usage charges and customer approval.
+- Failed map/calendar lookups must fall back to an appointment request, never an invented slot.

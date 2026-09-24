@@ -48,6 +48,14 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   const booking = bookingAdapterForTenant(tenant, { env });
   const liveBooking = tenant?.policies?.bookingMode === "live_booking";
+  const commercial = tenant?.commercial || {};
+  const schedulingScopeReady = !liveBooking || (
+    ["scheduling", "scheduling_and_dispatch"].includes(commercial.serviceTier) &&
+    commercial.schedulingApproved === true &&
+    Boolean(String(commercial.schedulingAgreementReference || "").trim())
+  );
+  checks.push({ code: "scheduling_scope", ok: schedulingScopeReady });
+  if (!schedulingScopeReady) add(blockers, "scheduling_scope", "Live booking requires a separately approved scheduling scope and agreement reference.");
   const bookingReady = !liveBooking || booking.constructor.name !== "ConfirmOnlyBookingAdapter";
   checks.push({ code: "booking", ok: bookingReady });
   if (!bookingReady) add(blockers, "booking", "Live booking is requested but no live booking adapter is configured.");

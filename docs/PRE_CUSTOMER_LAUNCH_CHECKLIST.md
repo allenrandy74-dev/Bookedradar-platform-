@@ -1,6 +1,6 @@
 # BookedRadar Pre-Customer Launch Checklist
 
-Updated: 2026-09-23
+Updated: 2026-09-24
 
 ## Completed before customer launch
 - [x] Production voice platform deployed
@@ -46,9 +46,27 @@ Updated: 2026-09-23
 - [x] LLC finalized
 - [x] EIN obtained
 - [x] Business bank account opened
-- [ ] Billing/payment processor connected to business bank
+- [x] Stripe account activated and connected to BookedRadar LLC Grasshopper checking
+- [x] Stripe sandbox lifecycle, failed-payment recovery, portal and cancellation verified
+- [ ] Production app billing enabled after commercial launch review
 - [ ] Tax/accounting workflow established
 - [ ] Insurance needs reviewed for commercial operation
 
 ## Activation gate
 Do not enable customer traffic until the customer's own tenant passes applicable readiness, synthetic acceptance, customer acceptance, escalation/rollback, and integration checks.
+
+## September 24 closeout
+- [x] $497 pilot separated from separately quoted scheduling/dispatch in repository offer, FAQ, sales and onboarding documents
+- [x] Scheduling discovery and quote-input worksheet prepared (SCHEDULING_SCOPE.md)
+- [x] Commercial order worksheet prepared with unresolved decisions explicitly marked (PILOT_ORDER_WORKSHEET.md)
+- [x] Onboarding drafts default to appointment requests; scheduling interest triggers separate review
+- [x] Live-booking readiness requires separately approved scope/agreement plus a booking adapter
+- [x] Afternoon acceptance-call instructions prepared (AFTERNOON_ACCEPTANCE_CALLS.md)
+- [x] Pilot incident/rollback procedure prepared (PILOT_OPERATIONS_RUNBOOK.md)
+- [ ] Publish these revised boundaries on the existing Wix offer/FAQ and hosted onboarding form
+- [ ] Verify live monitoring/alert receipt and protected backup/isolated production restore
+
+Repository documentation is not proof that website copy or a Wix form was published.
+The commercial worksheet is not a reviewed or signed contract. Live billing remains
+intentionally disabled in the app. No test call or handset SMS delivery is marked
+complete by this closeout.

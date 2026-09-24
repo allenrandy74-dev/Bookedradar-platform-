@@ -98,3 +98,16 @@ Only after the complete test lifecycle passes should live billing be enabled.
 - Texas sales-tax treatment and permit decision with CPA.
 - Accounting/bookkeeping workflow.
 - Insurance review.
+
+## Approved pilot boundary — September 24, 2026
+The $497/month Founding Partner Pilot covers the agreed call-answering, lead-capture,
+routing, follow-up and appointment-request workflow. The setup fee is waived for the
+first five qualified founding partners. It is not an unlimited-call or unlimited-usage
+plan. Volume, coverage hours, integrations and any separate usage costs must be stated
+in the customer order before signing or payment.
+
+An appointment request is not a confirmed booking. Capture the preferred time and tell
+the caller the business will confirm availability. Full-time scheduling, direct calendar
+booking, technician assignment, travel-aware routing, dispatch and schedule optimization
+require a separate scope, setup quote, recurring price and customer-specific acceptance.
+No advanced-scheduling price or setup-fee waiver has been approved.

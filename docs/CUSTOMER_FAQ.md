@@ -25,7 +25,7 @@ Not necessarily. The Quick Start asks about the tools already used. BookedRadar 
 Only if the customer explicitly approves pricing rules and the tenant is configured for it. Otherwise it should not invent or promise prices.
 
 ## Can it schedule appointments?
-BookedRadar separates confirm-only behavior from live booking. Live booking is enabled only when the customer's scheduling integration is configured and tested.
+The $497 pilot collects appointment requests and preferred times; your team confirms availability. Direct calendar booking, full-time scheduling and dispatch are separately scoped and priced. These services require approved scheduling rules, supported integrations and acceptance testing before activation.
 
 ## What happens with emergencies?
 The customer defines urgent and emergency handling rules. BookedRadar must follow approved safety/escalation boundaries and must not diagnose hazardous situations.
