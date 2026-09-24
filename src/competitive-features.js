@@ -17,6 +17,7 @@ export function competitiveFeaturesForTenant(tenant = {}) {
       tenant?.policies?.transcriptRetentionApproved === true,
     callerTexting: features.callerTexting === true,
     twoWaySms: features.twoWaySms === true,
+    webChat: features.webChat === true,
     languages,
   };
 }
