@@ -19,7 +19,7 @@ These prices position BookedRadar above commodity answering services while remai
 - **RadarAnswer:** answering, intake, escalation, caller continuity, spam screening, bilingual handling, Knowledge Gap Radar and owner visibility.
 - **RadarRecover:** RadarAnswer plus missed-call/web-lead/estimate/cancellation recovery, RadarProof, Revenue Leak Radar, Owner Brief, Opportunity Timeline, Customer 360 and Review Radar.
 - **RadarGrow:** RadarRecover plus membership-renewal intelligence and No-Show Guard after messaging/provider approval.
-- **RadarSchedule:** RadarRecover plus separately approved simple live-calendar booking. It does **not** include technician routing or full field dispatch.
+- **RadarSchedule:** Everything in RadarGrow plus separately approved simple live-calendar booking. It does **not** include technician routing or full field dispatch.
 - **RadarDispatch:** custom full-time scheduling/dispatch scope with technician skills, geography, travel time, buffers, capacity and override rules.
 
 ## Founding Partner Pilot
