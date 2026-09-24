@@ -135,3 +135,36 @@ Before a pilot handles real customers, BookedRadar internally verifies:
 - CRM create/reuse and linked task permissions.
 - Transactional email delivery.
 - Tenant-isolated credentials and routing.
+
+
+## Full-time scheduling / dispatch — separate onboarding track
+
+A customer who wants BookedRadar to act as a full-time scheduler or dispatcher needs a deeper operating model than an after-hours or overflow customer. Do not enable live scheduling merely because the customer asks for it during Quick Start.
+
+Before BookedRadar can quote or activate full-time scheduling/dispatch, collect and verify:
+
+- Typical job duration by service type.
+- Which services require different time blocks.
+- Technician/crew names, skills, certifications, territories, and working hours.
+- Start/end location assumptions and whether technicians take vehicles home.
+- Service-area boundaries and any excluded areas.
+- Travel-time rules, drive-time buffers, and same-day radius limits.
+- Lunch, shop, parts-pickup, and other required buffers.
+- Emergency/priority rules and which jobs may displace lower-priority work.
+- Whether arrival windows or exact appointment times are promised.
+- Double-booking and overbooking rules.
+- Maximum jobs per technician/crew per day.
+- Dispatch ownership: who can move, cancel, or override appointments.
+- Customer cancellation/reschedule policy.
+- Systems of record for calendar, dispatch, estimates, customer data, and job status.
+- What the AI may confirm directly versus what requires human approval.
+
+BookRadar must then:
+1. Map the scheduling rules into a documented customer-specific operating policy.
+2. Connect and test the actual scheduling/dispatch system.
+3. Validate travel-time and duration assumptions with the customer.
+4. Run simulated schedule tests before any real appointment is written.
+5. Obtain a separate approved service scope, price, and agreement reference.
+6. Run a live acceptance test with the customer before activation.
+
+Until those steps are complete, BookedRadar remains in **confirm-only** mode: it may capture a preferred date/time window but must not promise or write a real appointment.
