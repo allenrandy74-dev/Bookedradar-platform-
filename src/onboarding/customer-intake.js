@@ -93,6 +93,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       transcriptHistory: false,
       callerTexting: true,
       twoWaySms: true,
+      webChat: true,
       languages: ["en", "es"],
     },
     commercial: {
@@ -116,6 +117,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
         replyTo: clean(input.emailReplyAddress),
       },
       calendar: { type: "customer_specific", enabled: false },
+      webChat: { enabled: false, allowedOrigins: [] },
     },
     secretsPrefix: secretPrefix(tenantId),
     onboarding: {
