@@ -108,6 +108,27 @@ export class CallHistoryStore {
     return call;
   }
 
+  async addKnowledgeGap(callId, { question = "", category = "business_question" } = {}) {
+    await this.load();
+    const call = this.data.calls[callId];
+    if (!call) return null;
+    const text = redactSensitive(question).slice(0, 500);
+    if (!text) return call;
+    call.knowledgeGaps ??= [];
+    const key = text.toLowerCase();
+    if (!call.knowledgeGaps.some(item => item.question.toLowerCase() === key)) {
+      call.knowledgeGaps.push({
+        question: text,
+        category: clean(category, 80) || "business_question",
+        at: new Date().toISOString(),
+      });
+      if (call.knowledgeGaps.length > 20) call.knowledgeGaps = call.knowledgeGaps.slice(-20);
+    }
+    call.updatedAt = Date.now();
+    await this.persist();
+    return call;
+  }
+
   async finish(callId, patch = {}) {
     await this.load();
     const call = this.data.calls[callId];
@@ -143,6 +164,8 @@ export class CallHistoryStore {
         transferred: Boolean(call.transferred),
         spamEnded: Boolean(call.spamEnded),
         transcriptTurns: (call.transcript || []).length,
+        knowledgeGaps: (call.knowledgeGaps || []).length,
+        leadSummary: call.leadSummary || null,
         preview: (call.transcript || []).slice(-2).map(turn => `${turn.speaker}: ${turn.text}`).join(" ").slice(0, 500),
       }));
   }
@@ -155,6 +178,7 @@ export class CallHistoryStore {
       humanTransfers: calls.filter(call => call.transferred).length,
       spamScreened: calls.filter(call => call.spamEnded).length,
       callsWithTranscript: calls.filter(call => (call.transcript || []).length > 0).length,
+      knowledgeGaps: calls.reduce((sum, call) => sum + (call.knowledgeGaps || []).length, 0),
     };
   }
 
