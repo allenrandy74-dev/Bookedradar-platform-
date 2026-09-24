@@ -217,6 +217,7 @@ console.log(JSON.stringify({
   mode: billing?.billingMode || null,
   live_armed: billingMode === "live" ? process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === "true" : false,
   configured: billing?.configuredPackagePrices || null,
+  validated: billing?.validatedPackagePrices || null,
 }));
 app.get('/billing/return', (_req, res) => res.type('html').send(
   '<!doctype html><html lang="en"><meta charset="utf-8"><title>BookedRadar test billing</title><h1>BookedRadar test billing</h1><p>Your payment submission has returned from Stripe. Bank payments can take time to confirm. BookedRadar updates billing status only after confirmation from Stripe.</p><p>No live telephone service is changed by this test.</p></html>'
