@@ -129,42 +129,76 @@ export function serviceProfile(id = "recover") {
 export function applyServiceProfile(tenant, profileId = "recover") {
   const profile = serviceProfile(profileId);
   const next = clone(tenant || {});
-  next.features = { ...(next.features || {}), ...profile.features };
-  next.policies = { ...(next.policies || {}), ...profile.policies };
+  const priorFeatures = next.features || {};
+
+  // Entitlements describe what the customer bought. Active feature flags describe
+  // what has actually passed provider/consent acceptance and may run now.
+  next.commercial = {
+    ...(next.commercial || {}),
+    serviceProfile: profile.id,
+    serviceProfileName: profile.name,
+    serviceTier: profile.id === "schedule" ? "scheduling" : "founding_partner_pilot",
+    entitlements: clone(profile.features),
+    pricing: clone(profile.pricing),
+  };
+
+  next.features = {
+    ...priorFeatures,
+    callerMemory: profile.features.callerMemory === true,
+    spamScreening: profile.features.spamScreening === true,
+    knowledgeGapLearning: profile.features.knowledgeGapLearning === true,
+    reviewRadar: profile.features.reviewRadar === true,
+    membershipRadar: profile.features.membershipRadar === true,
+    languages: clone(profile.features.languages || ["en"]),
+    // Provider / consent dependent features remain off until explicitly activated.
+    transcriptHistory:
+      profile.features.transcriptHistory === true &&
+      priorFeatures.transcriptHistory === true &&
+      next.policies?.transcriptRetentionApproved === true,
+    callerTexting:
+      profile.features.callerTexting === true &&
+      priorFeatures.callerTexting === true &&
+      next.integrations?.sms?.enabled === true,
+    twoWaySms:
+      profile.features.twoWaySms === true &&
+      priorFeatures.twoWaySms === true &&
+      next.integrations?.sms?.enabled === true,
+    webChat:
+      profile.features.webChat === true &&
+      priorFeatures.webChat === true &&
+      next.integrations?.webChat?.enabled === true,
+    noShowGuard:
+      profile.features.noShowGuard === true &&
+      priorFeatures.noShowGuard === true &&
+      next.integrations?.sms?.enabled === true,
+  };
+
+  next.policies = {
+    ...(next.policies || {}),
+    recordCalls: false,
+    bookingMode: next.policies?.bookingMode || profile.policies.bookingMode,
+    transcriptRetentionApproved: next.policies?.transcriptRetentionApproved === true,
+  };
 
   next.integrations ??= {};
   next.integrations.sms = {
     type: next.integrations.sms?.type || "twilio",
     ...(next.integrations.sms || {}),
-    enabled: profile.integrations.smsEnabled === true && next.integrations.sms?.enabled === true,
   };
   next.integrations.webChat = {
     ...(next.integrations.webChat || {}),
-    enabled: profile.integrations.webChatEnabled === true && next.integrations.webChat?.enabled === true,
     allowedOrigins: Array.isArray(next.integrations.webChat?.allowedOrigins)
       ? next.integrations.webChat.allowedOrigins
       : [],
   };
   next.integrations.calendar = {
     ...(next.integrations.calendar || {}),
-    enabled: profile.integrations.calendarEnabled === true && next.integrations.calendar?.enabled === true,
   };
 
-  next.commercial = {
-    ...(next.commercial || {}),
-    serviceProfile: profile.id,
-    serviceProfileName: profile.name,
-  };
-
-  // Provider-dependent and consent-dependent capabilities always fail closed.
-  if (next.integrations.sms.enabled !== true) {
-    next.features.callerTexting = false;
-    next.features.twoWaySms = false;
-    next.features.noShowGuard = false;
+  // Never allow live booking merely because RadarSchedule was selected.
+  if (next.policies.bookingMode !== "live_booking") {
+    next.integrations.calendar.enabled = false;
   }
-  if (next.integrations.webChat.enabled !== true) next.features.webChat = false;
-  if (next.policies.transcriptRetentionApproved !== true) next.features.transcriptHistory = false;
-  if (next.policies.bookingMode !== "live_booking") next.integrations.calendar.enabled = false;
 
   return next;
 }
