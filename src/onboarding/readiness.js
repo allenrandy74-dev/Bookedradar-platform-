@@ -46,6 +46,16 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   checks.push({ code: "email", ok: emailReady });
   if (email.enabled && !emailReady) add(blockers, "email", "Email is enabled but its adapter is not fully configured.");
 
+  const webChat = tenant?.integrations?.webChat || {};
+  const origins = Array.isArray(webChat.allowedOrigins) ? webChat.allowedOrigins.filter(Boolean) : [];
+  const webChatReady = !webChat.enabled || (
+    tenant?.features?.webChat === true &&
+    origins.length > 0 &&
+    origins.every(origin => /^https:\/\/[^\s/$.?#].[^\s]*$/i.test(String(origin)))
+  );
+  checks.push({ code: "web_chat", ok: webChatReady });
+  if (!webChatReady) add(blockers, "web_chat", "Web chat is enabled but its feature entitlement or HTTPS allowed origins are incomplete.");
+
   const booking = bookingAdapterForTenant(tenant, { env });
   const liveBooking = tenant?.policies?.bookingMode === "live_booking";
   const commercial = tenant?.commercial || {};
