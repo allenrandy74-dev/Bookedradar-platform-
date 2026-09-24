@@ -300,8 +300,8 @@ test('live BillingService rejects test objects and accepts live package objects'
   await service.processEvent({id:'evt_live_ok',livemode:true,type:'invoice.paid',data:{object:{id:'in_live_1',customer:'cus_live_1',parent:{subscription_details:{subscription:'sub_live_1'}}}}});
   assert.equal((await service.get('tenant1')).status,'active');
 
-  await assert.rejects(
-    service.processEvent({id:'evt_test_wrong',livemode:false,type:'invoice.paid',data:{object:{customer:'cus_live_1'}}}),
+  assert.throws(
+    () => service.processEvent({id:'evt_test_wrong',livemode:false,type:'invoice.paid',data:{object:{customer:'cus_live_1'}}}),
     /test_event_rejected/
   );
 });
