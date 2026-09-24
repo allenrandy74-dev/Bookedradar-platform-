@@ -645,6 +645,34 @@ async function executeTool({
     return { ok: true, ...result };
   }
 
+  if (name === "send_caller_text") {
+    const features = competitiveFeaturesForTenant(tenant);
+    const { adapters } = dispatcherFor(tenant);
+    if (!features.callerTexting || tenant?.integrations?.sms?.enabled !== true || !adapters.sms) {
+      return { ok: false, sent: false, reason: "caller_texting_not_ready" };
+    }
+    const existing = await state.getCall(callId);
+    const to = String(existing?.lastLead?.callback_number || callerNumber || "").trim();
+    if (!/^\+[1-9]\d{7,14}$/.test(to)) {
+      return { ok: false, sent: false, reason: "confirmed_callback_required" };
+    }
+    const contact = await recoveryStore.getContact(`${tenant.tenantId}:${to}`);
+    if (contact?.optedOut || contact?.suppressed) {
+      return { ok: false, sent: false, reason: "contact_suppressed" };
+    }
+    const content = String(args?.content || "").trim().slice(0, 480);
+    if (!content) return { ok: false, sent: false, reason: "message_required" };
+    const result = await adapters.sms.send({ contact: { phone: to }, content });
+    console.log(JSON.stringify({
+      event: "caller_text.sent",
+      tenant_id: tenant.tenantId,
+      call_id: callId,
+      to: maskPhone(to),
+      provider: result?.provider || null,
+    }));
+    return { ok: true, sent: true, provider: result?.provider || "sms" };
+  }
+
   if (name === "end_call") {
     if (!competitiveFeaturesForTenant(tenant).spamScreening) {
       return { ok: false, ended: false, reason: "spam_screening_not_enabled" };
