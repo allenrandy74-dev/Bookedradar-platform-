@@ -148,3 +148,15 @@ test('ACH-first Checkout subscriptions also accept later card updates through th
   assert.equal(updates, 1);
   assert.deepEqual(f.sub.payment_settings.payment_method_types, ['us_bank_account', 'card']);
 });
+
+
+test('portal cancellation with cancel_at timestamp is recognized at the paid period end', async t => {
+  const f = await fixture(t); await f.enroll();
+  f.sub.cancel_at_period_end = false;
+  f.sub.cancel_at = f.sub.items.data[0].current_period_end;
+  await f.service.processEvent(f.event('evt_timestamp', 'customer.subscription.updated'));
+  const a = await f.service.get('tenant1');
+  assert.equal(a.status, 'active');
+  assert.equal(a.cancelAtPeriodEnd, true);
+  assert.equal(a.scheduledCancellationAt, f.sub.cancel_at);
+});

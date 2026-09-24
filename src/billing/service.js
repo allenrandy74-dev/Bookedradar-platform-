@@ -115,8 +115,9 @@ export class BillingService {
       if ((a.retiredSubscriptionIds || []).includes(sub.id)) return { ignored: true };
       if (a.subscriptionId && a.subscriptionId !== sub.id) a.retiredSubscriptionIds = [...(a.retiredSubscriptionIds || []), a.subscriptionId];
       a.subscriptionId = sub.id; a.stripeStatus = sub.status; a.status = billingState(sub);
-      a.cancelAtPeriodEnd = sub.cancel_at_period_end === true;
       a.currentPeriodEnd = items[0].current_period_end || sub.current_period_end || null;
+      a.scheduledCancellationAt = sub.cancel_at || (sub.cancel_at_period_end ? a.currentPeriodEnd : null);
+      a.cancelAtPeriodEnd = sub.cancel_at_period_end === true || Boolean(sub.cancel_at && sub.cancel_at === a.currentPeriodEnd);
       a.latestInvoiceId = id(sub.latest_invoice) || null;
       a.invoiceStatus = sub.latest_invoice?.status || null;
       a.needsPaymentAttention = a.status === 'past_due' || (sub.latest_invoice?.status === 'open' && sub.latest_invoice?.attempt_count > 0);
