@@ -118,6 +118,30 @@
   "commercial": {
     "serviceTier": "founding_partner_pilot",
     "schedulingApproved": false,
-    "schedulingAgreementReference": ""
+    "schedulingAgreementReference": "",
+    "serviceProfile": "recover",
+    "serviceProfileName": "RadarRecover",
+    "entitlements": {
+      "callerMemory": true,
+      "spamScreening": true,
+      "transcriptHistory": true,
+      "callerTexting": true,
+      "twoWaySms": true,
+      "webChat": true,
+      "knowledgeGapLearning": true,
+      "membershipRadar": false,
+      "noShowGuard": false,
+      "reviewRadar": true,
+      "languages": [
+        "en",
+        "es"
+      ]
+    },
+    "pricing": {
+      "monthlyUsd": 497,
+      "standardSetupUsd": 499,
+      "foundingMonthlyUsd": 397,
+      "foundingSetupUsd": 0
+    }
   }
 }
