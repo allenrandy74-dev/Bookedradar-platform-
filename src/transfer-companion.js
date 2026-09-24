@@ -59,7 +59,7 @@ export function createTransferCompanion({ config, log, fetchImpl = fetch,
 // Only transfer-time VAD is paused; the original session settings are restored
 // if REFER fails. Missing playback acknowledgments must never replay speech.
 export function createTransferHold({ send: deliver, log, restoreTurnDetection }) {
-  let active = false, responseId, originalVad, requestNumber = 0;
+  let active = false, responseId, activeConversationResponseId, originalVad, requestNumber = 0;
   const tag = 'bookedradar_transfer_hold';
   function send(event) {
     try { deliver(event); }
@@ -80,12 +80,23 @@ export function createTransferHold({ send: deliver, log, restoreTurnDetection })
       if (active) return;
       active = true;
       if (originalVad) send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: { ...originalVad, create_response: false, interrupt_response: false } } } } });
-      send({ type: 'response.cancel' });
+      // Only cancel when Realtime has told us a conversation response is active.
+      // Sending response.cancel with no active response produces response_cancel_not_active.
+      if (activeConversationResponseId) {
+        send({ type: 'response.cancel', response_id: activeConversationResponseId });
+        activeConversationResponseId = undefined;
+      }
       log('transfer.hold_requested');
       request();
     },
     event(event) {
       if (!active && ['session.created', 'session.updated'].includes(event.type)) originalVad = event.session?.audio?.input?.turn_detection;
+      if (!active && event.type === 'response.created' && event.response?.metadata?.purpose !== tag) {
+        activeConversationResponseId = event.response?.id;
+      }
+      if (!active && event.type === 'response.done' && event.response?.id === activeConversationResponseId) {
+        activeConversationResponseId = undefined;
+      }
       if (event.type === 'response.created' && event.response?.metadata?.purpose === tag) {
         if (!active || event.response.metadata.sequence !== String(requestNumber)) {
           send({ type: 'response.cancel', response_id: event.response.id });
