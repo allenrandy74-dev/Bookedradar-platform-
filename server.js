@@ -53,6 +53,7 @@ import { normalizeIntake, isOptOutText } from "./src/intake.js";
 import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
+import { deploymentPlan } from "./src/onboarding/deployment-plan.js";
 import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
 import {
   WebChatStore,
@@ -1653,6 +1654,22 @@ app.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTe
       : res.status(404).json({ ok: false, error: "cancellation_opportunity_not_found" });
   } catch {
     return res.status(500).json({ ok: false, error: "backfill_candidate_query_failed" });
+  }
+});
+
+app.get("/api/v1/deployment-plan", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const foundingPartner = String(req.query.founding || "true").toLowerCase() !== "false";
+    return res.json({
+      ok: true,
+      plan: deploymentPlan(req.bookedRadarTenant, { foundingPartner }),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: "deployment_plan_failed",
+      message: String(error?.message || error).slice(0, 200),
+    });
   }
 });
 
