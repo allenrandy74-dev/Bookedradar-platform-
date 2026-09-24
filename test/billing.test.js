@@ -239,3 +239,78 @@ test('price catalog maps configured package Stripe ids to published amounts', ()
   assert.equal(catalog.schedule.founding.expectedAmountCents,79700);
   assert.equal(catalog.recover.standard.expectedAmountCents,49700);
 });
+
+
+test('live billing requires an explicit second arm and live credentials', async t => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-config-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const base={
+    BOOKEDRADAR_BILLING_ENABLED:'true',
+    BOOKEDRADAR_BILLING_MODE:'live',
+    STRIPE_SECRET_KEY:'sk_live_fake',
+    STRIPE_WEBHOOK_SECRET:'whsec_live_secret',
+    STRIPE_PRICE_RECOVER_STANDARD:'price_live_recover',
+    STRIPE_PORTAL_CONFIGURATION:'bpc_live',
+    BILLING_PUBLIC_BASE_URL:'https://example.com',
+    BOOKEDRADAR_BILLING_ADMIN_TOKEN:'x'.repeat(40),
+  };
+  await assert.rejects(
+    createBilling({env:base,tenantExists:()=>true,defaultStateFile:path.join(dir,'live.json')}),
+    /live_billing_not_armed/
+  );
+  await assert.rejects(
+    createBilling({env:{...base,BOOKEDRADAR_BILLING_LIVE_ARMED:'true',STRIPE_SECRET_KEY:'sk_test_wrong'},tenantExists:()=>true,defaultStateFile:path.join(dir,'live2.json')}),
+    /live_billing_configuration_invalid/
+  );
+});
+
+test('live BillingService rejects test objects and accepts live package objects', async t => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-service-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const store=await new BillingStore(path.join(dir,'state.json'),{mode:'live'}).load();
+  const checkouts=[];
+  const sub={
+    id:'sub_live_1',livemode:true,customer:'cus_live_1',status:'active',
+    payment_settings:{payment_method_types:['us_bank_account','card']},
+    metadata:{bookedradar_tenant_id:'tenant1',bookedradar_mode:'live',bookedradar_profile:'recover'},
+    items:{data:[{price:{id:'price_live_recover'},quantity:1,current_period_end:2000000000}]},
+    latest_invoice:{id:'in_live_1',status:'paid',amount_paid:49700,currency:'usd'}
+  };
+  const stripe={
+    customers:{create:async()=>({id:'cus_live_1',livemode:true})},
+    prices:{retrieve:async()=>({livemode:true,active:true,currency:'usd',unit_amount:49700,recurring:{interval:'month',interval_count:1}})},
+    subscriptions:{list:async()=>({data:[]}),retrieve:async()=>structuredClone(sub)},
+    checkout:{sessions:{
+      create:async params=>{const s={id:'cs_live_1',livemode:true,status:'open',url:'https://checkout.stripe.com/live',params};checkouts.push(s);return s;},
+      retrieve:async()=>checkouts[0],expire:async()=>{}
+    }},
+    billingPortal:{sessions:{create:async()=>({url:'https://billing.stripe.com/live'})}}
+  };
+  const service=new BillingService({
+    stripe,store,mode:'live',priceId:'price_live_recover',
+    priceCatalog:{recover:{standard:{priceId:'price_live_recover',profileName:'RadarRecover',monthlyUsd:497,expectedAmountCents:49700,setupFeeUsd:499}}},
+    tenantProfile:()=> 'recover',tenantExists:()=>true,portalConfiguration:'bpc_live',baseUrl:'https://example.com'
+  });
+  const account=await service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:false});
+  assert.equal(account.mode,'live');
+  const checkout=await service.checkout('tenant1');
+  assert.equal(checkout.mode,'live');
+  assert.equal(checkouts[0].metadata.bookedradar_mode,'live');
+
+  await service.processEvent({id:'evt_live_ok',livemode:true,type:'invoice.paid',data:{object:{id:'in_live_1',customer:'cus_live_1',parent:{subscription_details:{subscription:'sub_live_1'}}}}});
+  assert.equal((await service.get('tenant1')).status,'active');
+
+  await assert.rejects(
+    service.processEvent({id:'evt_test_wrong',livemode:false,type:'invoice.paid',data:{object:{customer:'cus_live_1'}}}),
+    /test_event_rejected/
+  );
+});
+
+test('billing stores keep test and live state isolated', async t => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-store-mode-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const file=path.join(dir,'state.json');
+  const testStore=await new BillingStore(file,{mode:'test'}).load();
+  await testStore.transaction(data=>{data.accounts.a={tenantId:'a'};return true;});
+  await assert.rejects(new BillingStore(file,{mode:'live'}).load(),/invalid_billing_store/);
+});
