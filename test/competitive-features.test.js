@@ -14,6 +14,7 @@ test("competitive features are off by default without changing the proven call p
     callerMemory: false,
     spamScreening: false,
     transcriptHistory: false,
+    callerTexting: false,
     languages: ["en"],
   });
   assert.equal(inputTranscriptionForTenant({}), null);
@@ -22,7 +23,7 @@ test("competitive features are off by default without changing the proven call p
 
 test("Spanish, transcript history and spam screening are opt-in tenant features", () => {
   const tenant = {
-    features: { languages: ["en", "es", "xx"], transcriptHistory: true, spamScreening: true },
+    features: { languages: ["en", "es", "xx"], transcriptHistory: true, spamScreening: true, callerTexting: true },
     policies: { transcriptRetentionApproved: true },
   };
   assert.deepEqual(competitiveFeaturesForTenant(tenant).languages, ["en", "es"]);
@@ -63,4 +64,13 @@ test("transcript history remains disabled until explicitly approved", () => {
   };
   assert.equal(competitiveFeaturesForTenant(requested).transcriptHistory, false);
   assert.equal(inputTranscriptionForTenant(requested), null);
+});
+
+
+test("caller texting tool appears only when SMS is enabled", () => {
+  const base = [{ name: "capture_lead" }];
+  const requested = { features: { callerTexting: true } };
+  assert.equal(toolsForTenant(base, requested).some(tool => tool.name === "send_caller_text"), false);
+  const enabled = { features: { callerTexting: true }, integrations: { sms: { enabled: true } } };
+  assert.equal(toolsForTenant(base, enabled).some(tool => tool.name === "send_caller_text"), true);
 });
