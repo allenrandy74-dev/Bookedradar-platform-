@@ -42,3 +42,18 @@ test("deployable capability report reflects actual enabled state, not requested 
   assert.equal(report.webChat,false);
   assert.equal(report.bilingualEnglishSpanish,true);
 });
+
+
+test("service profile pricing is explicit and founding pricing is not higher than standard", () => {
+  for (const id of ["answer","recover","grow","schedule"]) {
+    const p=serviceProfile(id);
+    assert.ok(Number.isFinite(p.pricing.monthlyUsd));
+    assert.ok(Number.isFinite(p.pricing.standardSetupUsd));
+    assert.ok(p.pricing.foundingMonthlyUsd <= p.pricing.monthlyUsd);
+    assert.equal(p.pricing.foundingSetupUsd,0);
+  }
+  assert.equal(serviceProfile("answer").pricing.monthlyUsd,149);
+  assert.equal(serviceProfile("recover").pricing.monthlyUsd,497);
+  assert.equal(serviceProfile("grow").pricing.monthlyUsd,697);
+  assert.equal(serviceProfile("schedule").pricing.monthlyUsd,897);
+});
