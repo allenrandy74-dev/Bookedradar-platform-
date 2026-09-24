@@ -184,6 +184,7 @@ await webChatStore.load();
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
 const billing = await createBilling({
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
+  tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
   defaultStateFile: path.join(path.dirname(STATE_FILE), 'billing-test-state.json'),
 });
 app.post('/stripe/webhook', (req, res) => billing
