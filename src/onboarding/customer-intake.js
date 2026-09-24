@@ -95,6 +95,9 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       twoWaySms: true,
       webChat: true,
       knowledgeGapLearning: true,
+      membershipRadar: false,
+      noShowGuard: false,
+      reviewRadar: true,
       languages: ["en", "es"],
     },
     commercial: {
