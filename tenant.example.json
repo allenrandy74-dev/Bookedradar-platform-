@@ -96,7 +96,8 @@
     ],
     "callerTexting": true,
     "twoWaySms": true,
-    "webChat": true
+    "webChat": true,
+    "knowledgeGapLearning": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
