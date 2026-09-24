@@ -9,7 +9,7 @@ export const SERVICE_PROFILES = Object.freeze({
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
-      transcriptHistory: false,
+      transcriptHistory: true,
       callerTexting: false,
       twoWaySms: false,
       webChat: false,
@@ -38,7 +38,7 @@ export const SERVICE_PROFILES = Object.freeze({
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
-      transcriptHistory: false,
+      transcriptHistory: true,
       callerTexting: true,
       twoWaySms: true,
       webChat: true,
@@ -67,7 +67,7 @@ export const SERVICE_PROFILES = Object.freeze({
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
-      transcriptHistory: false,
+      transcriptHistory: true,
       callerTexting: true,
       twoWaySms: true,
       webChat: true,
@@ -96,7 +96,7 @@ export const SERVICE_PROFILES = Object.freeze({
     features: Object.freeze({
       callerMemory: true,
       spamScreening: true,
-      transcriptHistory: false,
+      transcriptHistory: true,
       callerTexting: true,
       twoWaySms: true,
       webChat: true,
