@@ -63,10 +63,13 @@ Do not enable customer traffic until the customer's own tenant passes applicable
 - [x] Live-booking readiness requires separately approved scope/agreement plus a booking adapter
 - [x] Afternoon acceptance-call instructions prepared (AFTERNOON_ACCEPTANCE_CALLS.md)
 - [x] Pilot incident/rollback procedure prepared (PILOT_OPERATIONS_RUNBOOK.md)
-- [ ] Publish these revised boundaries on the existing Wix offer/FAQ and hosted onboarding form
+- [x] Existing Wix Quick Start form updated with pilot appointment-request boundary and separate scheduling quote/agreement language (form revision 3; all 15 fields retained)
+- [ ] Publish revised boundaries on the existing Wix offer/FAQ and verify the public onboarding entry point
 - [ ] Verify live monitoring/alert receipt and protected backup/isolated production restore
 
 Repository documentation is not proof that website copy or a Wix form was published.
 The commercial worksheet is not a reviewed or signed contract. Live billing remains
 intentionally disabled in the app. No test call or handset SMS delivery is marked
 complete by this closeout.
+
+Deployment verification: commit `0dea5f4` is live on Render; `/health` returned 200, billingMode=test, voiceEnabled=true, and no application error logs were returned for the deployment window. All 133 tests passed before deployment. Wix Quick Start schema update succeeded; this does not verify the form is attached to a public page.
