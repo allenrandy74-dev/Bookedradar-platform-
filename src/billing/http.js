@@ -39,6 +39,13 @@ function buildPriceCatalog(env) {
   return catalog;
 }
 
+function completePublishedCatalog(priceCatalog) {
+  return PROFILE_IDS.every(profileId =>
+    Boolean(priceCatalog?.[profileId]?.standard?.priceId) &&
+    Boolean(priceCatalog?.[profileId]?.founding?.priceId)
+  );
+}
+
 function anyConfiguredPrice(priceCatalog, legacyPriceId = '') {
   if (legacyPriceId?.startsWith('price_')) return true;
   return Object.values(priceCatalog).some(plans =>
@@ -61,6 +68,9 @@ export async function createBilling({
   }
 
   const priceCatalog = buildPriceCatalog(env);
+  if (mode === 'live' && !completePublishedCatalog(priceCatalog)) {
+    throw new Error('live_package_prices_incomplete');
+  }
   const keyPattern = mode === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
   if (
     !keyPattern.test(env.STRIPE_SECRET_KEY || '') ||
@@ -95,6 +105,10 @@ export async function createBilling({
     baseUrl: baseUrl.origin,
     mode,
   });
+
+  const validatedPackagePrices = mode === 'live'
+    ? await service.validateConfiguredPriceCatalog()
+    : null;
 
   const api = express.Router();
   api.use(requireBearer(
@@ -158,6 +172,7 @@ export async function createBilling({
     webhook,
     service,
     billingMode: mode,
+    validatedPackagePrices,
     configuredPackagePrices: Object.fromEntries(
       Object.entries(priceCatalog).map(([profileId, plans]) => [
         profileId,
