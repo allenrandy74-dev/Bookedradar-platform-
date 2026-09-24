@@ -80,6 +80,10 @@
     "calendar": {
       "type": "customer_specific",
       "enabled": false
+    },
+    "webChat": {
+      "enabled": false,
+      "allowedOrigins": []
     }
   },
   "features": {
@@ -91,7 +95,8 @@
       "es"
     ],
     "callerTexting": true,
-    "twoWaySms": true
+    "twoWaySms": true,
+    "webChat": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
