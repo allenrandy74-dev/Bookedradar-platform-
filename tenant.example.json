@@ -90,7 +90,8 @@
       "en",
       "es"
     ],
-    "callerTexting": true
+    "callerTexting": true,
+    "twoWaySms": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
