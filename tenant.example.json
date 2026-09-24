@@ -48,7 +48,8 @@
       "allowTransactionalWhenInbound": true
     },
     "recordCalls": false,
-    "quotePrices": false
+    "quotePrices": false,
+    "transcriptRetentionApproved": false
   },
   "economics": {
     "defaultAverageJobValue": 450,
@@ -80,5 +81,19 @@
       "type": "customer_specific",
       "enabled": false
     }
+  },
+  "features": {
+    "callerMemory": true,
+    "spamScreening": true,
+    "transcriptHistory": false,
+    "languages": [
+      "en",
+      "es"
+    ]
+  },
+  "commercial": {
+    "serviceTier": "founding_partner_pilot",
+    "schedulingApproved": false,
+    "schedulingAgreementReference": ""
   }
 }
