@@ -54,15 +54,22 @@ export async function createBilling({
 }) {
   if (env.BOOKEDRADAR_BILLING_ENABLED !== 'true') return null;
 
+  const mode = String(env.BOOKEDRADAR_BILLING_MODE || 'test').trim().toLowerCase();
+  if (!['test', 'live'].includes(mode)) throw new Error('billing_mode_invalid');
+  if (mode === 'live' && env.BOOKEDRADAR_BILLING_LIVE_ARMED !== 'true') {
+    throw new Error('live_billing_not_armed');
+  }
+
   const priceCatalog = buildPriceCatalog(env);
+  const keyPattern = mode === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
   if (
-    !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY || '') ||
+    !keyPattern.test(env.STRIPE_SECRET_KEY || '') ||
     !env.STRIPE_WEBHOOK_SECRET?.startsWith('whsec_') ||
     !anyConfiguredPrice(priceCatalog, env.STRIPE_PRICE_ID) ||
     !env.STRIPE_PORTAL_CONFIGURATION?.startsWith('bpc_') ||
     (env.BOOKEDRADAR_BILLING_ADMIN_TOKEN || '').length < 32
   ) {
-    throw new Error('test_billing_configuration_invalid');
+    throw new Error(mode === 'live' ? 'live_billing_configuration_invalid' : 'test_billing_configuration_invalid');
   }
 
   const baseUrl = new URL(env.BILLING_PUBLIC_BASE_URL);
@@ -73,7 +80,8 @@ export async function createBilling({
     timeout: 10000,
   });
   const store = await new BillingStore(
-    env.BILLING_STATE_FILE || defaultStateFile
+    env.BILLING_STATE_FILE || defaultStateFile,
+    { mode }
   ).load();
 
   const service = new BillingService({
@@ -85,6 +93,7 @@ export async function createBilling({
     priceCatalog,
     portalConfiguration: env.STRIPE_PORTAL_CONFIGURATION,
     baseUrl: baseUrl.origin,
+    mode,
   });
 
   const api = express.Router();
@@ -148,6 +157,7 @@ export async function createBilling({
     api,
     webhook,
     service,
+    billingMode: mode,
     configuredPackagePrices: Object.fromEntries(
       Object.entries(priceCatalog).map(([profileId, plans]) => [
         profileId,
