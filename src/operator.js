@@ -67,6 +67,7 @@ export function buildOperatorInstructions({
   services = [],
   localTime = "",
   businessHoursText = "",
+  timeZone = "America/Chicago",
   safetyRule = "",
   urgentDefinition = "",
   businessInstructions = "",
@@ -78,7 +79,7 @@ export function buildOperatorInstructions({
 
   const bookingRule =
     bookingMode === "live_booking"
-      ? "You may check live availability and create an appointment only through the booking tools. Never claim a booking succeeded unless the tool confirms it."
+      ? `You may check live availability and create an appointment only through the booking tools. Never claim a booking succeeded unless the tool confirms it. Before check_availability, translate the caller's requested date/time into concrete RFC3339 window_start and window_end values using business timezone ${timeZone}. Use the returned slot id exactly when calling book_appointment. Never invent a slot.`
       : "Live booking is not enabled. Collect the preferred window and say a team member will confirm it.";
 
   const pricingRule = quotePrices
@@ -213,6 +214,9 @@ export const tools = [
       properties: {
         service_type: { type: "string" },
         preferred_window: { type: "string" },
+        window_start: { type: "string", description: "Concrete RFC3339 start of the availability search window when live booking is enabled." },
+        window_end: { type: "string", description: "Concrete RFC3339 end of the availability search window when live booking is enabled." },
+        duration_minutes: { type: "integer", description: "Requested service duration in minutes when known; otherwise the tenant default is used." },
         service_address: { type: "string" },
         city: { type: "string" },
       },
