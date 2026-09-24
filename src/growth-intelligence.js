@@ -224,3 +224,135 @@ export async function radarTrust(store, tenant, { callActivity = null } = {}) {
     principle: "BookedRadar should act only within approved tenant permissions, preserve evidence of blocked/cancelled automation, and escalate uncertainty instead of inventing business facts.",
   };
 }
+
+
+function maskPhone(phone = "") {
+  const digits = String(phone).replace(/\D/g, "");
+  return digits.length >= 4 ? `***${digits.slice(-4)}` : "";
+}
+
+function maskEmail(email = "") {
+  const [local, domain] = String(email).split("@");
+  if (!local || !domain) return "";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
+export async function cancellationBackfillCandidates(store, tenantId, cancellationOpportunityId, { now = new Date() } = {}) {
+  const data = await store.snapshot();
+  const cancelled = data.opportunities?.[cancellationOpportunityId];
+  if (!cancelled || cancelled.tenantId !== tenantId || cancelled.type !== "appointment_cancelled") return null;
+
+  const city = String(cancelled.metadata?.city || "").trim().toLowerCase();
+  const serviceType = String(cancelled.serviceType || "").trim().toLowerCase();
+  const nowMs = now.getTime();
+
+  const candidates = Object.values(data.opportunities || {})
+    .filter(item => item.tenantId === tenantId && item.type === "earlier_slot_requested" && item.status !== "closed")
+    .filter(item => {
+      const expires = Date.parse(item.metadata?.expiresAt || "");
+      if (Number.isFinite(expires) && expires < nowMs) return false;
+      const candidateCity = String(item.metadata?.city || "").trim().toLowerCase();
+      const candidateService = String(item.serviceType || "").trim().toLowerCase();
+      if (city && candidateCity && city !== candidateCity) return false;
+      if (serviceType && candidateService && serviceType !== candidateService) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .slice(0, 20)
+    .map(item => {
+      const contact = data.contacts?.[item.contactKey] || {};
+      return {
+        opportunityId: item.id,
+        requestedAt: item.createdAt,
+        serviceType: item.serviceType || "",
+        city: item.metadata?.city || "",
+        preferredWindow: item.metadata?.preferredWindow || "",
+        urgency: item.urgency || "",
+        contact: {
+          name: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" "),
+          phone: maskPhone(contact.phone),
+          email: maskEmail(contact.email),
+        },
+      };
+    });
+
+  return {
+    cancellationOpportunityId,
+    releasedSlot: cancelled.metadata?.scheduledFor || "",
+    city: cancelled.metadata?.city || "",
+    serviceType: cancelled.serviceType || "",
+    candidateCount: candidates.length,
+    candidates,
+    action: "Review candidates before contacting anyone. Matching does not itself send a message or change an appointment.",
+  };
+}
+
+export async function reviewRadar(store, tenantId) {
+  const data = await store.snapshot();
+  const jobs = Object.values(data.opportunities || {})
+    .filter(item => item.tenantId === tenantId && item.type === "job_completed" && item.status !== "closed");
+
+  const eligible = [];
+  const needsReview = [];
+  for (const job of jobs) {
+    const contact = data.contacts?.[job.contactKey] || {};
+    const meta = job.metadata || {};
+    const summary = {
+      opportunityId: job.id,
+      jobId: meta.jobId || "",
+      serviceType: job.serviceType || "",
+      completedAt: meta.completedAt || job.createdAt,
+      customerName: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" "),
+    };
+    if (meta.complaintOpen === true) {
+      needsReview.push({ ...summary, reason: "open_complaint" });
+    } else if (meta.customerSatisfactionKnown === true && meta.customerSatisfied === true) {
+      eligible.push(summary);
+    } else {
+      needsReview.push({ ...summary, reason: "satisfaction_not_confirmed" });
+    }
+  }
+
+  return {
+    tenantId,
+    eligibleCount: eligible.length,
+    needsReviewCount: needsReview.length,
+    eligible,
+    needsReview,
+    rule: "RadarReview never treats an unknown or unhappy customer as an automatic public-review candidate.",
+  };
+}
+
+export async function membershipRadar(store, tenantId, { now = new Date() } = {}) {
+  const data = await store.snapshot();
+  const nowMs = now.getTime();
+  const items = Object.values(data.opportunities || {})
+    .filter(item => item.tenantId === tenantId && item.type === "membership_renewal_due" && item.status !== "closed")
+    .map(item => {
+      const contact = data.contacts?.[item.contactKey] || {};
+      const renewalMs = Date.parse(item.metadata?.renewalDate || "");
+      const daysUntilRenewal = Number.isFinite(renewalMs)
+        ? Math.ceil((renewalMs - nowMs) / 86400000)
+        : null;
+      return {
+        opportunityId: item.id,
+        membershipId: item.metadata?.membershipId || "",
+        membershipName: item.metadata?.membershipName || "",
+        renewalDate: item.metadata?.renewalDate || "",
+        daysUntilRenewal,
+        customerName: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" "),
+        estimatedOpportunityValue: Number(item.estimatedOpportunityValue || 0),
+      };
+    })
+    .sort((a, b) => {
+      if (a.daysUntilRenewal == null) return 1;
+      if (b.daysUntilRenewal == null) return -1;
+      return a.daysUntilRenewal - b.daysUntilRenewal;
+    });
+
+  return {
+    tenantId,
+    renewalCount: items.length,
+    renewals: items,
+  };
+}
