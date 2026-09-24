@@ -295,7 +295,7 @@ test('live BillingService rejects test objects and accepts live package objects'
   assert.equal(account.mode,'live');
   const checkout=await service.checkout('tenant1');
   assert.equal(checkout.mode,'live');
-  assert.equal(checkouts[0].metadata.bookedradar_mode,'live');
+  assert.equal(checkouts[0].params.metadata.bookedradar_mode,'live');
 
   await service.processEvent({id:'evt_live_ok',livemode:true,type:'invoice.paid',data:{object:{id:'in_live_1',customer:'cus_live_1',parent:{subscription_details:{subscription:'sub_live_1'}}}}});
   assert.equal((await service.get('tenant1')).status,'active');
