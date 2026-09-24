@@ -1,6 +1,7 @@
 import { humanTransferTarget } from "../recovery/tenant-registry.js";
 import { validateTenant } from "../recovery/tenant.js";
 import { buildTenantAdapters, bookingAdapterForTenant, wixCredentialsForTenant } from "../integrations/tenant-adapters.js";
+import { serviceProfile } from "./service-profiles.js";
 
 function add(items, code, message) {
   items.push({ code, message });
@@ -14,6 +15,36 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   const base = validateTenant(tenant);
   checks.push({ code: "tenant_schema", ok: base.valid });
   for (const message of base.errors) add(blockers, "tenant_schema", message);
+
+  let selectedProfile = null;
+  try {
+    selectedProfile = serviceProfile(tenant?.commercial?.serviceProfile || "");
+  } catch {}
+  const profileReady = Boolean(selectedProfile);
+  checks.push({ code: "service_profile", ok: profileReady });
+  if (!profileReady) {
+    add(blockers, "service_profile", "A valid BookedRadar service profile is required before activation.");
+  } else {
+    const entitlements = selectedProfile.features || {};
+    const active = tenant?.features || {};
+    const entitlementChecks = [
+      ["callerMemory", "caller memory"],
+      ["spamScreening", "spam screening"],
+      ["transcriptHistory", "transcript history"],
+      ["callerTexting", "in-call texting"],
+      ["twoWaySms", "two-way SMS"],
+      ["webChat", "web chat"],
+      ["knowledgeGapLearning", "Knowledge Gap Radar"],
+      ["membershipRadar", "Membership Radar"],
+      ["noShowGuard", "No-Show Guard"],
+      ["reviewRadar", "Review Radar"],
+    ];
+    for (const [key, label] of entitlementChecks) {
+      if (active[key] === true && entitlements[key] !== true) {
+        add(blockers, "service_profile_entitlement", `${label} is active but is not included in the selected service profile.`);
+      }
+    }
+  }
 
   const hours = tenant?.businessHours || {};
   const hasHours = Object.keys(hours).length > 0;
