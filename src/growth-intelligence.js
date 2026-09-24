@@ -356,3 +356,93 @@ export async function membershipRadar(store, tenantId, { now = new Date() } = {}
     renewals: items,
   };
 }
+
+
+export async function customer360(store, tenantId, contactKey) {
+  const data = await store.snapshot();
+  const normalizedKey = String(contactKey || "");
+  if (!normalizedKey.startsWith(`${tenantId}:`)) return null;
+  const contact = data.contacts?.[normalizedKey];
+  if (!contact || contact.tenantId !== tenantId) return null;
+
+  const opportunities = Object.values(data.opportunities || {})
+    .filter(item => item.tenantId === tenantId && item.contactKey === normalizedKey)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
+  const properties = [];
+  const seenProperties = new Set();
+  for (const item of opportunities) {
+    const address = String(item.metadata?.serviceAddress || "").trim();
+    const city = String(item.metadata?.city || "").trim();
+    const key = `${address.toLowerCase()}|${city.toLowerCase()}`;
+    if ((address || city) && !seenProperties.has(key)) {
+      seenProperties.add(key);
+      properties.push({ serviceAddress: address, city });
+    }
+  }
+
+  const summaries = opportunities.slice(0, 12).map(item => ({
+    opportunityId: item.id,
+    type: item.type,
+    status: item.status,
+    outcome: item.outcome || null,
+    source: item.source || "",
+    serviceType: item.serviceType || "",
+    urgency: item.urgency || "",
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    preferredWindow: item.metadata?.preferredWindow || "",
+    notes: String(item.metadata?.notes || "").slice(0, 600),
+    estimatedOpportunityValue: Number(item.estimatedOpportunityValue || 0),
+    recovered: Boolean(item.recovered),
+  }));
+
+  return {
+    tenantId,
+    contactKey: normalizedKey,
+    customer: {
+      name: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" "),
+      phone: maskPhone(contact.phone),
+      email: maskEmail(contact.email),
+      optedOut: contact.optedOut === true,
+      suppressed: contact.suppressed === true,
+    },
+    properties,
+    openOpportunities: summaries.filter(item => item.status !== "closed"),
+    recentHistory: summaries,
+    openEstimates: summaries.filter(item => item.type === "estimate_sent" && item.status !== "closed"),
+    membershipRenewals: summaries.filter(item => item.type === "membership_renewal_due" && item.status !== "closed"),
+    technicianBrief: {
+      lastServiceType: summaries.find(item => item.serviceType)?.serviceType || "",
+      currentUrgency: summaries.find(item => item.status !== "closed" && item.urgency)?.urgency || "",
+      latestNotes: summaries.find(item => item.notes)?.notes || "",
+      openOpportunityCount: summaries.filter(item => item.status !== "closed").length,
+    },
+  };
+}
+
+export async function searchCustomers(store, tenantId, query, { limit = 20 } = {}) {
+  const data = await store.snapshot();
+  const needle = String(query || "").trim().toLowerCase();
+  if (!needle) return [];
+  const results = [];
+  for (const [key, contact] of Object.entries(data.contacts || {})) {
+    if (contact.tenantId !== tenantId || !key.startsWith(`${tenantId}:`)) continue;
+    const haystack = [
+      contact.name,
+      contact.firstName,
+      contact.lastName,
+      contact.phone,
+      contact.email,
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (!haystack.includes(needle)) continue;
+    results.push({
+      contactKey: key,
+      name: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" "),
+      phone: maskPhone(contact.phone),
+      email: maskEmail(contact.email),
+    });
+    if (results.length >= Math.min(Math.max(Number(limit) || 20, 1), 50)) break;
+  }
+  return results;
+}
