@@ -7,7 +7,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { BillingStore } from '../src/billing/store.js';
 import { BillingService } from '../src/billing/service.js';
-import { createBilling } from '../src/billing/http.js';
+import { buildPriceCatalog, createBilling } from '../src/billing/http.js';
 
 async function fixture(t) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'br-billing-'));
@@ -159,4 +159,83 @@ test('portal cancellation with cancel_at timestamp is recognized at the paid per
   assert.equal(a.status, 'active');
   assert.equal(a.cancelAtPeriodEnd, true);
   assert.equal(a.scheduledCancellationAt, f.sub.cancel_at);
+});
+
+
+test('package-aware founding checkout validates exact selected price and profile', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'br-billing-packages-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = await new BillingStore(path.join(dir, 'state.json')).load();
+  const created = [];
+  const amounts = {
+    price_answer_f: 14900,
+    price_recover_f: 39700,
+    price_grow_f: 59700,
+    price_schedule_f: 79700,
+  };
+  const stripe = {
+    customers: { create: async params => ({ id: 'cus_pkg', livemode: false, params }) },
+    prices: { retrieve: async id => ({ livemode:false,active:true,currency:'usd',unit_amount:amounts[id],recurring:{interval:'month',interval_count:1} }) },
+    subscriptions: { list: async () => ({ data: [] }) },
+    checkout: { sessions: {
+      create: async params => { created.push(params); return { id:'cs_pkg',livemode:false,status:'open',url:'https://checkout.stripe.com/test' }; },
+      retrieve: async () => ({ id:'cs_pkg',status:'open',url:'https://checkout.stripe.com/test' }),
+      expire: async () => {},
+    } },
+    billingPortal: { sessions: { create: async () => ({ url:'https://billing.stripe.com/test' }) } },
+  };
+  const priceCatalog = {
+    answer:{founding:{priceId:'price_answer_f',profileName:'RadarAnswer',monthlyUsd:149,expectedAmountCents:14900,setupFeeUsd:0}},
+    recover:{founding:{priceId:'price_recover_f',profileName:'RadarRecover',monthlyUsd:397,expectedAmountCents:39700,setupFeeUsd:0}},
+    grow:{founding:{priceId:'price_grow_f',profileName:'RadarGrow',monthlyUsd:597,expectedAmountCents:59700,setupFeeUsd:0}},
+    schedule:{founding:{priceId:'price_schedule_f',profileName:'RadarSchedule',monthlyUsd:797,expectedAmountCents:79700,setupFeeUsd:0}},
+  };
+  const service = new BillingService({
+    stripe,store,priceCatalog,priceId:'price_legacy',
+    portalConfiguration:'bpc_test',baseUrl:'https://example.com',
+    tenantExists:id=>id==='tenant1',
+    tenantProfile:()=> 'recover',
+  });
+  const account=await service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:true});
+  assert.equal(account.monthlyUsd,397);
+  assert.equal(account.priceId,'price_recover_f');
+  const checkout=await service.checkout('tenant1');
+  assert.equal(checkout.monthlyUsd,397);
+  assert.equal(created[0].line_items[0].price,'price_recover_f');
+  assert.match(created[0].custom_text.submit.message,/\$397\/month/);
+});
+
+test('package billing rejects profile mismatch and missing configured price', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'br-billing-mismatch-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = await new BillingStore(path.join(dir, 'state.json')).load();
+  const stripe={customers:{create:async()=>({id:'cus',livemode:false})}};
+  const service=new BillingService({
+    stripe,store,priceId:'price_legacy',priceCatalog:{},
+    portalConfiguration:'bpc',baseUrl:'https://example.com',
+    tenantExists:()=>true,tenantProfile:()=> 'grow'
+  });
+  await assert.rejects(
+    service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:true}),
+    /billing_profile_mismatch/
+  );
+  await assert.rejects(
+    service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'grow',foundingPartner:true}),
+    /package_price_not_configured/
+  );
+});
+
+test('price catalog maps configured package Stripe ids to published amounts', () => {
+  const catalog=buildPriceCatalog({
+    STRIPE_PRICE_ID:'price_recover_standard',
+    STRIPE_PRICE_ANSWER_FOUNDING:'price_answer_f',
+    STRIPE_PRICE_RECOVER_FOUNDING:'price_recover_f',
+    STRIPE_PRICE_GROW_FOUNDING:'price_grow_f',
+    STRIPE_PRICE_SCHEDULE_FOUNDING:'price_schedule_f'
+  });
+  assert.equal(catalog.answer.founding.expectedAmountCents,14900);
+  assert.equal(catalog.recover.founding.expectedAmountCents,39700);
+  assert.equal(catalog.grow.founding.expectedAmountCents,59700);
+  assert.equal(catalog.schedule.founding.expectedAmountCents,79700);
+  assert.equal(catalog.recover.standard.expectedAmountCents,49700);
 });
