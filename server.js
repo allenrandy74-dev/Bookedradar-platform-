@@ -1253,10 +1253,12 @@ app.get("/api/v1/radarproof", async (req, res) => {
   }
 
   try {
+    const report = await radarProof(recoveryStore, tenant.tenantId);
+    report.callActivity = await callHistory.stats(tenant.tenantId);
     return res.json({
       ok: true,
       tenantId: tenant.tenantId,
-      report: await radarProof(recoveryStore, tenant.tenantId),
+      report,
     });
   } catch {
     return res.status(500).json({ ok: false, error: "radarproof_failed" });
