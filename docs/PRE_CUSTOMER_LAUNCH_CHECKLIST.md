@@ -42,9 +42,9 @@ Updated: 2026-09-23
 - [ ] Finish prospect-specific presentations and outreach drafts
 
 ## Waiting on owner/business administration
-- [ ] Business mailing address finalized
+- [x] Business mailing address finalized
 - [x] LLC finalized
-- [ ] EIN obtained
+- [x] EIN obtained
 - [ ] Business bank account opened
 - [ ] Billing/payment processor connected to business bank
 - [ ] Tax/accounting workflow established
