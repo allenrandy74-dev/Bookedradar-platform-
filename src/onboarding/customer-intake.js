@@ -91,6 +91,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
       callerMemory: true,
       spamScreening: true,
       transcriptHistory: false,
+      callerTexting: true,
       languages: ["en", "es"],
     },
     commercial: {
