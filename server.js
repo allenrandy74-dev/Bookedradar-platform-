@@ -198,10 +198,14 @@ for (const tenant of registry.list()) {
     booking_adapter: readiness.bookingAdapter,
   }));
 }
+const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
 const billing = await createBilling({
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
   tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
-  defaultStateFile: path.join(path.dirname(STATE_FILE), 'billing-test-state.json'),
+  defaultStateFile: path.join(
+    path.dirname(STATE_FILE),
+    billingMode === "live" ? "billing-live-state.json" : "billing-test-state.json"
+  ),
 });
 app.post('/stripe/webhook', (req, res) => billing
   ? billing.webhook(req, res)
@@ -210,6 +214,8 @@ if (billing) app.use('/api/v1/billing', billing.api);
 console.log(JSON.stringify({
   event: "billing.package_prices.startup",
   enabled: Boolean(billing),
+  mode: billing?.billingMode || null,
+  live_armed: billingMode === "live" ? process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === "true" : false,
   configured: billing?.configuredPackagePrices || null,
 }));
 app.get('/billing/return', (_req, res) => res.type('html').send(
