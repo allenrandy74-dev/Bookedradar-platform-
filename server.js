@@ -31,12 +31,14 @@ import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import {
   cancellationBackfillCandidates,
+  customer360,
   membershipRadar,
   ownerDailyBrief,
   opportunityTimeline,
   radarTrust,
   revenueLeakRadar,
   reviewRadar,
+  searchCustomers,
 } from "./src/growth-intelligence.js";
 import { renderTemplate } from "./src/recovery/templates.js";
 import { TenantRegistry, humanTransferTarget, tenantSecret } from "./src/recovery/tenant-registry.js";
@@ -1584,6 +1586,35 @@ app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) =
   } catch (error) {
     console.error("Dispatch run failed:", error);
     return res.status(500).json({ ok: false, error: "dispatch_failed" });
+  }
+});
+
+app.get("/api/v1/customers/search", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const results = await searchCustomers(
+      recoveryStore,
+      req.bookedRadarTenant.tenantId,
+      req.query.q || "",
+      { limit: req.query.limit || 20 }
+    );
+    return res.json({ ok: true, results });
+  } catch {
+    return res.status(500).json({ ok: false, error: "customer_search_failed" });
+  }
+});
+
+app.get("/api/v1/customer-360", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const profile = await customer360(
+      recoveryStore,
+      req.bookedRadarTenant.tenantId,
+      req.query.contactKey || ""
+    );
+    return profile
+      ? res.json({ ok: true, profile })
+      : res.status(404).json({ ok: false, error: "customer_not_found" });
+  } catch {
+    return res.status(500).json({ ok: false, error: "customer_360_failed" });
   }
 });
 
