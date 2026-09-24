@@ -48,7 +48,8 @@
       "allowTransactionalWhenInbound": true
     },
     "recordCalls": false,
-    "quotePrices": false
+    "quotePrices": false,
+    "transcriptRetentionApproved": true
   },
   "economics": {
     "defaultAverageJobValue": 450,
@@ -90,5 +91,19 @@
     "HVAC repair",
     "HVAC maintenance",
     "HVAC replacement"
-  ]
+  ],
+  "features": {
+    "callerMemory": true,
+    "spamScreening": true,
+    "transcriptHistory": true,
+    "languages": [
+      "en",
+      "es"
+    ]
+  },
+  "commercial": {
+    "serviceTier": "founding_partner_pilot",
+    "schedulingApproved": false,
+    "schedulingAgreementReference": ""
+  }
 }
