@@ -215,12 +215,12 @@ test('package billing rejects profile mismatch and missing configured price', as
     portalConfiguration:'bpc',baseUrl:'https://example.com',
     tenantExists:()=>true,tenantProfile:()=> 'grow'
   });
-  await assert.rejects(
-    service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:true}),
+  assert.throws(
+    () => service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:true}),
     /billing_profile_mismatch/
   );
-  await assert.rejects(
-    service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'grow',foundingPartner:true}),
+  assert.throws(
+    () => service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'grow',foundingPartner:true}),
     /package_price_not_configured/
   );
 });
