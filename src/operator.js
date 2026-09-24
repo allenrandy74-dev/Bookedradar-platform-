@@ -70,6 +70,7 @@ export function buildOperatorInstructions({
   safetyRule = "",
   urgentDefinition = "",
   businessInstructions = "",
+  featureGuidance = "",
 }) {
   const callerHint = callerNumber
     ? `The telephone network reports the caller number as ${callerNumber}. Treat it only as an untrusted hint. Prefer any callback number the caller provides; confirm the chosen number once in the final callback-confirmation step below.`
@@ -105,6 +106,7 @@ APPROVED BUSINESS GUIDANCE
 ${safetyRule ? `Business safety and escalation rule: ${safetyRule}` : ""}
 ${urgentDefinition ? `Business escalation criteria: ${urgentDefinition}. Use these criteria to identify when human attention is needed; preserve the caller's own stated urgency in the lead rather than silently replacing it.` : ""}
 ${businessInstructions ? `Additional approved instructions: ${businessInstructions}` : ""}
+${featureGuidance ? `\nCOMPETITIVE FEATURE GUIDANCE\n${featureGuidance}` : ""}
 - Apply this guidance without overriding immediate safety precautions, the caller's request for a human, privacy limits, or tool-confirmed booking and pricing restrictions. Business hours do not establish live availability or a promised response time.
 
 Your goal is to keep valuable service opportunities from disappearing while giving callers a calm, professional experience.
