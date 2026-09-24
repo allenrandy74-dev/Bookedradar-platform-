@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Call History — BookedRadar</title>
+<style>
+:root{color-scheme:dark;--bg:#070b08;--panel:#101611;--line:#243226;--text:#f4f7f4;--muted:#9baa9d;--accent:#afff40}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:auto;padding:26px 16px 60px}.top{display:flex;gap:12px;align-items:end;justify-content:space-between;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.17em;color:var(--accent);font-weight:800}.title{font-size:38px;font-weight:850;margin:6px 0}.muted{color:var(--muted)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.controls input{background:#0d120e;border:1px solid var(--line);color:var(--text);padding:10px 11px;border-radius:10px}.controls button{background:var(--accent);border:0;padding:10px 13px;border-radius:10px;font-weight:800;cursor:pointer}
+.list{display:grid;gap:10px}.call{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:15px}.row{display:flex;gap:12px;justify-content:space-between;align-items:start;flex-wrap:wrap}.badges{display:flex;gap:6px;flex-wrap:wrap}.badge{font-size:11px;padding:5px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}.badge.good{color:var(--accent)}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.field{font-size:13px}.field b{display:block;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:3px}.preview{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:#d8dfd9;line-height:1.45}.empty{color:var(--muted);padding:30px 0}
+dialog{width:min(760px,calc(100vw - 24px));max-height:85vh;background:#0d120e;color:var(--text);border:1px solid var(--line);border-radius:16px;padding:0}.dialog-head{position:sticky;top:0;background:#0d120e;border-bottom:1px solid var(--line);padding:14px;display:flex;justify-content:space-between}.dialog-body{padding:14px}.turn{padding:9px 11px;border-radius:10px;background:#121914;margin:8px 0;line-height:1.4}.speaker{color:var(--accent);font-size:10px;font-weight:800;text-transform:uppercase}.gap{border-left:3px solid var(--accent);padding-left:10px;margin:10px 0}.close{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:6px 9px}
+@media(max-width:700px){.summary{grid-template-columns:1fr 1fr}.title{font-size:30px}}
+</style>
+</head>
+<body>
+<main>
+<div class="top"><div><div class="eyebrow">BOOKEDRADAR</div><div class="title">Call History</div><div class="muted">Private searchable call summaries, transcripts, transfers and knowledge gaps.</div></div><div id="status" class="muted">Ready</div></div>
+<div class="controls">
+<input id="tenant" placeholder="Tenant ID" value="demo-hvac">
+<input id="q" placeholder="Search calls">
+<input id="token" type="password" placeholder="Admin token">
+<button id="load">Search</button>
+</div>
+<div id="list" class="list"></div>
+</main>
+<dialog id="detail"><div class="dialog-head"><b>Call detail</b><button class="close" id="close">Close</button></div><div class="dialog-body" id="detailBody"></div></dialog>
+<script>
+const $=id=>document.getElementById(id);
+$("token").value=sessionStorage.getItem("br_admin_token")||"";
+$("tenant").value=sessionStorage.getItem("br_tenant")||$("tenant").value;
+$("close").onclick=()=>$("detail").close();
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const when=ms=>ms?new Date(ms).toLocaleString():"—";
+async function api(path){
+  const token=$("token").value.trim(), tenant=$("tenant").value.trim();
+  sessionStorage.setItem("br_admin_token",token);sessionStorage.setItem("br_tenant",tenant);
+  const sep=path.includes("?")?"&":"?";
+  const r=await fetch(path+sep+"tenant="+encodeURIComponent(tenant),{headers:token?{Authorization:"Bearer "+token}:{}});
+  if(!r.ok)throw new Error("HTTP "+r.status);return r.json();
+}
+async function load(){
+  $("status").textContent="Loading…";$("list").innerHTML="";
+  try{
+    const q=$("q").value.trim();
+    const data=await api("/api/v1/calls"+(q?"?q="+encodeURIComponent(q):""));
+    $("status").textContent=data.calls.length+" calls";
+    if(!data.calls.length){$("list").innerHTML='<div class="empty">No matching calls yet.</div>';return;}
+    for(const call of data.calls){
+      const s=call.leadSummary||{};
+      const div=document.createElement("div");div.className="call";
+      div.innerHTML='<div class="row"><div><b>'+esc(s.name||call.callerMasked||"Caller")+'</b><div class="muted">'+esc(when(call.startedAt))+'</div></div><div class="badges">'+
+        (call.transferred?'<span class="badge good">Transferred</span>':'')+
+        (call.spamEnded?'<span class="badge">Screened</span>':'')+
+        '<span class="badge">'+esc(call.transcriptTurns)+' transcript turns</span>'+
+        '<span class="badge">'+esc(call.knowledgeGaps||0)+' knowledge gaps</span></div></div>'+
+        '<div class="summary"><div class="field"><b>Service</b>'+esc(s.serviceType||"—")+'</div><div class="field"><b>Urgency</b>'+esc(s.urgency||"—")+'</div><div class="field"><b>Preferred time</b>'+esc(s.preferredWindow||"—")+'</div></div>'+
+        '<div class="preview">'+esc(call.preview||"No transcript preview.")+'</div>';
+      div.onclick=()=>detail(call.callId);$("list").appendChild(div);
+    }
+  }catch(e){$("status").textContent="Unavailable";$("list").innerHTML='<div class="empty">Could not load private call history.</div>'}
+}
+async function detail(id){
+  try{
+    const data=await api("/api/v1/calls/"+encodeURIComponent(id));const call=data.call;
+    let out='<div class="badges"><span class="badge">'+esc(call.callerMasked||"Caller")+'</span><span class="badge">'+esc(when(call.startedAt))+'</span></div>';
+    if(call.leadSummary){const s=call.leadSummary;out+='<h3>Lead summary</h3><p>'+esc([s.name,s.serviceType,s.urgency,s.serviceAddress,s.city,s.preferredWindow].filter(Boolean).join(" · "))+'</p>'}
+    if((call.knowledgeGaps||[]).length){out+='<h3>Knowledge gaps</h3>'+call.knowledgeGaps.map(g=>'<div class="gap"><b>'+esc(g.category)+'</b><br>'+esc(g.question)+'</div>').join("")}
+    out+='<h3>Transcript</h3>'+((call.transcript||[]).map(t=>'<div class="turn"><div class="speaker">'+esc(t.speaker)+'</div>'+esc(t.text)+'</div>').join("")||'<div class="muted">No transcript stored.</div>');
+    $("detailBody").innerHTML=out;$("detail").showModal();
+  }catch{}
+}
+$("load").onclick=load;$("q").addEventListener("keydown",e=>{if(e.key==="Enter")load()});load();
+</script>
+</body>
+</html>
