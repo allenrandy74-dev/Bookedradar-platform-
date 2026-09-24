@@ -15,6 +15,7 @@ test("competitive features are off by default without changing the proven call p
     spamScreening: false,
     transcriptHistory: false,
     callerTexting: false,
+    twoWaySms: false,
     languages: ["en"],
   });
   assert.equal(inputTranscriptionForTenant({}), null);
@@ -73,4 +74,10 @@ test("caller texting tool appears only when SMS is enabled", () => {
   assert.equal(toolsForTenant(base, requested).some(tool => tool.name === "send_caller_text"), false);
   const enabled = { features: { callerTexting: true }, integrations: { sms: { enabled: true } } };
   assert.equal(toolsForTenant(base, enabled).some(tool => tool.name === "send_caller_text"), true);
+});
+
+
+test("two-way SMS feature remains off by default and can be enabled explicitly", () => {
+  assert.equal(competitiveFeaturesForTenant({}).twoWaySms, false);
+  assert.equal(competitiveFeaturesForTenant({ features: { twoWaySms: true } }).twoWaySms, true);
 });
