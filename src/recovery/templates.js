@@ -25,6 +25,8 @@ export function renderTemplate(template, { contact = {}, tenant = {}, opportunit
     web_lead_followup:
       `Hi ${name}, ${company} here. We wanted to make sure your service request didn't get lost. ` +
       `Is there anything else we should know before a team member follows up?`,
+    web_chat_human_request:
+      `Web chat request from ${name} needs human attention. Review the linked opportunity and follow up using the approved contact information.`,
     estimate_day_2:
       `Hi ${name}, checking in from ${company} about the estimate we sent. ` +
       `If you have questions about scope, timing, or next steps, reply and we'll help.`,
