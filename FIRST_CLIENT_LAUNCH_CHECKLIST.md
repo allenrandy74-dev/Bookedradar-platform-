@@ -81,9 +81,9 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 A prospect may be contacted before every operational item is complete, but **no paying customer should be activated for real callers until their own onboarding, provider connections, agreement, billing, and acceptance test have passed**.
 
 
-## H. Competitive upgrade acceptance — REQUIRED BEFORE FIRST CLIENT
+## H. Competitive upgrade acceptance — MARKET-FIRST GATE
 
-BookedRadar will not activate the first paying client until this section has passed.
+The competitive upgrade code should be in production before the first client, but **only features included in that client's package must pass live acceptance before activation**. Provider-dependent or premium features may remain disabled and must not be advertised as active until their own acceptance tests pass. This prevents unfinished add-ons from delaying a client who only needs the proven core + recovery service.
 
 ### Receptionist parity
 - [x] Returning-caller memory implemented with tenant isolation and caller-ID caution.
@@ -121,3 +121,25 @@ Competitive parity features are not the primary sales promise. The product story
 **Answer the opportunity → preserve the context across voice/SMS/web → recover what would otherwise be lost → prove the recovered value.**
 
 Knowledge Gap Radar should also improve each tenant over time by showing what real callers ask that the approved business knowledge cannot yet answer.
+
+
+## I. Market-first launch rule
+
+**Launch-critical for the first Founding Partner using the core + recovery package:**
+- Proven English voice intake and human-transfer regression.
+- CRM/recovery capture and tenant isolation.
+- Returning-caller/privacy behavior if caller memory is enabled.
+- Spam screening if enabled.
+- Knowledge Gap Radar if enabled.
+- RadarProof and Owner Brief reporting.
+- Accurate agreement/privacy language for the features actually enabled.
+- Billing and customer-specific acceptance call.
+
+**Do not delay launch solely for these when they are not sold/enabled for the first customer:**
+- Customer-facing two-way SMS / in-call texting while A2P or tenant messaging is not ready.
+- Live Google Calendar booking when the customer is using confirm-only scheduling.
+- Full-time scheduling/dispatch.
+- Spoken screened/warm transfer while the proven REFER fallback is the enabled transfer method.
+- Automated membership-renewal email or No-Show Guard messaging when those features are disabled.
+
+The rule is simple: **never sell or enable an unaccepted feature, but do not let an optional disabled feature block a customer whose purchased scope is fully accepted.**
