@@ -45,7 +45,7 @@ Updated: 2026-09-23
 - [x] Business mailing address finalized
 - [x] LLC finalized
 - [x] EIN obtained
-- [ ] Business bank account opened
+- [x] Business bank account opened
 - [ ] Billing/payment processor connected to business bank
 - [ ] Tax/accounting workflow established
 - [ ] Insurance needs reviewed for commercial operation
