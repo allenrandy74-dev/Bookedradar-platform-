@@ -25,7 +25,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Full-time scheduling/dispatch is separated from the base pilot.
 - [x] Full-time scheduling/dispatch requires a custom quote and separate approval.
 - [x] Customer-facing service agreement draft explicitly reflects the service scope and limitations; final legal review remains required before signature.
-- [ ] Refund/cancellation/billing effective-date language reviewed for consistency with Stripe behavior.
+- [x] Refund/cancellation/billing effective-date language aligned in the service-order template with the implemented period-end cancellation and billing-state behavior; final legal review remains recommended.
 
 ## C. Billing
 
@@ -63,18 +63,18 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 ## F. Communications
 
 - [x] SMS transfer companion proven on a handset.
-- [ ] Customer-facing transactional email delivery acceptance test completed.
+- [x] Customer-facing transactional email provider acceptance test completed successfully through Resend; synthetic delivery succeeded in production and startup smoke testing was disabled afterward.
 - [ ] A2P/customer-facing SMS status approved before marketing or customer notification SMS is enabled.
 - [ ] STOP/HELP/opt-out behavior verified for any customer-facing SMS campaign.
 
 ## G. Sales launch
 
-- [ ] Initial Southeast Texas prospect list prioritized.
-- [ ] Business-specific research completed for top prospects.
-- [ ] Outreach email customized to each top prospect.
+- [x] Initial Southeast Texas prospect list prioritized.
+- [x] Business-specific research completed for top prospects.
+- [x] Personalized outreach drafts prepared for initial top prospects; nothing sent without approval.
 - [ ] Short presentation/one-page explainer finalized.
-- [ ] Demo flow prepared using a safe test tenant.
-- [ ] Sales promise checklist reviewed so outreach does not promise unapproved live scheduling features.
+- [x] Demo flow and competitive acceptance runbook prepared using the isolated demo tenant.
+- [x] Package Matrix, Service Scope, deployment-plan statuses, and activation rules prevent sales from representing gated features as active.
 
 ## Launch rule
 
@@ -112,7 +112,7 @@ The competitive upgrade code should be in production before the first client, bu
 - [ ] In-call requested-text test passes after carrier/A2P and tenant SMS activation.
 - [ ] RadarProof displays call counts, transfer counts, screened calls, knowledge gaps and recovery/revenue measures from test activity.
 - [ ] Simple live-booking capability is acceptance-tested for any customer sold live booking; otherwise the customer remains confirm-only.
-- [ ] Terms/privacy/onboarding copy accurately describes the enabled retention, messaging and scheduling features.
+- [x] Customer-facing package/legal sync is installed on the existing Wix site; Package Matrix, Service Order, onboarding docs, and deployment gates describe retention, messaging and scheduling activation boundaries. Static editorless source should still be consolidated in a future source release.
 
 ### Differentiation rule
 
@@ -143,3 +143,36 @@ Knowledge Gap Radar should also improve each tenant over time by showing what re
 - Automated membership-renewal email or No-Show Guard messaging when those features are disabled.
 
 The rule is simple: **never sell or enable an unaccepted feature, but do not let an optional disabled feature block a customer whose purchased scope is fully accepted.**
+
+
+## J. Verified production evidence — September 24, 2026
+
+- [x] Latest production image is live on Render.
+- [x] Full automated build gate passed: **193 tests passed, 0 failed**.
+- [x] Demo RadarRecover tenant startup readiness: **READY**, zero blockers, zero warnings.
+- [x] Configured demo adapters: email, human task, human alert.
+- [x] Booking adapter remains **ConfirmOnlyBookingAdapter** for market-first launch.
+- [x] Proven SIP REFER transfer fallback reports ready; screened/warm transfer remains intentionally disabled.
+- [x] Production Resend email smoke test succeeded.
+- [x] Production Wix CRM contact-create permission smoke test succeeded.
+- [x] Production Wix CRM follow-up task-create permission smoke test succeeded.
+- [x] Synthetic CRM contact/task created by verification were cleaned up after the test.
+- [x] End-to-end smoke path preserved idempotency and did not duplicate the existing synthetic event.
+- [x] Smoke-on-startup environment switches were restored to false after verification.
+- [x] Package profiles, entitlement/activation separation, pricing, deployment manifest and package-aware billing code are implemented.
+- [x] Test and live billing state are separated; live billing requires an explicit second arm and rejects wrong-mode Stripe objects/events.
+- [x] Live billing requires a complete verified Stripe price catalog for all published standard and Founding package prices before it can start.
+- [x] Customer Service Order template created with package, activation, scheduling, messaging, retention, billing/cancellation and acceptance fields.
+- [x] Existing Wix site has enabled BookedRadar Web Chat and Package & Legal Sync embeds.
+
+### External activation gates remaining
+
+- [ ] Connect the BookedRadar Stripe account to the available Stripe integration or complete equivalent account-level setup.
+- [ ] Create/verify live Stripe standard + Founding recurring prices for RadarAnswer, RadarRecover, RadarGrow and RadarSchedule.
+- [ ] Configure live Stripe webhook / Billing Portal / Render live billing variables with live arm initially false.
+- [ ] Run one controlled live Checkout display test, then use the first approved customer payment as settlement acceptance.
+- [ ] Run the short post-upgrade live voice acceptance sequence: normal English, transfer regression, Spanish, returning caller, solicitor/spam, Knowledge Gap, transcript history.
+- [ ] If the first customer uses web chat, perform one browser-origin acceptance test before enabling it for that customer.
+- [ ] If the first customer uses customer-facing SMS, complete tenant/A2P/STOP/HELP acceptance before enabling it.
+- [ ] If the first customer purchases RadarSchedule, connect their approved calendar and run live-booking acceptance before activation.
+- [ ] Obtain qualified legal review of the customer-facing agreement/terms before broad commercial rollout; use the current template as the operational draft meanwhile.
