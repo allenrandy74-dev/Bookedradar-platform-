@@ -672,6 +672,17 @@ async function executeTool({
     return { ok: true, ...result };
   }
 
+  if (name === "flag_knowledge_gap") {
+    if (!competitiveFeaturesForTenant(tenant).knowledgeGapLearning) {
+      return { ok: false, recorded: false, reason: "knowledge_gap_learning_not_enabled" };
+    }
+    await callHistory.addKnowledgeGap(callId, {
+      question: args?.question || "",
+      category: args?.category || "business_question",
+    });
+    return { ok: true, recorded: true };
+  }
+
   if (name === "send_caller_text") {
     const features = competitiveFeaturesForTenant(tenant);
     const { adapters } = dispatcherFor(tenant);
@@ -937,7 +948,21 @@ async function attachSideband({
   });
   ws.on("close", () => callLifecycle.end(callId));
   ws.on("close", () => {
-    callHistory.finish(callId).catch(() => {});
+    (async () => {
+      const call = await state.getCall(callId);
+      const lead = call?.lastLead || null;
+      await callHistory.finish(callId, {
+        leadSummary: lead ? {
+          name: String(lead.name || "").slice(0, 120),
+          callback: maskPhone(lead.callback_number || ""),
+          serviceType: String(lead.service_type || "").slice(0, 180),
+          urgency: String(lead.urgency || "").slice(0, 120),
+          serviceAddress: String(lead.service_address || "").slice(0, 240),
+          city: String(lead.city || "").slice(0, 120),
+          preferredWindow: String(lead.preferred_window || "").slice(0, 180),
+        } : null,
+      });
+    })().catch(() => {});
     openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop();
   });
 }
