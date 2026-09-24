@@ -314,3 +314,39 @@ test('billing stores keep test and live state isolated', async t => {
   await testStore.transaction(data=>{data.accounts.a={tenantId:'a'};return true;});
   await assert.rejects(new BillingStore(file,{mode:'live'}).load(),/invalid_billing_store/);
 });
+
+
+test('live billing refuses an incomplete published package catalog before Stripe network use', async t => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-catalog-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const env={
+    BOOKEDRADAR_BILLING_ENABLED:'true',
+    BOOKEDRADAR_BILLING_MODE:'live',
+    BOOKEDRADAR_BILLING_LIVE_ARMED:'true',
+    STRIPE_SECRET_KEY:'sk_live_fake',
+    STRIPE_WEBHOOK_SECRET:'whsec_live_secret',
+    STRIPE_PRICE_RECOVER_STANDARD:'price_live_recover',
+    STRIPE_PORTAL_CONFIGURATION:'bpc_live',
+    BILLING_PUBLIC_BASE_URL:'https://example.com',
+    BOOKEDRADAR_BILLING_ADMIN_TOKEN:'x'.repeat(40),
+  };
+  await assert.rejects(
+    createBilling({env,tenantExists:()=>true,defaultStateFile:path.join(dir,'live.json')}),
+    /live_package_prices_incomplete/
+  );
+});
+
+test('live package catalog verification rejects a test-mode price object', async t => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-verify-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const store=await new BillingStore(path.join(dir,'state.json'),{mode:'live'}).load();
+  const stripe={
+    prices:{retrieve:async()=>({livemode:false,active:true,currency:'usd',unit_amount:14900,recurring:{interval:'month',interval_count:1}})}
+  };
+  const service=new BillingService({
+    stripe,store,mode:'live',
+    priceCatalog:{answer:{standard:{priceId:'price_wrong',monthlyUsd:149,expectedAmountCents:14900}}},
+    tenantExists:()=>true,portalConfiguration:'bpc',baseUrl:'https://example.com'
+  });
+  await assert.rejects(service.validateConfiguredPriceCatalog(),/invalid_live_package_price/);
+});
