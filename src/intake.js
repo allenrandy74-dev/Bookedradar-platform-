@@ -79,6 +79,65 @@ export function normalizeIntake(kind, body = {}) {
         idempotencyKey:
           body.idempotencyKey || stableKey("cancel", [body.appointmentId, occurredAt]),
       };
+    case "membership-renewal":
+      return {
+        ...common,
+        type: "membership_renewal_due",
+        metadata: {
+          ...common.metadata,
+          membershipId: clean(body.membershipId, 240),
+          renewalDate: clean(body.renewalDate, 80),
+          membershipName: clean(body.membershipName, 180),
+        },
+        idempotencyKey:
+          body.idempotencyKey ||
+          stableKey("membership", [body.membershipId, contact.externalId, body.renewalDate, occurredAt]),
+      };
+    case "appointment-reminder":
+      return {
+        ...common,
+        type: "appointment_reminder_due",
+        metadata: {
+          ...common.metadata,
+          appointmentId: clean(body.appointmentId, 240),
+          scheduledFor: clean(body.scheduledFor, 80),
+          serviceAddress: clean(body.serviceAddress, 240),
+          city: clean(body.city, 120),
+        },
+        idempotencyKey:
+          body.idempotencyKey ||
+          stableKey("reminder", [body.appointmentId, body.scheduledFor, occurredAt]),
+      };
+    case "job-completed":
+      return {
+        ...common,
+        type: "job_completed",
+        metadata: {
+          ...common.metadata,
+          jobId: clean(body.jobId, 240),
+          completedAt: clean(body.completedAt, 80),
+          customerSatisfactionKnown: Boolean(body.customerSatisfactionKnown),
+          customerSatisfied: body.customerSatisfied === true,
+          complaintOpen: body.complaintOpen === true,
+        },
+        idempotencyKey:
+          body.idempotencyKey ||
+          stableKey("completed", [body.jobId, contact.externalId, occurredAt]),
+      };
+    case "earlier-slot":
+      return {
+        ...common,
+        type: "earlier_slot_requested",
+        metadata: {
+          ...common.metadata,
+          preferredWindow: clean(body.preferredWindow, 180),
+          city: clean(body.city, 120),
+          expiresAt: clean(body.expiresAt, 80),
+        },
+        idempotencyKey:
+          body.idempotencyKey ||
+          stableKey("earlier-slot", [body.externalId, contact.externalId, contact.phone, body.preferredWindow, occurredAt]),
+      };
     case "dormant":
       return {
         ...common,
