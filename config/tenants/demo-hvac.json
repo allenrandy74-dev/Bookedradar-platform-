@@ -84,6 +84,13 @@
     "calendar": {
       "type": "customer_specific",
       "enabled": false
+    },
+    "webChat": {
+      "enabled": true,
+      "allowedOrigins": [
+        "https://www.bookedradar.com",
+        "https://bookedradar.com"
+      ]
     }
   },
   "secretsPrefix": "DEMO_HVAC",
@@ -101,7 +108,8 @@
       "es"
     ],
     "callerTexting": true,
-    "twoWaySms": true
+    "twoWaySms": true,
+    "webChat": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
