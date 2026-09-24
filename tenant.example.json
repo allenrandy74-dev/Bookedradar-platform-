@@ -89,7 +89,8 @@
     "languages": [
       "en",
       "es"
-    ]
+    ],
+    "callerTexting": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
