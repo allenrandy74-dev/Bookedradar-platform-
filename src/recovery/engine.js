@@ -191,6 +191,9 @@ export class RecoveryEngine {
     const actions = [];
 
     for (const step of playbook) {
+      if (step.feature && this.tenant?.features?.[step.feature] !== true) {
+        continue;
+      }
       if (
         step.when === "urgent" &&
         !["urgent", "emergency"].includes(storedEvent.urgency)
