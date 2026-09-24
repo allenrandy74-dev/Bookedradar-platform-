@@ -29,13 +29,17 @@ export async function acceptRealtimeCall({
   instructions,
   voice,
   tools,
+  inputTranscription = null,
 }) {
   const body = {
     type: "realtime",
     model,
     instructions,
     audio: {
-      input: { turn_detection: { ...CONVERSATION_TURN_DETECTION, interrupt_response: false } },
+      input: {
+        turn_detection: { ...CONVERSATION_TURN_DETECTION, interrupt_response: false },
+        ...(inputTranscription ? { transcription: inputTranscription } : {}),
+      },
       output: {
         voice,
       },
