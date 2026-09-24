@@ -110,7 +110,10 @@
     "callerTexting": true,
     "twoWaySms": true,
     "webChat": true,
-    "knowledgeGapLearning": true
+    "knowledgeGapLearning": true,
+    "membershipRadar": false,
+    "noShowGuard": false,
+    "reviewRadar": true
   },
   "commercial": {
     "serviceTier": "founding_partner_pilot",
