@@ -6,20 +6,27 @@
 **Setup fee:** Waived for approved Founding Partners  
 **Preferred payment method:** ACH; card available
 
-The Founding Partner Pilot is designed to prove measurable value while keeping the initial service simple, reliable, and repeatable.
+The Founding Partner Pilot is designed as a revenue-recovery operating layer, not merely a phone-answering service. Voice, approved messaging, web lead capture, CRM follow-up and recovery attribution should preserve one opportunity context across channels and make the resulting value measurable.
 
 ### Included
 
 - AI answering for the agreed coverage window.
 - After-hours, overflow/no-answer, or agreed broader inbound call coverage.
-- Business-specific greeting and intake.
+- Business-specific greeting and intake in English and Spanish when enabled for the tenant.
+- Returning-caller continuity with identity-safe caller memory.
+- Conservative spam/solicitor screening.
 - Caller name, service need, address, urgency, preferred timing, and callback capture when applicable.
 - CRM/contact and follow-up-task creation when the customer's supported CRM is connected.
 - Human escalation/transfer using the approved transfer path.
 - Transfer companion SMS to the configured receiving person when enabled and approved.
 - Confirm-only scheduling: capture preferred date/time windows for the business to confirm.
 - Approved transactional email/SMS notifications after provider readiness tests.
+- In-call transactional texting and two-way SMS continuation after messaging approval/configuration.
+- Embeddable website chat that feeds the same customer/recovery context when enabled.
 - Missed-call/web-lead/recovery workflows that are explicitly enabled for the tenant.
+- Knowledge Gap Radar: unanswered business-specific questions are recorded for knowledge-base improvement instead of guessed at.
+- RadarProof reporting that separates diagnostic estimates from explicitly confirmed recovered revenue.
+- Private searchable call history and text transcripts only when the customer explicitly approves transcript retention; audio recording is separate and remains off unless specifically approved/configured.
 - Customer-specific service rules and safety/escalation guidance.
 - One acceptance test before activation.
 
