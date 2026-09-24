@@ -24,9 +24,8 @@ test("Spanish, transcript history and spam screening are opt-in tenant features"
   const tenant = { features: { languages: ["en", "es", "xx"], transcriptHistory: true, spamScreening: true } };
   assert.deepEqual(competitiveFeaturesForTenant(tenant).languages, ["en", "es"]);
   assert.deepEqual(inputTranscriptionForTenant(tenant), {
-    model: "gpt-live-transcribe",
+    model: "gpt-transcribe",
     languages: ["en", "es"],
-    delay: "low",
   });
   assert.equal(toolsForTenant([{ name: "capture_lead" }], tenant).at(-1).name, "end_call");
   const guidance = competitiveFeatureGuidance(tenant);
