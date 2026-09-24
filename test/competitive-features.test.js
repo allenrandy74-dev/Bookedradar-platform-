@@ -16,6 +16,7 @@ test("competitive features are off by default without changing the proven call p
     transcriptHistory: false,
     callerTexting: false,
     twoWaySms: false,
+    webChat: false,
     languages: ["en"],
   });
   assert.equal(inputTranscriptionForTenant({}), null);
@@ -80,4 +81,10 @@ test("caller texting tool appears only when SMS is enabled", () => {
 test("two-way SMS feature remains off by default and can be enabled explicitly", () => {
   assert.equal(competitiveFeaturesForTenant({}).twoWaySms, false);
   assert.equal(competitiveFeaturesForTenant({ features: { twoWaySms: true } }).twoWaySms, true);
+});
+
+
+test("web chat feature can be entitled explicitly", () => {
+  assert.equal(competitiveFeaturesForTenant({}).webChat, false);
+  assert.equal(competitiveFeaturesForTenant({ features: { webChat: true } }).webChat, true);
 });
