@@ -144,6 +144,28 @@ export class BillingService {
     }
   }
 
+  async validateConfiguredPriceCatalog() {
+    const verified = {};
+    for (const [profileId, plans] of Object.entries(this.priceCatalog || {})) {
+      verified[profileId] = {};
+      for (const tier of ['standard', 'founding']) {
+        const plan = plans?.[tier];
+        if (!plan?.priceId) {
+          verified[profileId][tier] = false;
+          continue;
+        }
+        await this.validatePrice({
+          ...plan,
+          profileId,
+          billingTier: tier,
+          foundingPartner: tier === 'founding',
+        });
+        verified[profileId][tier] = true;
+      }
+    }
+    return verified;
+  }
+
   account(data, tenantId) {
     const a = data.accounts[tenantId];
     if (!a) throw new BillingError('billing_account_not_found', 404);
