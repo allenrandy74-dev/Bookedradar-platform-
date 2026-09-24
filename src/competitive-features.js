@@ -18,6 +18,7 @@ export function competitiveFeaturesForTenant(tenant = {}) {
     callerTexting: features.callerTexting === true,
     twoWaySms: features.twoWaySms === true,
     webChat: features.webChat === true,
+    knowledgeGapLearning: features.knowledgeGapLearning === true,
     languages,
   };
 }
@@ -81,6 +82,12 @@ export function competitiveFeatureGuidance(tenant = {}, { returningCaller = "" }
     );
   }
 
+  if (features.knowledgeGapLearning) {
+    guidance.push(
+      "KNOWLEDGE GAP RADAR: If the caller asks a business-specific question that cannot be answered from approved business guidance, do not guess. Use flag_knowledge_gap with the question, then tell the caller the team can follow up with the answer."
+    );
+  }
+
   if (features.callerTexting && tenant?.integrations?.sms?.enabled === true) {
     guidance.push(
       "IN-CALL TEXTING: If the caller asks you to text approved transactional information such as a scheduling link, directions, or a business-provided resource, you may use send_caller_text. Confirm the callback number first. Never use this tool for marketing, unsolicited promotions, passwords, payment-card data, or invented information."
@@ -89,6 +96,21 @@ export function competitiveFeatureGuidance(tenant = {}, { returningCaller = "" }
 
   return guidance.join("\n");
 }
+
+export const knowledgeGapTool = {
+  type: "function",
+  name: "flag_knowledge_gap",
+  description: "Record a business-specific caller question that cannot be answered from approved information, so the business can improve its knowledge base.",
+  parameters: {
+    type: "object",
+    properties: {
+      question: { type: "string", description: "The caller's business-specific question, summarized without unnecessary sensitive information." },
+      category: { type: "string", description: "Short category such as pricing_policy, service_area, warranty, scheduling_policy, or other." },
+    },
+    required: ["question"],
+    additionalProperties: false,
+  },
+};
 
 export const sendCallerTextTool = {
   type: "function",
@@ -127,6 +149,7 @@ export const endCallTool = {
 export function toolsForTenant(baseTools, tenant = {}) {
   const features = competitiveFeaturesForTenant(tenant);
   const extra = [];
+  if (features.knowledgeGapLearning) extra.push(knowledgeGapTool);
   if (features.callerTexting && tenant?.integrations?.sms?.enabled === true) {
     extra.push(sendCallerTextTool);
   }
