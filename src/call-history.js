@@ -147,6 +147,17 @@ export class CallHistoryStore {
       }));
   }
 
+  async stats(tenantId) {
+    await this.load();
+    const calls = Object.values(this.data.calls).filter(call => call.tenantId === tenantId);
+    return {
+      callsHandled: calls.length,
+      humanTransfers: calls.filter(call => call.transferred).length,
+      spamScreened: calls.filter(call => call.spamEnded).length,
+      callsWithTranscript: calls.filter(call => (call.transcript || []).length > 0).length,
+    };
+  }
+
   async get(tenantId, callId) {
     await this.load();
     const call = this.data.calls[callId];
