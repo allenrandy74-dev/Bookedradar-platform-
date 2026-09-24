@@ -84,7 +84,14 @@ export function buildTenantDraftFromQuickStart(input = {}) {
     policies: {
       bookingMode,
       quotePrices: Boolean(input.quotePrices),
-      recordCalls: Boolean(input.recordCalls),
+      recordCalls: false,
+      transcriptRetentionApproved: false,
+    },
+    features: {
+      callerMemory: true,
+      spamScreening: true,
+      transcriptHistory: false,
+      languages: ["en", "es"],
     },
     commercial: {
       serviceTier: "founding_partner_pilot",
