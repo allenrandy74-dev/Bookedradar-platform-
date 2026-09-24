@@ -12,7 +12,9 @@ export function competitiveFeaturesForTenant(tenant = {}) {
   return {
     callerMemory: features.callerMemory === true,
     spamScreening: features.spamScreening === true,
-    transcriptHistory: features.transcriptHistory === true,
+    transcriptHistory:
+      features.transcriptHistory === true &&
+      tenant?.policies?.transcriptRetentionApproved === true,
     languages,
   };
 }
