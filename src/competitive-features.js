@@ -21,9 +21,8 @@ export function inputTranscriptionForTenant(tenant = {}) {
   const features = competitiveFeaturesForTenant(tenant);
   if (!features.transcriptHistory) return null;
   return {
-    model: "gpt-live-transcribe",
+    model: "gpt-transcribe",
     languages: features.languages,
-    delay: "low",
   };
 }
 
