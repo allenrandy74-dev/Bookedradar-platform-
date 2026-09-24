@@ -68,9 +68,6 @@ export async function createBilling({
   }
 
   const priceCatalog = buildPriceCatalog(env);
-  if (mode === 'live' && !completePublishedCatalog(priceCatalog)) {
-    throw new Error('live_package_prices_incomplete');
-  }
   const keyPattern = mode === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
   if (
     !keyPattern.test(env.STRIPE_SECRET_KEY || '') ||
@@ -80,6 +77,9 @@ export async function createBilling({
     (env.BOOKEDRADAR_BILLING_ADMIN_TOKEN || '').length < 32
   ) {
     throw new Error(mode === 'live' ? 'live_billing_configuration_invalid' : 'test_billing_configuration_invalid');
+  }
+  if (mode === 'live' && !completePublishedCatalog(priceCatalog)) {
+    throw new Error('live_package_prices_incomplete');
   }
 
   const baseUrl = new URL(env.BILLING_PUBLIC_BASE_URL);
