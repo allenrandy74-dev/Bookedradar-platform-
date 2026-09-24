@@ -42,6 +42,14 @@ import { normalizeIntake, isOptOutText } from "./src/intake.js";
 import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
+import { CallHistoryStore } from "./src/call-history.js";
+import {
+  competitiveFeaturesForTenant,
+  competitiveFeatureGuidance,
+  inputTranscriptionForTenant,
+  returningCallerContext,
+  toolsForTenant,
+} from "./src/competitive-features.js";
 
 const {
   PORT = "5050",
@@ -76,6 +84,8 @@ const {
   TWILIO_A2P_DIAGNOSTIC_ON_STARTUP = "false",
   TWILIO_A2P_MESSAGING_SERVICE_SID = "",
   TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
+  CALL_HISTORY_FILE = "./data/call-history.json",
+  CALL_HISTORY_RETENTION_DAYS = "30",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -138,6 +148,11 @@ await state.load();
 
 const recoveryStore = new RecoveryStore(RECOVERY_STATE_FILE);
 await recoveryStore.load();
+
+const callHistory = new CallHistoryStore(CALL_HISTORY_FILE, {
+  retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
+});
+await callHistory.load();
 
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
 const billing = await createBilling({
@@ -630,6 +645,16 @@ async function executeTool({
     return { ok: true, ...result };
   }
 
+  if (name === "end_call") {
+    if (!competitiveFeaturesForTenant(tenant).spamScreening) {
+      return { ok: false, ended: false, reason: "spam_screening_not_enabled" };
+    }
+    const reason = String(args?.reason || "screened_call").slice(0, 120);
+    await callHistory.finish(callId, { spamEnded: true, endReason: reason });
+    await hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId });
+    return { ok: true, ended: true, reason };
+  }
+
   if (name === "transfer_to_human") {
     const target = humanTransferTarget(tenant);
     if (!target) {
@@ -654,7 +679,10 @@ async function executeTool({
       return lead;
     } });
     if (result.transferred) {
-      try { await state.patchCall(callId, { transferId: result.transferId, transferRequested: true }); }
+      try {
+        await state.patchCall(callId, { transferId: result.transferId, transferRequested: true });
+        await callHistory.finish(callId, { transferred: true, transferId: result.transferId || null });
+      }
       catch { console.error(JSON.stringify({ event: "transfer.failed", call_id: callId, reason: "state_update_failed" })); }
     }
     return result;
@@ -734,29 +762,41 @@ async function attachSideband({
     transferHold.event(event);
 
 
-    if (
-      logTranscripts &&
-      event.type === "response.output_audio_transcript.done"
-    ) {
-      console.log(JSON.stringify({
-        event: "assistant.transcript",
-        tenant_id: tenant.tenantId,
-        call_id: callId,
-        text: event.transcript || "",
-      }));
+    if (event.type === "response.output_audio_transcript.done") {
+      if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
+        await callHistory.addTurn(callId, {
+          speaker: "assistant",
+          text: event.transcript || "",
+          itemId: event.item_id || "",
+        });
+      }
+      if (logTranscripts) {
+        console.log(JSON.stringify({
+          event: "assistant.transcript",
+          tenant_id: tenant.tenantId,
+          call_id: callId,
+          text: event.transcript || "",
+        }));
+      }
       return;
     }
 
-    if (
-      logTranscripts &&
-      event.type === "conversation.item.input_audio_transcription.completed"
-    ) {
-      console.log(JSON.stringify({
-        event: "caller.transcript",
-        tenant_id: tenant.tenantId,
-        call_id: callId,
-        text: event.transcript || "",
-      }));
+    if (event.type === "conversation.item.input_audio_transcription.completed") {
+      if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
+        await callHistory.addTurn(callId, {
+          speaker: "caller",
+          text: event.transcript || "",
+          itemId: event.item_id || "",
+        });
+      }
+      if (logTranscripts) {
+        console.log(JSON.stringify({
+          event: "caller.transcript",
+          tenant_id: tenant.tenantId,
+          call_id: callId,
+          text: event.transcript || "",
+        }));
+      }
       return;
     }
 
@@ -802,6 +842,11 @@ async function attachSideband({
         try { ws.close(); } catch {}
         return;
       }
+      if (toolCall.name === "end_call" && output.ended) {
+        greeting.stop();
+        try { ws.close(); } catch {}
+        return;
+      }
       if (toolCall.name === "transfer_to_human") transferHold.stop({ restore: true });
 
       send(ws, {
@@ -836,7 +881,10 @@ async function attachSideband({
     }));
   });
   ws.on("close", () => callLifecycle.end(callId));
-  ws.on("close", () => { openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop(); });
+  ws.on("close", () => {
+    callHistory.finish(callId).catch(() => {});
+    openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop();
+  });
 }
 
 async function handleIncomingCall(event) {
@@ -870,8 +918,18 @@ async function handleIncomingCall(event) {
     callerHintMasked: maskPhone(callerNumber),
     dialedNumberMasked: maskPhone(dialedNumber),
   });
+  await callHistory.start(callId, {
+    tenantId: tenant.tenantId,
+    callerMasked: maskPhone(callerNumber),
+    dialedMasked: maskPhone(dialedNumber),
+  });
 
   const businessContext = localBusinessContext(tenant);
+  const returningCaller = await returningCallerContext({
+    store: recoveryStore,
+    tenant,
+    callerNumber,
+  });
   const instructions = buildOperatorInstructions({
     ...operatorRulesForTenant(tenant),
     companyName: tenant.businessName,
@@ -886,6 +944,7 @@ async function handleIncomingCall(event) {
     services: tenant?.services || [],
     localTime: businessContext.localTime,
     businessHoursText: businessContext.businessHoursText,
+    featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
   });
 
   await acceptRealtimeCall({
@@ -894,7 +953,8 @@ async function handleIncomingCall(event) {
     model: tenant?.integrations?.phone?.model || OPENAI_REALTIME_MODEL,
     instructions,
     voice: tenant?.integrations?.phone?.voice || OPENAI_VOICE,
-    tools,
+    tools: toolsForTenant(tools, tenant),
+    inputTranscription: inputTranscriptionForTenant(tenant),
   });
 
   console.log(JSON.stringify({
@@ -1116,6 +1176,21 @@ app.post("/api/v1/contacts/:key/opt-out", requireAdmin, requireTenant, async (re
   }
 });
 
+app.get("/api/v1/calls", requireAdmin, requireTenant, async (req, res) => {
+  const calls = await callHistory.list(req.bookedRadarTenant.tenantId, {
+    q: req.query.q || "",
+    limit: req.query.limit || 50,
+  });
+  return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, calls });
+});
+
+app.get("/api/v1/calls/:callId", requireAdmin, requireTenant, async (req, res) => {
+  const call = await callHistory.get(req.bookedRadarTenant.tenantId, req.params.callId);
+  return call
+    ? res.json({ ok: true, call })
+    : res.status(404).json({ ok: false, error: "call_not_found" });
+});
+
 app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) => {
   const actions = await recoveryStore.failedActions(req.bookedRadarTenant.tenantId);
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
@@ -1218,6 +1293,7 @@ app.get("/ready", requireAdmin, (_req, res) => {
       inboundNumbersConfigured:
         (tenant?.integrations?.phone?.inboundNumbers || []).length,
       dispatchChannels: Object.keys(dispatcherFor(tenant).adapters),
+      competitiveFeatures: competitiveFeaturesForTenant(tenant),
     })),
     voice: {
       enabled: voiceEnabled,
