@@ -166,7 +166,9 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.instructions,'existing intake');
   assert.equal(body.audio.input.turn_detection.create_response,true);
   assert.equal(body.audio.input.turn_detection.interrupt_response,false);
-  assert.equal(body.audio.input.turn_detection.threshold,0.5);
+  assert.equal(body.audio.input.turn_detection.threshold,0.7);
+  assert.equal(body.audio.input.turn_detection.silence_duration_ms,600);
+  assert.equal(body.audio.input.noise_reduction.type,'near_field');
 });
 
 
@@ -316,7 +318,7 @@ test('greeting guard protects opening until actual playback ends, not generation
   assert.equal(sent.length, 2);
   assert.equal(sent[1].session.audio.input.turn_detection.interrupt_response, true);
   assert.equal(sent[1].session.audio.input.turn_detection.create_response, true);
-  assert.equal(sent[1].session.audio.input.turn_detection.threshold, 0.5);
+  assert.equal(sent[1].session.audio.input.turn_detection.threshold, 0.7);
   assert.equal(logs[1].reason, 'greeting_completed');
   g.release('duplicate'); assert.equal(sent.length, 2);
   assert.equal(c.timers.size, 0);
