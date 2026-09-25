@@ -17,7 +17,8 @@ Use one completed sheet per customer. This is the operational companion to the c
 
 ## Commercial scope
 
-- Plan: Founding Partner Pilot / Custom
+- Package: RadarAnswer / RadarRecover / RadarGrow / RadarSchedule / RadarDispatch
+- Price tier: Standard / approved Founding Partner / Custom
 - Monthly price:
 - Setup fee:
 - Billing start date:
@@ -40,6 +41,9 @@ Use one completed sheet per customer. This is the operational companion to the c
 - Human escalation name:
 - Human escalation mobile:
 - Backup escalation contact:
+- Human answer and unanswered/declined transfer tests passed:
+- Voicemail greeting appropriate for this business:
+- Customer accepts possible voicemail handoff (no automatic return after REFER):
 - Transfer acceptance test passed:
 - Date accepted:
 
@@ -57,6 +61,10 @@ Use one completed sheet per customer. This is the operational companion to the c
 ## CRM / lead record
 
 - System of record:
+- Estimate creation system:
+- Estimate-sent event source and permission:
+- Reply/accepted/booked/canceled/paid outcome source:
+- Event mapping and duplicate/reply-stop acceptance evidence:
 - Adapter:
 - Tenant-specific credentials configured:
 - Contact create/reuse tested:
@@ -130,3 +138,4 @@ BookedRadar operator: ______________________
 Customer representative: ___________________
 
 Notes:
+

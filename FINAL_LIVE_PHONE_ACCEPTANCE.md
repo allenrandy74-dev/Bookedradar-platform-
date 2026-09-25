@@ -1,6 +1,12 @@
 # BookedRadar Final Live Phone Acceptance — Market Launch
 
-Run against the production demo tenant after the current production build is live.
+## Acceptance recorded September 25, 2026
+
+Randy accepted the completed call testing in conversation at approximately 12:31 PM America/Chicago. His reported remaining behavior was that some transfers reached the receiving person's voicemail. This records owner acceptance of the existing call experience; it does not invent new call IDs, new provider evidence, or a fresh call on every later build.
+
+The accepted path remains companion SMS, approximately 10-second hold, then SIP REFER. If the recipient does not answer or declines, their carrier/voicemail may answer. The platform cannot guarantee a human answer or reclaim the call after REFER. Screened/warm transfer stays disabled. Each customer must accept this behavior and verify their own routing and voicemail greeting before go-live.
+
+The scenarios below remain the reusable regression procedure.
 
 **Goal:** close the remaining human-in-the-loop acceptance items without changing the proven core call/transfer path.
 
@@ -129,3 +135,4 @@ For each call, check:
 If one optional feature fails, gate only that optional feature and preserve the accepted core path unless the failure affects the core call experience.
 
 Do not re-enable screened/warm spoken transfer solely to pass parity testing. The proven SMS-context + hold + REFER fallback remains the accepted transfer method until a replacement path is separately proven.
+

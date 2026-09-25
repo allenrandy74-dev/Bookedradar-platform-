@@ -40,6 +40,7 @@ Collect these when convenient, but do not block the first draft:
 - What the business considers urgent.
 - Whether BookedRadar should only capture preferred appointment windows or connect to live booking.
 - Preferred reply-to email address.
+- What software creates estimates, and how it reports estimate sent, customer reply, accepted/booked, canceled and paid outcomes.
 - Anything unusual about how the business handles calls, estimates, cancellations, or emergencies.
 
 ## What the customer should NOT have to figure out
@@ -105,7 +106,7 @@ For each new customer:
 3. Generate tenant config from Quick Start and apply the selected service profile.
 4. Normalize business hours and service area.
 5. Add service catalog and business-specific safety rule.
-6. Configure human escalation number.
+6. Configure human escalation number; explain that unanswered/declined REFER transfers may reach voicemail, verify its greeting, and record customer acceptance.
 7. Assign inbound BookedRadar route/number.
 8. Configure provider-specific phone forwarding instructions.
 9. Connect CRM if selected.
@@ -183,3 +184,4 @@ BookedRadar must then:
 6. Run a live acceptance test with the customer before activation.
 
 Until those steps are complete, BookedRadar remains in **confirm-only** mode: it may capture a preferred date/time window but must not promise or write a real appointment.
+

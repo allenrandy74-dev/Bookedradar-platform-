@@ -2,6 +2,8 @@
 
 Updated: 2026-09-25
 
+Current status: see `LAUNCH_CLOSEOUT_2026-09-25.md`. Owner accepted call testing September 25 with possible voicemail handoff documented. Historical evidence below does not imply that disabled optional channels are active.
+
 ## Completed before customer launch
 - [x] Production voice platform deployed
 - [x] Wix CRM permission smoke test passed and temporary records removed
@@ -33,14 +35,14 @@ Updated: 2026-09-25
 - [ ] Publish/attach Quick Start to a polished customer-facing onboarding entry point
 - [ ] Wire live Quick Start submission event automatically into the protected provisioning preparation workflow
 - [ ] Add customer-facing plain-language setup progress/status view
-- [ ] Final controlled current-production voice intake acceptance call
-- [ ] Final controlled current-production transfer acceptance call: SMS summary -> 10-second hold -> REFER -> receiving-phone behavior
-- [ ] Confirm handset delivery/content of the transfer companion SMS during the current-production controlled transfer call
+- [x] Voice intake acceptance accepted by Randy September 25; no additional call was placed for this closeout.
+- [x] Transfer experience accepted by Randy September 25 with unanswered/declined transfers sometimes reaching voicemail.
+- [x] Randy previously confirmed receiving transfer text messages; no new carrier test was performed in this closeout.
 - [ ] Complete final external failure/retry drills that are safe to perform without customer traffic
-- [ ] Disable the one-time metadata acceptance-audit startup gate after evidence capture and confirm it stays off on a later restart
+- [x] Production ACCEPTANCE_AUDIT_ON_STARTUP=false verified after the September 25 billing deployment.
 - [ ] Freeze/tag first customer-ready release after current-build voice/transfer acceptance passes
 - [ ] Finalize service agreement/privacy/terms review for commercial launch
-- [ ] Finish prospect-specific presentations and outreach drafts
+- [x] Prospect-specific outreach drafts and sales materials prepared; sending still requires explicit authorization.
 
 ## Waiting on owner/business administration
 - [x] Business mailing address finalized
@@ -90,9 +92,10 @@ intentionally disabled in the app.
 - [x] Existing BookedRadar Wix site remains published on the custom domain with Wix Forms installed; the site is still Editorless.
 - [x] Production billing remains intentionally fail-closed in test mode with `live_armed=false`; no billing activation was performed.
 - [x] One-time metadata acceptance audit found stored call-history evidence for five prior calls, including spam screening, transcript history, lead summaries, and one knowledge-gap signal.
-- [ ] Current-build transfer acceptance is **not** closed by those historical records: all five audited records reported `transferred=false`, and material greeting/VAD/half-duplex changes landed after the previously proven September 24 transfer call.
-- [ ] Re-run the final controlled voice + transfer acceptance against the current production build before freezing/tagging the customer-ready release.
+- [x] Owner acceptance is recorded separately above. Historical audit limitation: all five audited records reported `transferred=false`, and material greeting/VAD/half-duplex changes landed after the previously proven September 24 transfer call.
+- [x] Randy accepted prior call tests September 25; keep future voice-path changes subject to a new regression call.
 
 ### Why the current-build acceptance gate is open
 
 The September 24 transfer proof remains valid evidence that the SMS -> 10-second delay -> REFER architecture worked. It is not sufficient evidence for the current production image because the voice path subsequently changed to suspend VAD during the opening greeting, harden noise handling, protect normal assistant speech from ambient barge-in, and coordinate transfer-hold state with the output guard. Those changes are covered by automated tests, but the provider/handset boundary still requires one controlled human call on the deployed build.
+

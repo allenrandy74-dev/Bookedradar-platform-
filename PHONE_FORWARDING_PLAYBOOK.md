@@ -64,7 +64,7 @@ Do not use a generic star code unless we have confirmed that code for the custom
 4. Confirm the receiving person gets the expected companion summary.
 5. Confirm the caller hears the hold message rather than silence.
 6. Confirm the transfer reaches the approved receiving phone.
-7. Decline/answer as desired and confirm the expected fallback behavior.
+7. Test one answered transfer and one unanswered/declined transfer. The current REFER path may reach the receiving phone's voicemail; it does not return automatically to the AI. Confirm the voicemail greeting and obtain customer acceptance.
 
 ### Test 3 — forwarding off / rollback
 
@@ -72,6 +72,12 @@ Do not use a generic star code unless we have confirmed that code for the custom
 2. Call the normal business number again.
 3. Confirm it follows the customer's original phone behavior.
 4. Re-enable only after the customer is satisfied with the acceptance tests.
+
+## Customer-facing transfer explanation
+
+“When you ask for a person, we transfer you to the business’s designated phone. If no one answers, you may reach that phone’s voicemail. The business receives the captured call details through its configured notification workflow.”
+
+Do not promise a live person, automatic return to the AI, or an automated backup-number attempt after REFER. Choose a staffed destination or an appropriate business voicemail greeting.
 
 ## Provider-specific instruction record
 
@@ -91,6 +97,8 @@ For every customer, save this completed block with the tenant activation record:
 - **Normal-call test passed:** yes / no
 - **Human-transfer test passed:** yes / no
 - **Rollback test passed:** yes / no
+- **Unanswered/declined transfer destination and voicemail greeting checked:**
+- **Customer accepted possible voicemail handoff:**
 - **Customer acceptance date:** 
 
 ## Safety rules
@@ -101,3 +109,4 @@ For every customer, save this completed block with the tenant activation record:
 - Never activate real customer forwarding before that tenant's identity, phone route, escalation, CRM/integration and required communication channels are ready.
 - Keep a tested rollback path.
 - A phone-forwarding change alone does not make a customer "live"; the customer-specific launch checklist and acceptance call still control activation.
+

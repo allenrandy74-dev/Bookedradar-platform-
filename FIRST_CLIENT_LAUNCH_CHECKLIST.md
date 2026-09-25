@@ -35,8 +35,9 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Card fallback path tested.
 - [x] Billing portal/cancellation state handling tested.
 - [x] Webhook signature and stale-event protections tested.
-- [ ] Live Stripe credentials/payment objects enabled only after final agreement review.
-- [ ] One controlled live-payment acceptance test completed before charging a customer.
+- [x] Live credentials, four products/eight monthly prices, portal and webhook installed; all mappings validated with live billing disarmed.
+- [x] Controlled live Checkout display/cancellation inspection completed without payment; session expired unpaid.
+- [ ] Separately authorize billing arm and first real customer payment; verify settlement and actual paid-event webhook handling.
 
 ## D. Customer onboarding
 
@@ -178,7 +179,7 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 - [x] Duplicate legacy homepage path consolidated with a permanent Wix SEO redirect from `/index.html` to `/`.
 - [x] Clean production deployment `e8c7b48` is live; tenant readiness is READY with zero blockers/warnings and no error-level logs after startup.
 - [x] Stripe confirmed the BookedRadar LLC account can process live payments and a payout bank account is attached.
-- [ ] Live Stripe catalog/webhook/portal/Render price mappings remain intentionally disarmed until every published package price is created and verified.
+- [x] All live Stripe catalog/webhook/portal/Render mappings configured and verified; billing remains intentionally disarmed pending separate authorization.
 - [x] Native Wix Search Console connection repaired: account VALID, ownership VERIFIED, readiness READY, sitemap resubmitted and fresh site-indexing request accepted on September 25, 2026.
 - [ ] Google recrawl/canonical consolidation of the legacy `/index.html` result is not yet claimed; Wix page inspection returned no result for the editorless marketing surface.
 
@@ -189,11 +190,23 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 ### External activation gates remaining
 
 - [x] Stripe account-level setup is complete: BookedRadar LLC is approved for live payments and the payout bank is attached.
-- [ ] Create/verify live Stripe standard + Founding recurring prices for RadarAnswer, RadarRecover, RadarGrow and RadarSchedule.
-- [ ] Configure live Stripe webhook / Billing Portal / Render live billing variables with live arm initially false.
-- [ ] Run one controlled live Checkout display test, then use the first approved customer payment as settlement acceptance.
+- [x] Created/verified all eight live Stripe standard + Founding recurring prices.
+- [x] Configured live webhook, Billing Portal and Render variables with live arm false.
+- [x] Controlled live Checkout display test completed and expired unpaid.
+- [ ] Use the first separately approved customer payment as settlement acceptance.
 - [x] Post-upgrade live voice acceptance sequence completed: normal English, transfer regression, Spanish, returning caller, solicitor/spam, Knowledge Gap and transcript history.
 - [ ] If the first customer uses web chat, perform one browser-origin acceptance test before enabling it for that customer.
 - [ ] If the first customer uses customer-facing SMS, complete tenant/A2P/STOP/HELP acceptance before enabling it.
 - [ ] If the first customer purchases RadarSchedule, connect their approved calendar and run live-booking acceptance before activation.
 - [ ] Obtain qualified legal review of the customer-facing agreement/terms before broad commercial rollout; use the current template as the operational draft meanwhile.
+
+
+## September 25 owner closeout
+
+## Acceptance recorded September 25, 2026
+
+Randy accepted the completed call testing in conversation at approximately 12:31 PM America/Chicago. His reported remaining behavior was that some transfers reached the receiving person's voicemail. This records owner acceptance of the existing call experience; it does not invent new call IDs, new provider evidence, or a fresh call on every later build.
+
+The accepted path remains companion SMS, approximately 10-second hold, then SIP REFER. If the recipient does not answer or declines, their carrier/voicemail may answer. The platform cannot guarantee a human answer or reclaim the call after REFER. Screened/warm transfer stays disabled. Each customer must accept this behavior and verify their own routing and voicemail greeting before go-live.
+
+See `docs/LAUNCH_CLOSEOUT_2026-09-25.md` for the consolidated current outstanding list. Historical dated evidence above is retained for traceability.

@@ -3,7 +3,25 @@ import path from 'node:path';
 import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
-const names = ['state.json', 'recovery-state.json', 'leads.jsonl', 'voice-transfers.json', 'billing-test-state.json'];
+const names = ['state.json', 'recovery-state.json', 'leads.jsonl', 'voice-transfers.json', 'billing-test-state.json', 'billing-live-state.json', 'call-history.json', 'web-chat.json'];
+
+export function backupSources(env = process.env) {
+  const state = env.STATE_FILE || './data/state.json';
+  const mode = String(env.BOOKEDRADAR_BILLING_MODE || 'test').trim().toLowerCase();
+  if (!['test', 'live'].includes(mode)) throw new Error('Invalid billing mode');
+  const sources = {
+    'state.json': state,
+    'recovery-state.json': env.RECOVERY_STATE_FILE || './data/recovery-state.json',
+    'leads.jsonl': env.LEADS_FILE || './data/leads.jsonl',
+    'voice-transfers.json': path.join(path.dirname(state), 'voice-transfers.json'),
+    'billing-test-state.json': path.join(path.dirname(state), 'billing-test-state.json'),
+    'billing-live-state.json': path.join(path.dirname(state), 'billing-live-state.json'),
+    'call-history.json': env.CALL_HISTORY_FILE || './data/call-history.json',
+    'web-chat.json': env.WEB_CHAT_STATE_FILE || './data/web-chat.json',
+  };
+  if (env.BILLING_STATE_FILE) sources[`billing-${mode}-state.json`] = env.BILLING_STATE_FILE;
+  return sources;
+}
 function keyFrom(value) {
   if (!/^[a-f0-9]{64}$/i.test(value || '')) throw new Error('BACKUP_ENCRYPTION_KEY must be a 32-byte hex key');
   return Buffer.from(value, 'hex');
@@ -18,7 +36,8 @@ export async function createBackup({ sources, destination, key, quiesced }) {
   const encryptionKey = keyFrom(key);
   const files = [];
   const missing = [];
-  for (const name of names) {
+  for (const name of Object.keys(sources)) {
+    if (!names.includes(name)) throw new Error('Unknown backup source');
     try {
       const data = await fs.readFile(sources[name]);
       validate(name, data);
@@ -64,14 +83,7 @@ export async function main() {
     if (!env.BACKUP_ARCHIVE || !env.RESTORE_DIRECTORY) throw new Error('Set BACKUP_ARCHIVE and a new isolated RESTORE_DIRECTORY');
     return restoreBackup({ archive: env.BACKUP_ARCHIVE, destination: path.resolve(env.RESTORE_DIRECTORY), key: env.BACKUP_ENCRYPTION_KEY });
   }
-  const state = env.STATE_FILE || './data/state.json';
-  const sources = {
-    'state.json': state,
-    'recovery-state.json': env.RECOVERY_STATE_FILE || './data/recovery-state.json',
-    'leads.jsonl': env.LEADS_FILE || './data/leads.jsonl',
-    'voice-transfers.json': path.join(path.dirname(state), 'voice-transfers.json'),
-    'billing-test-state.json': env.BILLING_STATE_FILE || path.join(path.dirname(state), 'billing-test-state.json')
-  };
+  const sources = backupSources(env);
   const destination = path.resolve(env.BACKUP_DIRECTORY || './backups', `${Date.now()}-${randomBytes(4).toString('hex')}.brbackup`);
   return createBackup({ sources, destination, key: env.BACKUP_ENCRYPTION_KEY, quiesced: env.BACKUP_QUIESCED === 'yes' });
 }
