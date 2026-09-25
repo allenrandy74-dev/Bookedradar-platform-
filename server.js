@@ -112,6 +112,7 @@ const {
   WEB_CHAT_RESPONSE_MODEL = "gpt-5.6-luna",
   ACCEPTANCE_AUDIT_ON_STARTUP = "false",
   ACCEPTANCE_AUDIT_CALL_IDS = "",
+  RADARPROOF_AUDIT_ON_STARTUP = "false",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -218,6 +219,29 @@ for (const tenant of registry.list()) {
     booking_adapter: readiness.bookingAdapter,
   }));
 }
+if (RADARPROOF_AUDIT_ON_STARTUP.toLowerCase() === "true") {
+  const auditTenant = registry.get("demo-hvac");
+  if (auditTenant) {
+    const report = await radarProof(recoveryStore, auditTenant.tenantId);
+    const callActivity = await callHistory.stats(auditTenant.tenantId);
+    console.log(JSON.stringify({
+      event: "radarproof.audit",
+      tenant_id: auditTenant.tenantId,
+      opportunities_captured: report.opportunitiesCaptured,
+      recovered_opportunities: report.recoveredOpportunities,
+      estimated_recovered_value: report.estimatedRecoveredValue,
+      confirmed_revenue: report.confirmedRevenue,
+      pending_actions: report.pendingActions,
+      blocked_actions: report.blockedActions,
+      calls_handled: callActivity.callsHandled || 0,
+      human_transfers: callActivity.humanTransfers || 0,
+      spam_screened: callActivity.spamScreened || 0,
+      calls_with_transcript: callActivity.callsWithTranscript || 0,
+      knowledge_gaps: callActivity.knowledgeGaps || 0,
+    }));
+  }
+}
+
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
 const billing = await createBilling({
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
