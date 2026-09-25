@@ -241,7 +241,7 @@ test('price catalog maps configured package Stripe ids to published amounts', ()
 });
 
 
-test('live billing requires an explicit second arm and live credentials', async t => {
+test('live billing requires complete configuration and live credentials', async t => {
   const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-config-'));
   t.after(()=>rm(dir,{recursive:true,force:true}));
   const base={
@@ -256,12 +256,58 @@ test('live billing requires an explicit second arm and live credentials', async 
   };
   await assert.rejects(
     createBilling({env:base,tenantExists:()=>true,defaultStateFile:path.join(dir,'live.json')}),
-    /live_billing_not_armed/
+    /live_package_prices_incomplete/
   );
   await assert.rejects(
     createBilling({env:{...base,BOOKEDRADAR_BILLING_LIVE_ARMED:'true',STRIPE_SECRET_KEY:'sk_test_wrong'},tenantExists:()=>true,defaultStateFile:path.join(dir,'live2.json')}),
     /live_billing_configuration_invalid/
   );
+});
+
+test('disarmed live readiness validates every price but blocks all billing operations', async t => {
+  const f = await fixture(t);
+  const env = {
+    BOOKEDRADAR_BILLING_ENABLED: 'true', BOOKEDRADAR_BILLING_MODE: 'live',
+    BOOKEDRADAR_BILLING_LIVE_ARMED: 'false', STRIPE_SECRET_KEY: 'rk_live_fake',
+    STRIPE_WEBHOOK_SECRET: 'whsec_live', STRIPE_PORTAL_CONFIGURATION: 'bpc_live',
+    BILLING_PUBLIC_BASE_URL: 'https://example.com', BOOKEDRADAR_BILLING_ADMIN_TOKEN: 'x'.repeat(40),
+  };
+  const amounts = { answer: [14900,14900], recover: [49700,39700], grow: [69700,59700], schedule: [89700,79700] };
+  const expected = {};
+  for (const [profile, values] of Object.entries(amounts)) {
+    for (const [i, tier] of ['standard','founding'].entries()) {
+      const id = `price_${profile}_${tier}`;
+      env[`STRIPE_PRICE_${profile.toUpperCase()}_${tier.toUpperCase()}`] = id;
+      expected[id] = values[i];
+    }
+  }
+  const reads = [];
+  const stripeClient = { prices: { retrieve: async id => {
+    reads.push(id);
+    return { livemode:true, active:true, currency:'usd', unit_amount:expected[id], recurring:{interval:'month',interval_count:1} };
+  } } };
+  const billing = await createBilling({ env, stripeClient, tenantExists:()=>true, defaultStateFile:path.join(f.dir,'live.json') });
+  assert.equal(reads.length, 8);
+  assert.equal(billing.disarmed, true);
+  assert.equal(billing.service, null);
+  assert.deepEqual(Object.values(billing.validatedPackagePrices).flatMap(Object.values), Array(8).fill(true));
+  const app = express(); app.use(express.json()); app.use('/api', billing.api);
+  app.post('/stripe/webhook', billing.webhook);
+  app.get('/health', (_req,res)=>res.json({ok:true}));
+  const server = app.listen(0,'127.0.0.1'); await new Promise(resolve=>server.once('listening',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  for (const route of ['/accounts','/accounts/tenant1/checkout','/accounts/tenant1/portal']) {
+    const response = await fetch(url+'/api'+route,{method:'POST',headers:{authorization:'Bearer '+env.BOOKEDRADAR_BILLING_ADMIN_TOKEN,'content-type':'application/json'},body:'{}'});
+    assert.equal(response.status,503);
+    assert.equal((await response.json()).error,'live_billing_not_armed');
+  }
+  assert.equal((await fetch(url+'/stripe/webhook',{method:'POST'})).status,503);
+  assert.equal((await fetch(url+'/api/accounts/tenant1')).status,401);
+  assert.equal((await fetch(url+'/health')).status,200);
+  assert.equal(reads.length,8);
+  const invalidClient = {prices:{retrieve:async()=>({livemode:false,active:true,currency:'usd',unit_amount:14900,recurring:{interval:'month',interval_count:1}})}};
+  await assert.rejects(createBilling({env,stripeClient:invalidClient,tenantExists:()=>true,defaultStateFile:path.join(f.dir,'invalid.json')}),/invalid_live_package_price/);
 });
 
 test('live BillingService rejects test objects and accepts live package objects', async t => {
