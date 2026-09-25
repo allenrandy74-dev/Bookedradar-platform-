@@ -80,5 +80,8 @@
       "type": "customer_specific",
       "enabled": false
     }
+  },
+  "commercial": {
+    "dispatchMode": "shadow"
   }
-}\n
+}
