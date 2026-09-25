@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeIntake, isOptOutText } from "../src/intake.js";
+import { normalizeIntake, isOptOutText, isSmsControlText } from "../src/intake.js";
 
 test("dedicated estimate intake preserves estimate amount", () => {
   const event = normalizeIntake("estimate", {
@@ -11,9 +11,22 @@ test("dedicated estimate intake preserves estimate amount", () => {
   assert.match(event.idempotencyKey, /^estimate:/);
 });
 
-test("STOP variants are recognized as opt-outs", () => {
-  assert.equal(isOptOutText(" STOP "), true);
-  assert.equal(isOptOutText("please stop"), false);
+test("SMS opt-out keywords are recognized exactly", () => {
+  for (const keyword of ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]) {
+    assert.equal(isOptOutText(`  ${keyword.toLowerCase()}  `), true);
+  }
+  for (const text of ["please stop", "START", "UNSTOP", "HELP", "INFO", ""]) {
+    assert.equal(isOptOutText(text), false);
+  }
+});
+
+test("SMS opt-in and help control keywords are recognized without becoming lead replies", () => {
+  for (const keyword of ["START", "UNSTOP", "HELP", "INFO"]) {
+    assert.equal(isSmsControlText(`  ${keyword.toLowerCase()}  `), true);
+  }
+  for (const text of ["STOP", "please help", "hello", ""]) {
+    assert.equal(isSmsControlText(text), false);
+  }
 });
 
 
