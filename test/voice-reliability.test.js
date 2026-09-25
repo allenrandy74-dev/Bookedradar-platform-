@@ -308,14 +308,17 @@ test('greeting guard protects opening until actual playback ends, not generation
   g.event({ type: 'input_audio_buffer.speech_started' });
   g.event({ type: 'response.done', response: { id: 'g', status: 'completed' } });
   g.event({ type: 'output_audio_buffer.stopped', response_id: 'other' });
-  assert.equal(sent.length, 0, 'speech and generation events cannot unlock the opening');
+  assert.equal(sent.length, 1, 'opening sends only the VAD-suspend update');
+  assert.equal(sent[0].type, 'session.update');
+  assert.equal(sent[0].session.audio.input.turn_detection, null);
+  assert.equal(logs[0].event, 'greeting.turn_detection_suspended');
   g.event({ type: 'output_audio_buffer.stopped', response_id: 'g' });
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].session.audio.input.turn_detection.interrupt_response, true);
-  assert.equal(sent[0].session.audio.input.turn_detection.create_response, true);
-  assert.equal(sent[0].session.audio.input.turn_detection.threshold, 0.5);
-  assert.equal(logs[0].reason, 'greeting_completed');
-  g.release('duplicate'); assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].session.audio.input.turn_detection.interrupt_response, true);
+  assert.equal(sent[1].session.audio.input.turn_detection.create_response, true);
+  assert.equal(sent[1].session.audio.input.turn_detection.threshold, 0.5);
+  assert.equal(logs[1].reason, 'greeting_completed');
+  g.release('duplicate'); assert.equal(sent.length, 2);
   assert.equal(c.timers.size, 0);
 });
 
@@ -331,14 +334,19 @@ test('greeting guard restores normal listening on missing playback events or exp
       g.event({ type: 'output_audio_buffer.started', response_id: 'g' });
       g.event({ type: 'output_audio_buffer.cleared', response_id: 'g' });
     }
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0].session.audio.input.turn_detection.interrupt_response, true);
-    await c.tick(); assert.equal(sent.length, 1);
+    assert.equal(sent.length, 2);
+    assert.equal(sent[0].session.audio.input.turn_detection, null);
+    assert.equal(sent[1].session.audio.input.turn_detection.interrupt_response, true);
+    await c.tick(); assert.equal(sent.length, 2);
   }
 });
 
 test('greeting guard cancels its release on socket close', async () => {
-  const c = clock();
-  const g = createGreetingTurnGuard({ ...c, send: () => assert.fail('closed socket'), log() {} });
-  g.open(); g.stop(); await c.tick();
+  const c = clock(), sent = [];
+  const g = createGreetingTurnGuard({ ...c, send: e => sent.push(e), log() {} });
+  g.open();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].session.audio.input.turn_detection, null);
+  g.stop(); await c.tick();
+  assert.equal(sent.length, 1, 'closed socket cannot receive a restore update');
 });
