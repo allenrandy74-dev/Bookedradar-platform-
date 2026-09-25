@@ -106,7 +106,7 @@ The competitive upgrade code should be in production before the first client, bu
 - [x] Obvious solicitor/spam test ends safely without screening a legitimate customer.
 - [x] Knowledge Gap Radar test records an unknown business-policy question and does not invent an answer.
 - [x] Transcript-history test captures both sides of an approved demo call and remains tenant-isolated/searchable.
-- [ ] BookedRadar web-chat widget passes a live website-origin test and creates/updates a recovery opportunity. Origin allowlisting and structured human-request behavior are covered by production tests; the live browser-origin acceptance remains open.
+- [ ] BookedRadar web-chat widget passes a live website-origin test and creates/updates a recovery opportunity. Backend/origin behavior is production-tested, but the current public homepage crawl does not expose the widget launcher/script; verify/install the live embed before customer activation.
 - [ ] Web-chat human-request path creates the expected human alert/task.
 - [ ] Two-way SMS acceptance test passes after carrier/A2P and tenant SMS activation.
 - [ ] In-call requested-text test passes after carrier/A2P and tenant SMS activation.
