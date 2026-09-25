@@ -192,12 +192,6 @@ if (ACCEPTANCE_AUDIT_ON_STARTUP.toLowerCase() === "true") {
       spam_ended: Boolean(record?.spamEnded),
       transcript_turns: Array.isArray(record?.transcript) ? record.transcript.length : 0,
       knowledge_gaps: Array.isArray(record?.knowledgeGaps) ? record.knowledgeGaps.length : 0,
-      knowledge_gap_details: Array.isArray(record?.knowledgeGaps)
-        ? record.knowledgeGaps.map(gap => ({
-            category: String(gap?.category || "").slice(0, 80),
-            question: String(gap?.question || "").slice(0, 240),
-          }))
-        : [],
       has_lead_summary: Boolean(record?.leadSummary),
       transferred: Boolean(record?.transferred),
     }));
