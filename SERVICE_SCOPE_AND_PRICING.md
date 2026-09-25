@@ -53,7 +53,7 @@ The Founding Partner Pilot is designed as a revenue-recovery operating layer, no
 - Customer-specific service rules and safety/escalation guidance.
 - One acceptance test before activation.
 
-### Not included in the $497 pilot unless separately approved
+### Not included in RadarRecover / the Founding Partner recovery scope unless separately approved
 
 - Full-time live scheduling or dispatch.
 - Writing appointments directly into a live calendar/dispatch system.
