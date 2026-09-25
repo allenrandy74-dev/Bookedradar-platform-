@@ -110,7 +110,7 @@ The competitive upgrade code should be in production before the first client, bu
 - [ ] Web-chat human-request path creates the expected human alert/task.
 - [ ] Two-way SMS acceptance test passes after carrier/A2P and tenant SMS activation.
 - [ ] In-call requested-text test passes after carrier/A2P and tenant SMS activation.
-- [ ] RadarProof displays call counts, transfer counts, screened calls, knowledge gaps and recovery/revenue measures from test activity.
+- [x] RadarProof production data path verified on the isolated demo tenant: call counts, transfers, spam screens, transcript counts, knowledge gaps, opportunities and recovery/revenue fields all populate from durable production state.
 - [ ] Simple live-booking capability is acceptance-tested for any customer sold live booking; otherwise the customer remains confirm-only.
 - [x] Customer-facing package/legal sync is installed on the existing Wix site; Package Matrix, Service Order, onboarding docs, and deployment gates describe retention, messaging and scheduling activation boundaries. Static editorless source should still be consolidated in a future source release.
 
@@ -180,6 +180,10 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 - [x] Stripe confirmed the BookedRadar LLC account can process live payments and a payout bank account is attached.
 - [ ] Live Stripe catalog/webhook/portal/Render price mappings remain intentionally disarmed until every published package price is created and verified.
 - [ ] Search Console direct verification is temporarily unavailable through the current GSC connector; Wix redirect correction is complete, but Google recrawl resolution is not yet claimed.
+
+- [x] Outbound recovery dispatch is fail-closed behind two independent activation keys: global `DISPATCH_ENABLED=true` and tenant `commercial.dispatchMode="live"`; all service profiles default to `shadow`.
+- [x] Production dispatch safety build passed **204/204 tests** and live startup reports `dispatch_mode: shadow`, `dispatch_armed: false`.
+- [x] After the dispatch safety deployment, the Wix CRM customer follow-up queue remained at **0 ACTION_NEEDED** tasks; pending demo recovery actions are inert while the gate remains disarmed.
 
 ### External activation gates remaining
 
