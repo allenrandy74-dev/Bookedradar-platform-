@@ -18,7 +18,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 
 ## B. Commercial scope — REQUIRED BEFORE SALE
 
-- [x] Founding Partner pilot baseline defined at $497/month.
+- [x] RadarRecover pricing aligned to the published ladder: $497/month standard and $397/month Founding Partner.
 - [x] Setup fee waived for approved Founding Partners.
 - [x] ACH preferred; card fallback supported.
 - [x] Confirm-only scheduling is included in the base pilot.
