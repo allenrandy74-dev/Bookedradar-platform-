@@ -141,5 +141,11 @@ Existing Stripe account: `acct_1UJDp1CIdeSd220W` (BookedRadar LLC).
 - Live portal: `bpc_1UJEXHCIdeSd220WLQkERIpk`; payment method updates enabled; cancellation at paid-period end; plan/quantity changes disabled; return URL `https://bookedradar-platform.onrender.com/billing/return`.
 - Live webhook: `we_1UJbTvCIdeSd220Wm5OKE1fx`; exact 10 events in `BILLING_EVENTS`; API version `2026-08-26.dahlia`.
 - Do not replace test mappings with these live IDs until the live key, webhook secret, mode and portal configuration can be switched together. Preserve test state separately.
-- Restricted production API key draft: Customers, Subscriptions, Checkout Sessions, Customer Portal write; Prices, Products, Invoices read. Key creation awaits user confirmation. No payout/transfer permissions.
-- Live price validation in production and controlled Checkout inspection remain pending until credentials are installed. No live payment was submitted.
+- Approved restricted production API key created and installed: Customers, Subscriptions, Checkout Sessions, Customer Portal write; Prices, Products, Invoices read. No payout/transfer permissions. Secret values are not stored in this document.
+- Live credentials, portal, all eight mappings, and mode were saved to the existing Render service. `BOOKEDRADAR_BILLING_LIVE_ARMED=false`; separate live state: `/app/data/billing-live-state.json`.
+- Production deployment `dep-daradoad0e5s73e031ig` startup at 2026-09-25T16:53:15Z validated all eight mappings with mode live, live_armed false, and disarmed true.
+- Authenticated billing account API returned HTTP 503 `live_billing_not_armed`. Voice remained enabled with one tenant and the existing transfer fallback configuration.
+- Live Portal configuration was retrieved successfully with the restricted production key; active, live, payment-method updates enabled, cancellation at period end, plan changes disabled.
+- One authorized Stripe-only inspection Checkout Session used RadarRecover founding at USD 397/month with card and US bank account available. No payment or customer information was entered. The Back link returned to the cancellation page correctly.
+- Inspection session: `cs_live_a1puNDSXQaxH3daPSKQQYYFlb0jm67lTdFuXzvz6PsOTaUREqRPFWTWiWc`. It was explicitly expired after inspection; no customer, subscription, or payment intent was created.
+- Live charging remains disarmed. First real payment, settlement, and actual paid-event webhook acceptance require separate customer-payment authorization.
