@@ -16,7 +16,7 @@ Production charging requires all of the following at the same time:
 - valid HTTPS billing return URL
 - billing admin token of at least 32 characters
 
-If any requirement is missing, live billing must fail closed.
+If any requirement is missing, live billing must fail closed. A disarmed live configuration may perform read-only price validation, but its billing account API and webhook processing return 503. Billing startup failure is isolated from voice/CRM startup.
 
 Test and live billing use separate state files and reject Stripe objects/events from the other mode.
 
@@ -97,16 +97,16 @@ Delayed events from retired subscriptions cannot take ownership of the active bi
 5. Add the live webhook endpoint and signing secret.
 6. Add the live Render variables with `BOOKEDRADAR_BILLING_LIVE_ARMED=false`.
 7. Deploy.
-8. Verify startup refuses to operate as live billing until armed, and that no test/live state is mixed.
+8. Verify startup validates the live catalog while disarmed; billing account operations and webhook processing must return 503, and no test/live state is mixed.
 9. Verify all live price objects against expected package amounts.
-10. Set `BOOKEDRADAR_BILLING_LIVE_ARMED=true`.
+10. Only after separate explicit authorization, set `BOOKEDRADAR_BILLING_LIVE_ARMED=true`.
 11. Deploy.
 12. Require startup log `billing.package_prices.startup` to show:
     - mode: live
     - live_armed: true
     - every package standard/founding configured
     - every configured price validated
-13. Create one controlled live Checkout Session without completing payment; verify the displayed package, monthly amount, ACH/card option and cancellation return path.
+13. Create one controlled live Checkout Session without completing payment; verify the displayed package, monthly amount, ACH/card option and cancellation return path. If activation is not authorized, a separately authorized Stripe-only controlled session may be used without changing the application's arm flag. Do not enroll a fabricated customer agreement or bypass the application arm gate.
 14. Use the first approved customer payment as the first actual settlement acceptance; do not fabricate a live customer charge.
 
 ## Standard setup fees
@@ -122,3 +122,24 @@ Default commercial language is month-to-month unless the signed service order st
 Stripe portal cancellation may end service at the paid period end. BookedRadar preserves cancellation timestamps and prevents delayed events from reactivating a cancelled/replaced subscription.
 
 No abrupt automated call-routing change should be tied directly to a single payment event; service suspension/handoff remains an operational decision governed by the customer agreement.
+
+## Catalog prepared September 25, 2026
+
+Existing Stripe account: `acct_1UJDp1CIdeSd220W` (BookedRadar LLC).
+
+| Render variable | Live monthly price ID | USD |
+| --- | --- | ---: |
+| STRIPE_PRICE_ANSWER_STANDARD | price_1UJXVFCIdeSd220WvY9Sx350 | 149 |
+| STRIPE_PRICE_ANSWER_FOUNDING | price_1UJbPkCIdeSd220Wj0xcscIf | 149 |
+| STRIPE_PRICE_RECOVER_STANDARD | price_1UJbN2CIdeSd220WKvuwzbp9 | 497 |
+| STRIPE_PRICE_RECOVER_FOUNDING | price_1UJbOKCIdeSd220WvAsOgu2x | 397 |
+| STRIPE_PRICE_GROW_STANDARD | price_1UJbNZCIdeSd220WdDWWmMLQ | 697 |
+| STRIPE_PRICE_GROW_FOUNDING | price_1UJbOsCIdeSd220WFRg6hPCw | 597 |
+| STRIPE_PRICE_SCHEDULE_STANDARD | price_1UJbNsCIdeSd220WCOcMXtOM | 897 |
+| STRIPE_PRICE_SCHEDULE_FOUNDING | price_1UJbPKCIdeSd220WgGLub5pE | 797 |
+
+- Live portal: `bpc_1UJEXHCIdeSd220WLQkERIpk`; payment method updates enabled; cancellation at paid-period end; plan/quantity changes disabled; return URL `https://bookedradar-platform.onrender.com/billing/return`.
+- Live webhook: `we_1UJbTvCIdeSd220Wm5OKE1fx`; exact 10 events in `BILLING_EVENTS`; API version `2026-08-26.dahlia`.
+- Do not replace test mappings with these live IDs until the live key, webhook secret, mode and portal configuration can be switched together. Preserve test state separately.
+- Restricted production API key draft: Customers, Subscriptions, Checkout Sessions, Customer Portal write; Prices, Products, Invoices read. Key creation awaits user confirmation. No payout/transfer permissions.
+- Live price validation in production and controlled Checkout inspection remain pending until credentials are installed. No live payment was submitted.
