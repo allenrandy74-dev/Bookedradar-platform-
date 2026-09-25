@@ -58,14 +58,13 @@ export async function createBilling({
   tenantExists,
   tenantProfile = null,
   defaultStateFile,
+  stripeClient = null,
 }) {
   if (env.BOOKEDRADAR_BILLING_ENABLED !== 'true') return null;
 
   const mode = String(env.BOOKEDRADAR_BILLING_MODE || 'test').trim().toLowerCase();
   if (!['test', 'live'].includes(mode)) throw new Error('billing_mode_invalid');
-  if (mode === 'live' && env.BOOKEDRADAR_BILLING_LIVE_ARMED !== 'true') {
-    throw new Error('live_billing_not_armed');
-  }
+  const disarmed = mode === 'live' && env.BOOKEDRADAR_BILLING_LIVE_ARMED !== 'true';
 
   const priceCatalog = buildPriceCatalog(env);
   const keyPattern = mode === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
@@ -85,7 +84,7 @@ export async function createBilling({
   const baseUrl = new URL(env.BILLING_PUBLIC_BASE_URL);
   if (baseUrl.protocol !== 'https:') throw new Error('billing_requires_https');
 
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+  const stripe = stripeClient || new Stripe(env.STRIPE_SECRET_KEY, {
     maxNetworkRetries: 1,
     timeout: 10000,
   });
@@ -115,6 +114,11 @@ export async function createBilling({
     env.BOOKEDRADAR_BILLING_ADMIN_TOKEN,
     'billing_admin_token'
   ));
+  // Price reads are permitted during readiness checks; all account operations
+  // stay closed until the explicit live arm is set.
+  if (disarmed) api.use((_req, res) => res.status(503).json({
+    ok: false, error: 'live_billing_not_armed',
+  }));
 
   const handle = fn => async (req, res) => {
     try {
@@ -143,6 +147,9 @@ export async function createBilling({
   ));
 
   const webhook = async (req, res) => {
+    if (disarmed) return res.status(503).json({
+      ok: false, error: 'live_billing_not_armed',
+    });
     let event;
     try {
       event = stripe.webhooks.constructEvent(
@@ -170,7 +177,8 @@ export async function createBilling({
   return {
     api,
     webhook,
-    service,
+    service: disarmed ? null : service,
+    disarmed,
     billingMode: mode,
     validatedPackagePrices,
     configuredPackagePrices: Object.fromEntries(
