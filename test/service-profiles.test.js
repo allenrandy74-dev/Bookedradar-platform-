@@ -9,6 +9,7 @@ test("Recover profile keeps provider-dependent capabilities fail closed", () => 
     commercial:{},
   },"recover");
   assert.equal(tenant.commercial.serviceProfile,"recover");
+  assert.equal(tenant.commercial.dispatchMode,"shadow");
   assert.equal(tenant.features.callerMemory,true);
   assert.equal(tenant.features.knowledgeGapLearning,true);
   assert.equal(tenant.features.twoWaySms,false);
