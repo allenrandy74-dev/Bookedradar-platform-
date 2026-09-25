@@ -76,6 +76,7 @@ export function createTransferHold({ send: deliver, log, restoreTurnDetection })
     } });
   }
   return {
+    isActive() { return active; },
     start() {
       if (active) return;
       active = true;
