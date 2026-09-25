@@ -65,7 +65,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] SMS transfer companion proven on a handset.
 - [x] Customer-facing transactional email provider acceptance test completed successfully through Resend; synthetic delivery succeeded in production and startup smoke testing was disabled afterward.
 - [x] A2P/customer-facing SMS campaign approved/registered before any customer notification SMS is enabled.
-- [ ] STOP/HELP/opt-out behavior verified for any customer-facing SMS campaign.
+- [x] Application STOP/START/UNSTOP/HELP/INFO classification and opt-out suppression behavior are covered by the production build tests; a live carrier/handset STOP/HELP acceptance remains required before customer-facing SMS is enabled.
 
 ## G. Sales launch
 
@@ -106,7 +106,7 @@ The competitive upgrade code should be in production before the first client, bu
 - [x] Obvious solicitor/spam test ends safely without screening a legitimate customer.
 - [x] Knowledge Gap Radar test records an unknown business-policy question and does not invent an answer.
 - [x] Transcript-history test captures both sides of an approved demo call and remains tenant-isolated/searchable.
-- [ ] BookedRadar web-chat widget passes a live website-origin test and creates/updates a recovery opportunity.
+- [ ] BookedRadar web-chat widget passes a live website-origin test and creates/updates a recovery opportunity. Origin allowlisting and structured human-request behavior are covered by production tests; the live browser-origin acceptance remains open.
 - [ ] Web-chat human-request path creates the expected human alert/task.
 - [ ] Two-way SMS acceptance test passes after carrier/A2P and tenant SMS activation.
 - [ ] In-call requested-text test passes after carrier/A2P and tenant SMS activation.
