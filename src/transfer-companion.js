@@ -79,7 +79,9 @@ export function createTransferHold({ send: deliver, log, restoreTurnDetection })
     start() {
       if (active) return;
       active = true;
-      if (originalVad) send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: { ...originalVad, create_response: false, interrupt_response: false } } } } });
+      // The caller cannot act during the fixed handoff wait. Fully suspend VAD
+      // so TV/background audio cannot clear the one-time hold announcement.
+      send({ type: 'session.update', session: { type: 'realtime', audio: { input: { turn_detection: null } } } });
       // Only cancel when Realtime has told us a conversation response is active.
       // Sending response.cancel with no active response produces response_cancel_not_active.
       if (activeConversationResponseId) {
