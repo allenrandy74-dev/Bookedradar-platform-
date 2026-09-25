@@ -64,7 +64,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 
 - [x] SMS transfer companion proven on a handset.
 - [x] Customer-facing transactional email provider acceptance test completed successfully through Resend; synthetic delivery succeeded in production and startup smoke testing was disabled afterward.
-- [ ] A2P/customer-facing SMS status approved before marketing or customer notification SMS is enabled.
+- [x] A2P/customer-facing SMS campaign approved/registered before any customer notification SMS is enabled.
 - [ ] STOP/HELP/opt-out behavior verified for any customer-facing SMS campaign.
 
 ## G. Sales launch
@@ -99,13 +99,13 @@ The competitive upgrade code should be in production before the first client, bu
 - [x] RadarProof combines recovery/revenue metrics with call activity.
 
 ### Acceptance tests still required
-- [ ] Normal English voice regression call passes after competitive features are enabled.
-- [ ] Human transfer regression passes with the proven SMS + hold + REFER path.
-- [ ] Spanish voice conversation passes with correct intake and no loss of transfer behavior.
-- [ ] Returning-caller test recognizes prior context only after identity is naturally verified.
-- [ ] Obvious solicitor/spam test ends safely without screening a legitimate customer.
-- [ ] Knowledge Gap Radar test records an unknown business-policy question and does not invent an answer.
-- [ ] Transcript-history test captures both sides of an approved demo call and remains tenant-isolated/searchable.
+- [x] Normal English voice regression call passes after competitive features are enabled.
+- [x] Human transfer regression passes with the proven SMS + hold + REFER path.
+- [x] Spanish voice conversation passes with correct intake and no loss of transfer behavior.
+- [x] Returning-caller test recognizes prior context only after identity is naturally verified.
+- [x] Obvious solicitor/spam test ends safely without screening a legitimate customer.
+- [x] Knowledge Gap Radar test records an unknown business-policy question and does not invent an answer.
+- [x] Transcript-history test captures both sides of an approved demo call and remains tenant-isolated/searchable.
 - [ ] BookedRadar web-chat widget passes a live website-origin test and creates/updates a recovery opportunity.
 - [ ] Web-chat human-request path creates the expected human alert/task.
 - [ ] Two-way SMS acceptance test passes after carrier/A2P and tenant SMS activation.
@@ -164,6 +164,22 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 - [x] Live billing requires a complete verified Stripe price catalog for all published standard and Founding package prices before it can start.
 - [x] Customer Service Order template created with package, activation, scheduling, messaging, retention, billing/cancellation and acceptance fields.
 - [x] Existing Wix site has enabled BookedRadar Web Chat and Package & Legal Sync embeds.
+
+## K. Verified production evidence — September 25, 2026
+
+- [x] Production acceptance suite ran **198 tests**.
+- [x] Acceptance audit reviewed six recent QA calls without counting them as customer activity: three produced lead summaries, two were correctly screened as spam, and one intentionally recorded a business-policy knowledge gap.
+- [x] The Knowledge Gap case was traced to an unanswered compressor labor-warranty question; BookedRadar did not invent a warranty answer.
+- [x] Normal English voice, Spanish conversation, returning-caller privacy, solicitor/spam screening, Knowledge Gap behavior and approved transcript-history scenarios passed.
+- [x] Human-transfer regression remains proven with companion SMS, 10-second hold and SIP REFER fallback.
+- [x] Revenue Leak Audit has no real submissions at this checkpoint.
+- [x] Wix CRM internal QA backlog was reconciled: 16 verified test-only ACTION_NEEDED tasks were completed; customer ACTION_NEEDED queue is 0.
+- [x] Wix traffic reporting path was revalidated; 2026-09-25 through 10:00 CT reports 0 sessions, 0 visitors and 0 page views, matching the prior-day same-time window.
+- [x] Duplicate legacy homepage path consolidated with a permanent Wix SEO redirect from `/index.html` to `/`.
+- [x] Clean production deployment `e8c7b48` is live; tenant readiness is READY with zero blockers/warnings and no error-level logs after startup.
+- [x] Stripe confirmed the BookedRadar LLC account can process live payments and a payout bank account is attached.
+- [ ] Live Stripe catalog/webhook/portal/Render price mappings remain intentionally disarmed until every published package price is created and verified.
+- [ ] Search Console direct verification is temporarily unavailable through the current GSC connector; Wix redirect correction is complete, but Google recrawl resolution is not yet claimed.
 
 ### External activation gates remaining
 
