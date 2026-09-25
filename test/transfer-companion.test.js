@@ -183,3 +183,13 @@ test('hold cancels a known active conversation response before announcement', ()
   });
   assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
 });
+
+
+test('transfer hold exposes active state for output-guard coordination', () => {
+  const hold = createTransferHold({ send() {}, log() {} });
+  assert.equal(hold.isActive(), false);
+  hold.start();
+  assert.equal(hold.isActive(), true);
+  hold.stop();
+  assert.equal(hold.isActive(), false);
+});
