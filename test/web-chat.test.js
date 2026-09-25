@@ -38,3 +38,23 @@ test("web chat structured turn merges known lead fields", async () => {
   assert.equal(result.fields.service_type,"AC repair");
   assert.equal(result.leadReady,true);
 });
+
+test("web chat structured turn preserves human-request intent with captured lead fields", async () => {
+  const response={
+    reply:"I’ll have someone follow up with you.",
+    fields:{name:"QA Visitor",phone:"",email:"qa@example.com",service_type:"AC repair",service_address:"",city:"",urgency:"routine",preferred_window:""},
+    needs_human:true,lead_ready:true,
+  };
+  const client={responses:{create:async()=>({output_text:JSON.stringify(response)})}};
+  const result=await runWebChatTurn({
+    client,
+    tenant:{businessName:"Acme",policies:{bookingMode:"confirm_only",quotePrices:false}},
+    session:{fields:{},messages:[]},
+    message:"I need AC repair and want to speak with a person. My email is qa@example.com."
+  });
+  assert.equal(result.needsHuman,true);
+  assert.equal(result.leadReady,true);
+  assert.equal(result.fields.email,"qa@example.com");
+  assert.equal(result.fields.service_type,"AC repair");
+  assert.match(result.reply,/follow up/i);
+});
