@@ -53,7 +53,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 
 ## E. Legal / policy / customer expectations
 
-- [ ] Terms of service reflect actual BookedRadar LLC legal/business details.
+- [ ] Terms of service reflect actual BookedRadar LLC legal/business details. LLC-aligned publication source is prepared in `PUBLIC_TERMS_LLC_REVIEW_DRAFT.md`; live static Terms publication and counsel review remain open.
 - [x] Privacy policy accurately describes collected call/contact data and the categories of connected service providers.
 - [x] Customer agreement identifies that BookedRadar does not replace emergency services, licensed tradespeople, or the customer's field judgment.
 - [x] Agreement states that confirm-only mode does not guarantee or write a live appointment.
@@ -179,7 +179,8 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 - [x] Clean production deployment `e8c7b48` is live; tenant readiness is READY with zero blockers/warnings and no error-level logs after startup.
 - [x] Stripe confirmed the BookedRadar LLC account can process live payments and a payout bank account is attached.
 - [ ] Live Stripe catalog/webhook/portal/Render price mappings remain intentionally disarmed until every published package price is created and verified.
-- [ ] Search Console direct verification is temporarily unavailable through the current GSC connector; Wix redirect correction is complete, but Google recrawl resolution is not yet claimed.
+- [x] Native Wix Search Console connection repaired: account VALID, ownership VERIFIED, readiness READY, sitemap resubmitted and fresh site-indexing request accepted on September 25, 2026.
+- [ ] Google recrawl/canonical consolidation of the legacy `/index.html` result is not yet claimed; Wix page inspection returned no result for the editorless marketing surface.
 
 - [x] Outbound recovery dispatch is fail-closed behind two independent activation keys: global `DISPATCH_ENABLED=true` and tenant `commercial.dispatchMode="live"`; all service profiles default to `shadow`.
 - [x] Production dispatch safety build passed **204/204 tests** and live startup reports `dispatch_mode: shadow`, `dispatch_armed: false`.
