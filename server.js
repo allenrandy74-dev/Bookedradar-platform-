@@ -44,6 +44,7 @@ import { renderTemplate } from "./src/recovery/templates.js";
 import { TenantRegistry, humanTransferTarget, tenantSecret } from "./src/recovery/tenant-registry.js";
 import { requireBearer } from "./src/auth.js";
 import { ActionDispatcher, voiceContactResolver } from "./src/integrations/dispatcher.js";
+import { dispatchGate } from "./src/dispatch-gate.js";
 import {
   buildTenantAdapters,
   wixCredentialsForTenant,
@@ -95,6 +96,7 @@ const {
   BOOKEDRADAR_INGEST_TOKEN = "",
   BOOKEDRADAR_ADMIN_TOKEN = "",
   RADARPROOF_PUBLIC = "false",
+  DISPATCH_ENABLED = "false",
   DISPATCH_INTERVAL_SECONDS = "30",
   RETENTION_DAYS = "90",
   ACTION_RETENTION_DAYS = "180",
@@ -407,6 +409,8 @@ for (const tenant of registry.list()) {
     ),
     sms_enabled: Boolean(tenant?.integrations?.sms?.enabled),
     dispatch_channels: Object.keys(adapters),
+    dispatch_mode: dispatchGate(tenant, { DISPATCH_ENABLED }).tenantMode,
+    dispatch_armed: dispatchGate(tenant, { DISPATCH_ENABLED }).armed,
   }));
 }
 
@@ -1628,6 +1632,10 @@ app.post("/api/v1/admin/prune", requireAdmin, async (_req, res) => {
 app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) => {
   try {
     const tenant = req.bookedRadarTenant;
+    const gate = dispatchGate(tenant, { DISPATCH_ENABLED });
+    if (!gate.armed) {
+      return res.status(409).json({ ok: false, error: "dispatch_not_armed", gate });
+    }
     const limit = Math.min(Math.max(Number(req.body?.limit || 25), 1), 100);
     const { adapters, dispatcher } = dispatcherFor(tenant);
     const results = await dispatcher.runOnce({ limit });
@@ -1963,6 +1971,8 @@ async function runAutomaticDispatch() {
   dispatchRunning = true;
   try {
     for (const tenant of registry.list()) {
+      const gate = dispatchGate(tenant, { DISPATCH_ENABLED });
+      if (!gate.armed) continue;
       const { dispatcher } = dispatcherFor(tenant);
       await dispatcher.runOnce({ limit: 50 });
     }
@@ -1976,7 +1986,7 @@ async function runAutomaticDispatch() {
   }
 }
 
-if (dispatchIntervalSeconds > 0) {
+if (dispatchIntervalSeconds > 0 && String(DISPATCH_ENABLED).trim().toLowerCase() === "true") {
   runAutomaticDispatch().catch(() => {});
   dispatchTimer = setInterval(
     runAutomaticDispatch,
