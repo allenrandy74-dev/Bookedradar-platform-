@@ -15,6 +15,17 @@ export function createGreetingTurnGuard({ send, log, schedule = setTimeout, canc
     open() {
       if (opened || released) return;
       opened = true;
+      // Fully suspend VAD for the opening. Merely setting interrupt_response=false
+      // still allows speech-start events and, in production, can coincide with an
+      // output buffer clear before the caller hears the greeting.
+      send({
+        type: 'session.update',
+        session: {
+          type: 'realtime',
+          audio: { input: { turn_detection: null } },
+        },
+      });
+      log('greeting.turn_detection_suspended');
       timer = schedule(() => release('playback_timeout'), maxMs);
       timer?.unref?.();
     },
