@@ -161,3 +161,12 @@ export function isOptOutText(text = "") {
     "QUIT",
   ]).has(String(text).trim().toUpperCase());
 }
+
+export function isSmsControlText(text = "") {
+  return new Set([
+    "START",
+    "UNSTOP",
+    "HELP",
+    "INFO",
+  ]).has(String(text).trim().toUpperCase());
+}
