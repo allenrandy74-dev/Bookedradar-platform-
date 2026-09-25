@@ -122,3 +122,87 @@ export function createOpeningAudioMonitor({ log, now = Date.now }) {
     },
   };
 }
+
+
+// Protect normal assistant speech from TV/radio/background speech. BookedRadar uses
+// short one-question-at-a-time turns, so callers can answer immediately after
+// playback instead of needing to barge through the assistant.
+export function createConversationOutputGuard({
+  send,
+  log,
+  shouldRestore = () => true,
+  schedule = setTimeout,
+  cancel = clearTimeout,
+  maxMs = 15000,
+}) {
+  let responseId, audioStarted = false, timer, closed = false;
+  const excludedPurposes = new Set(['opening_greeting', 'bookedradar_transfer_hold']);
+
+  function deliver(event) {
+    if (!closed) send(event);
+  }
+
+  function release(reason) {
+    if (!responseId) return;
+    cancel(timer);
+    // Drop TV/radio/caller audio accumulated while the assistant was speaking.
+    // The caller can answer naturally once playback ends.
+    deliver({ type: 'input_audio_buffer.clear' });
+    if (shouldRestore()) {
+      deliver({
+        type: 'session.update',
+        session: {
+          type: 'realtime',
+          audio: { input: { turn_detection: { ...CONVERSATION_TURN_DETECTION } } },
+        },
+      });
+    }
+    log('conversation.output_guard_released', { reason, restored: shouldRestore() });
+    responseId = undefined;
+    audioStarted = false;
+  }
+
+  return {
+    event(event) {
+      if (closed) return;
+      if (event.type === 'response.created') {
+        const purpose = event.response?.metadata?.purpose;
+        if (excludedPurposes.has(purpose)) return;
+        // A new normal response owns the guard. Do not let ambient speech cancel it.
+        responseId = event.response?.id;
+        audioStarted = false;
+        cancel(timer);
+        deliver({
+          type: 'session.update',
+          session: { type: 'realtime', audio: { input: { turn_detection: null } } },
+        });
+        log('conversation.output_guard_started');
+        timer = schedule(() => release('timeout'), maxMs);
+        timer?.unref?.();
+        return;
+      }
+      if (!responseId) return;
+      if (event.type === 'output_audio_buffer.started' && event.response_id === responseId) {
+        audioStarted = true;
+        return;
+      }
+      if (
+        audioStarted &&
+        event.response_id === responseId &&
+        ['output_audio_buffer.stopped', 'output_audio_buffer.cleared'].includes(event.type)
+      ) {
+        release(event.type === 'output_audio_buffer.stopped' ? 'playback_completed' : 'playback_cleared');
+        return;
+      }
+      if (event.type === 'response.done' && event.response?.id === responseId && !audioStarted) {
+        release('response_without_audio');
+      }
+    },
+    stop() {
+      closed = true;
+      cancel(timer);
+      responseId = undefined;
+      audioStarted = false;
+    },
+  };
+}
