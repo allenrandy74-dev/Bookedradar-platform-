@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import express from 'express';
-import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from '../src/greeting-watchdog.js';
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
 
 test('transfer request preserves captured intake and only fills missing name or service', async () => {
@@ -351,4 +351,59 @@ test('greeting guard cancels its release on socket close', async () => {
   assert.equal(sent[0].session.audio.input.turn_detection, null);
   g.stop(); await c.tick();
   assert.equal(sent.length, 1, 'closed socket cannot receive a restore update');
+});
+
+
+test('normal assistant output guard suppresses VAD during playback and restores it after audio', () => {
+  const sent = [], logs = [];
+  const g = createConversationOutputGuard({
+    send: event => sent.push(event),
+    log: (event, fields) => logs.push({ event, ...fields }),
+  });
+  g.event({ type:'response.created', response:{ id:'r1' } });
+  assert.equal(sent.length,1);
+  assert.equal(sent[0].session.audio.input.turn_detection,null);
+  g.event({ type:'output_audio_buffer.started', response_id:'r1' });
+  g.event({ type:'input_audio_buffer.speech_started' });
+  assert.equal(sent.length,1,'ambient speech cannot alter guarded output');
+  g.event({ type:'output_audio_buffer.stopped', response_id:'r1' });
+  assert.equal(sent[1].type,'input_audio_buffer.clear');
+  assert.equal(sent[2].type,'session.update');
+  assert.equal(sent[2].session.audio.input.turn_detection.threshold,0.7);
+  assert.equal(sent[2].session.audio.input.turn_detection.interrupt_response,true);
+  assert.equal(logs.at(-1).reason,'playback_completed');
+});
+
+test('normal output guard does not fight active transfer hold', () => {
+  const sent = [];
+  let transferActive = false;
+  const g = createConversationOutputGuard({
+    send: event => sent.push(event),
+    log() {},
+    shouldRestore: () => !transferActive,
+  });
+  g.event({ type:'response.created', response:{ id:'r1' } });
+  g.event({ type:'output_audio_buffer.started', response_id:'r1' });
+  transferActive = true;
+  g.event({ type:'output_audio_buffer.cleared', response_id:'r1' });
+  assert.equal(sent[1].type,'input_audio_buffer.clear');
+  assert.equal(sent.filter(x=>x.type==='session.update').length,1,'only initial suspend update is sent');
+});
+
+test('normal output guard ignores greeting and transfer-hold responses', () => {
+  const sent = [];
+  const g = createConversationOutputGuard({ send:e=>sent.push(e), log(){} });
+  g.event({ type:'response.created', response:{ id:'g', metadata:{purpose:'opening_greeting'} } });
+  g.event({ type:'response.created', response:{ id:'h', metadata:{purpose:'bookedradar_transfer_hold'} } });
+  assert.equal(sent.length,0);
+});
+
+test('normal output guard restores after non-audio response', () => {
+  const sent = [];
+  const g = createConversationOutputGuard({ send:e=>sent.push(e), log(){} });
+  g.event({ type:'response.created', response:{ id:'tool' } });
+  g.event({ type:'response.done', response:{ id:'tool', status:'completed' } });
+  assert.equal(sent[0].session.audio.input.turn_detection,null);
+  assert.equal(sent[1].type,'input_audio_buffer.clear');
+  assert.equal(sent[2].session.audio.input.turn_detection.threshold,0.7);
 });
