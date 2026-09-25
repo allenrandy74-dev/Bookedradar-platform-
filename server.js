@@ -110,6 +110,8 @@ const {
   SMS_RESPONSE_MODEL = "gpt-5.6-luna",
   WEB_CHAT_STATE_FILE = "./data/web-chat.json",
   WEB_CHAT_RESPONSE_MODEL = "gpt-5.6-luna",
+  ACCEPTANCE_AUDIT_ON_STARTUP = "false",
+  ACCEPTANCE_AUDIT_CALL_IDS = "",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -177,6 +179,24 @@ const callHistory = new CallHistoryStore(CALL_HISTORY_FILE, {
   retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
 });
 await callHistory.load();
+
+if (ACCEPTANCE_AUDIT_ON_STARTUP.toLowerCase() === "true") {
+  const auditIds = String(ACCEPTANCE_AUDIT_CALL_IDS || "")
+    .split(",").map(value => value.trim()).filter(Boolean).slice(0, 20);
+  for (const auditCallId of auditIds) {
+    const record = await callHistory.get("demo-hvac", auditCallId);
+    console.log(JSON.stringify({
+      event: "acceptance.audit",
+      call_id: auditCallId,
+      found: Boolean(record),
+      spam_ended: Boolean(record?.spamEnded),
+      transcript_turns: Array.isArray(record?.transcript) ? record.transcript.length : 0,
+      knowledge_gaps: Array.isArray(record?.knowledgeGaps) ? record.knowledgeGaps.length : 0,
+      has_lead_summary: Boolean(record?.leadSummary),
+      transferred: Boolean(record?.transferred),
+    }));
+  }
+}
 
 const webChatStore = new WebChatStore(WEB_CHAT_STATE_FILE, {
   retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
