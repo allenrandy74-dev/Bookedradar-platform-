@@ -54,11 +54,11 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 ## E. Legal / policy / customer expectations
 
 - [ ] Terms of service reflect actual BookedRadar LLC legal/business details.
-- [ ] Privacy policy accurately describes collected call/contact data and connected providers.
-- [ ] Customer agreement identifies who is responsible for emergency services and field-service decisions.
-- [ ] Agreement states that confirm-only mode does not guarantee an appointment.
-- [ ] Agreement states that live scheduling/dispatch requires a separate approved scope.
-- [ ] Call recording is disabled unless law/policy/customer configuration supports it.
+- [x] Privacy policy accurately describes collected call/contact data and the categories of connected service providers.
+- [x] Customer agreement identifies that BookedRadar does not replace emergency services, licensed tradespeople, or the customer's field judgment.
+- [x] Agreement states that confirm-only mode does not guarantee or write a live appointment.
+- [x] Agreement states that live scheduling/dispatch requires separate approval, configuration and acceptance testing.
+- [x] Call recording is disabled by default and requires separate approval/configuration.
 
 ## F. Communications
 
@@ -183,11 +183,11 @@ The rule is simple: **never sell or enable an unaccepted feature, but do not let
 
 ### External activation gates remaining
 
-- [ ] Connect the BookedRadar Stripe account to the available Stripe integration or complete equivalent account-level setup.
+- [x] Stripe account-level setup is complete: BookedRadar LLC is approved for live payments and the payout bank is attached.
 - [ ] Create/verify live Stripe standard + Founding recurring prices for RadarAnswer, RadarRecover, RadarGrow and RadarSchedule.
 - [ ] Configure live Stripe webhook / Billing Portal / Render live billing variables with live arm initially false.
 - [ ] Run one controlled live Checkout display test, then use the first approved customer payment as settlement acceptance.
-- [ ] Run the short post-upgrade live voice acceptance sequence: normal English, transfer regression, Spanish, returning caller, solicitor/spam, Knowledge Gap, transcript history.
+- [x] Post-upgrade live voice acceptance sequence completed: normal English, transfer regression, Spanish, returning caller, solicitor/spam, Knowledge Gap and transcript history.
 - [ ] If the first customer uses web chat, perform one browser-origin acceptance test before enabling it for that customer.
 - [ ] If the first customer uses customer-facing SMS, complete tenant/A2P/STOP/HELP acceptance before enabling it.
 - [ ] If the first customer purchases RadarSchedule, connect their approved calendar and run live-booking acceptance before activation.
