@@ -221,7 +221,9 @@ for (const tenant of registry.list()) {
   }));
 }
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
-const billing = await createBilling({
+let billing = null;
+try {
+billing = await createBilling({
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
   tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
   defaultStateFile: path.join(
@@ -229,21 +231,32 @@ const billing = await createBilling({
     billingMode === "live" ? "billing-live-state.json" : "billing-test-state.json"
   ),
 });
+} catch (error) {
+  // A billing configuration or provider failure must not stop voice/CRM startup.
+  console.error(JSON.stringify({ event: "billing.startup_failed", mode: billingMode,
+    error: /^[a-z_]+$/.test(error?.message || "") ? error.message : "billing_initialization_failed" }));
+}
 app.post('/stripe/webhook', (req, res) => billing
   ? billing.webhook(req, res)
-  : res.status(503).json({ ok: false, error: 'test_billing_disabled' }));
+  : res.status(503).json({ ok: false, error: 'billing_unavailable' }));
 if (billing) app.use('/api/v1/billing', billing.api);
 console.log(JSON.stringify({
   event: "billing.package_prices.startup",
   enabled: Boolean(billing),
   mode: billing?.billingMode || null,
   live_armed: billingMode === "live" ? process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === "true" : false,
+  disarmed: billing?.disarmed ?? true,
   configured: billing?.configuredPackagePrices || null,
   validated: billing?.validatedPackagePrices || null,
 }));
-app.get('/billing/return', (_req, res) => res.type('html').send(
-  '<!doctype html><html lang="en"><meta charset="utf-8"><title>BookedRadar test billing</title><h1>BookedRadar test billing</h1><p>Your payment submission has returned from Stripe. Bank payments can take time to confirm. BookedRadar updates billing status only after confirmation from Stripe.</p><p>No live telephone service is changed by this test.</p></html>'
-));
+app.get('/billing/return', (req, res) => {
+  const message = req.query.result === 'cancelled'
+    ? 'Checkout was cancelled. No payment was submitted through this Checkout session.'
+    : req.query.result === 'submitted'
+      ? 'Your payment submission has returned from Stripe. Bank payments can take time to confirm. Billing status updates only after confirmation from Stripe.'
+      : 'You have returned from the billing portal.';
+  res.type('html').send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BookedRadar billing</title><h1>BookedRadar billing</h1><p>${message}</p><p>Returning to this page does not change telephone service.</p></html>`);
+});
 
 const transferStore = new JsonStateStore(path.join(path.dirname(STATE_FILE), "voice-transfers.json"));
 await transferStore.load();
