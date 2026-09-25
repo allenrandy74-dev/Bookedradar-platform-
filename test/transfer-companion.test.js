@@ -92,7 +92,7 @@ test('hold speaks once, stays quiet during the wait, and restores VAD on failed 
   assert.equal(responses.length, 1);
   assert.ok(responses[0].response.instructions.includes(TRANSFER_HOLD_MESSAGE));
   assert.equal(responses[0].response.tool_choice, 'none');
-  assert.deepEqual(sent[0].session.audio.input.turn_detection, { ...vad, create_response: false, interrupt_response: false });
+  assert.equal(sent[0].session.audio.input.turn_detection, null);
   hold.event({ type: 'response.created', response: { id: 'hold-1', metadata: { purpose: 'bookedradar_transfer_hold', sequence: '1' } } });
   hold.event({ type: 'output_audio_buffer.started', response_id: 'hold-1' });
   await c.advance(3500);
