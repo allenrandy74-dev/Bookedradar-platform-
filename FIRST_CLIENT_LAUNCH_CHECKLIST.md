@@ -72,7 +72,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Initial Southeast Texas prospect list prioritized.
 - [x] Business-specific research completed for top prospects.
 - [x] Personalized outreach drafts prepared for initial top prospects; nothing sent without approval.
-- [ ] Short presentation/one-page explainer finalized.
+- [x] Short presentation/one-page explainer finalized (`BOOKEDRADAR_ONE_PAGE_EXPLAINER.md`).
 - [x] Demo flow and competitive acceptance runbook prepared using the isolated demo tenant.
 - [x] Package Matrix, Service Scope, deployment-plan statuses, and activation rules prevent sales from representing gated features as active.
 
