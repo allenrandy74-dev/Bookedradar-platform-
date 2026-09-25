@@ -1,6 +1,7 @@
 const API_BASE = "https://api.openai.com/v1";
 
-export const CONVERSATION_TURN_DETECTION = Object.freeze({ type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 450, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 });
+export const CONVERSATION_TURN_DETECTION = Object.freeze({ type: "server_vad", threshold: 0.7, prefix_padding_ms: 300, silence_duration_ms: 600, create_response: true, interrupt_response: true, idle_timeout_ms: 10000 });
+export const INPUT_NOISE_REDUCTION = Object.freeze({ type: "near_field" });
 
 function authHeaders(apiKey) {
   return {
@@ -37,6 +38,7 @@ export async function acceptRealtimeCall({
     instructions,
     audio: {
       input: {
+        noise_reduction: { ...INPUT_NOISE_REDUCTION },
         turn_detection: { ...CONVERSATION_TURN_DETECTION, interrupt_response: false },
         ...(inputTranscription ? { transcription: inputTranscription } : {}),
       },
