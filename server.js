@@ -1,7 +1,7 @@
 import { createCallLifecycle } from "./src/call-lifecycle.js";
 import "dotenv/config";
 import path from "node:path";
-import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard } from "./src/greeting-watchdog.js";
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from "./src/greeting-watchdog.js";
 import { createWarmTransfer, createTransferController, validTwilioSignature } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
@@ -818,6 +818,11 @@ async function attachSideband({
   const handledToolCalls = new Set();
   const voiceLog = (event, fields = {}) => console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
   const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog, restoreTurnDetection: CONVERSATION_TURN_DETECTION });
+  const conversationOutputGuard = createConversationOutputGuard({
+    send: event => send(ws, event),
+    log: voiceLog,
+    shouldRestore: () => !transferHold.isActive(),
+  });
   const openingAudio = createOpeningAudioMonitor({ log: voiceLog });
   const greetingTurns = createGreetingTurnGuard({ send: event => send(ws, event), log: voiceLog });
   let fallbackStarted = false;
@@ -869,6 +874,7 @@ async function attachSideband({
     greetingTurns.event(event);
     greeting.event(event);
     transferHold.event(event);
+    conversationOutputGuard.event(event);
 
 
     if (event.type === "response.output_audio_transcript.done") {
