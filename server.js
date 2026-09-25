@@ -49,7 +49,7 @@ import {
   wixCredentialsForTenant,
   bookingAdapterForTenant,
 } from "./src/integrations/tenant-adapters.js";
-import { normalizeIntake, isOptOutText } from "./src/intake.js";
+import { normalizeIntake, isOptOutText, isSmsControlText } from "./src/intake.js";
 import { JsonStateStore } from "./src/state-store.js";
 import { leadLogSummary, maskPhone } from "./src/privacy.js";
 import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js";
@@ -1409,7 +1409,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
       return emptyTwiml();
     }
 
-    if (/^(START|UNSTOP|HELP|INFO)$/i.test(text)) return emptyTwiml();
+    if (isSmsControlText(text)) return emptyTwiml();
 
     let opportunity = await latestOpenOpportunityForContact(tenant.tenantId, contactKey);
     if (opportunity) {
