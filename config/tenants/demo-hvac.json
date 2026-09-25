@@ -142,6 +142,7 @@
       "standardSetupUsd": 499,
       "foundingMonthlyUsd": 397,
       "foundingSetupUsd": 0
-    }
+    },
+    "dispatchMode": "shadow"
   }
 }
