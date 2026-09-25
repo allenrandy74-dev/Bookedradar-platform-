@@ -140,6 +140,7 @@ export function applyServiceProfile(tenant, profileId = "recover") {
     serviceTier: profile.id === "schedule" ? "scheduling" : "founding_partner_pilot",
     entitlements: clone(profile.features),
     pricing: clone(profile.pricing),
+    dispatchMode: "shadow",
   };
 
   next.features = {
