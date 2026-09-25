@@ -13,7 +13,7 @@ Core demo calls are owner-accepted with the known voicemail handoff limitation. 
 - Prior September 25 CRM cleanup and provider verification are documented in FIRST_CLIENT_LAUNCH_CHECKLIST.md. No new customer messages or calls sent during this closeout.
 - Wix Quick Start updated to revision 4, all 15 fields retained: removed outdated $497 pilot wording, preserved CRM mappings, added estimate-software discovery prompt.
 - Backup helper corrected to keep live/test billing names separate and include call history and web chat. Synthetic encrypted eight-store restore, wrong-key rejection, overwrite protection and mode-specific mapping tests pass. No production restore or consistent offsite backup is claimed.
-- Sales research, outreach drafts, onboarding templates and service-order draft exist. No prospect messages were sent.
+- Sales research, outreach drafts, onboarding templates and service-order draft exist. Three approved introductions were sent from the company mailbox to First-Choice Plumbing, Ben’s Heating & Air, and Beaumont Plumbing on September 25 at approximately 2:24 PM America/Chicago. Gmail confirmed SENT; inbox delivery is not yet established. Reply/bounce/opt-out monitoring is enabled. No automatic reply or follow-up sending is enabled.
 - Existing website source preserved and a static update built in `website/`: Quick Start receipt/next steps, restored audit form, clearly labeled chat demo, LLC/voicemail wording, sitemap and canonical internal links. JavaScript syntax, form structure, local links and sitemap XML checks pass. Live release and browser-origin acceptance remain pending Wix CLI authentication.
 
 ## Work requiring external completion
@@ -43,3 +43,11 @@ Core demo calls are owner-accepted with the known voicemail handoff limitation. 
 ## Backup operations
 
 The helper now covers state, recovery state, leads, transfer state, separate test/live billing, call history and web chat. Missing files are reported, never silently marked complete. The `BACKUP_QUIESCED=yes` acknowledgement is only valid for stopped writers or a genuinely consistent snapshot. Keep encryption keys separate from archives, maintain owner recovery access, and restore only into a new isolated directory.
+
+## Production update — September 25, approximately 2:29 PM America/Chicago
+
+Render registry access recovered. Deployment `dep-darcmb7avr4c73e4rtcg` of commit `80a70198c501c4fc92f2cd254d982d9c5846d6d6` is live. The build passed all 206 tests. Startup validated all eight live package prices with `live_armed=false`, demo tenant readiness READY, confirmed REFER fallback ready, shadow dispatch with `dispatch_armed=false`, and confirm-only booking. The public health endpoint returned `ok=true`, voice enabled and `billingLiveArmed=false`. No payment or customer dispatch was performed.
+
+The backup code fix is therefore deployed; offsite backup and production restore acceptance are still separate open items. Repository hygiene now excludes backup archives, standard restore directories and generated website output from source control and Docker builds. Existing tracked files are not removed by ignore rules. The operations instructions now distinguish read-only deploy verification from separately authorized notification tests.
+
+Alert inspection: `buildTenantAdapters` maps both `human_task` and `human_alert` to the Wix task adapter. A successfully created CRM task is not proof of owner notification or independent outage monitoring. Confirm the intended alert channel, primary/backup recipients and actual receipt before closing the alert gate. No new alert or prospect messages were sent during this technical closeout.

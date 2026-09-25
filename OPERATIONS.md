@@ -10,9 +10,10 @@
 ## Every deploy
 - Verify `/health` returns `ok: true`.
 - Verify `/ready` under the admin/security policy used by the deployment.
-- Ingest one synthetic event for a test tenant.
-- Inspect due actions without sending customer messages.
-- Run a controlled dispatch to an internal test contact.
+- Confirm startup validates all eight package prices and billing remains disarmed until separately authorized.
+- Confirm the intended voice-transfer mode, tenant adapters, confirm-only booking and dispatch gates.
+- Use read-only production checks for routine deployments. Run synthetic intake only when the changed behavior requires it, under a documented test tenant and cleanup plan.
+- Inspect due actions without dispatching them. A deployment is not permission to send messages or enable live dispatch. Any delivery test needs its authorized internal recipient and a unique test identifier.
 - Confirm RadarProof separates estimated and confirmed values.
 
 ## Failure handling
@@ -24,10 +25,11 @@
 - Safety-sensitive call: operator escalates instead of diagnosing hazardous conditions.
 
 ## Backup
-Run:
-`npm run backup`
+Follow `docs/PILOT_OPERATIONS_RUNBOOK.md`. `npm run backup` requires a protected encryption key and a stopped writer or genuinely consistent snapshot. The command does not stop writers itself. Never mark a hot file copy as a consistent backup.
+
+The helper covers eight state stores, including separate live/test billing, call history and web chat. Review missing stores; a successful archive write alone does not prove complete recovery. Offsite destination, separate key custody and an isolated production-data restore must be verified before accepting backup readiness.
 
 For a production database, replace the file backup with database-native snapshots before scaling beyond a controlled pilot.
 
 ## Automatic dispatch
-With `DISPATCH_INTERVAL_SECONDS=30`, the worker sweeps overdue actions at startup and every 30 seconds. Provider failures back off exponentially and eventually appear in the failed-action admin view.
+The worker interval does not authorize delivery. Keep `DISPATCH_ENABLED=false` and tenant dispatch in shadow mode until the customer-specific channel acceptance and authorization are recorded. Provider failures back off exponentially and eventually appear in the failed-action admin view.

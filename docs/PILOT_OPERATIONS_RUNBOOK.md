@@ -27,7 +27,7 @@ voice. Follow only the final customer agreement's notice and cure procedure.
 
 ## Backups and recovery
 The backup helper now encrypts state with AES-256-GCM and covers recovery, voice,
-lead, transfer and billing state. A synthetic isolated restore passed, including wrong-key
+lead, transfer, separate test/live billing, call history and web-chat state. A synthetic isolated restore passed, including wrong-key
 and overwrite rejection. Production restore acceptance remains OPEN.
 Before launch, establish a protected backup destination, retention and access policy;
 include recovery state, voice state/transfer state, lead records, billing state and
@@ -44,7 +44,7 @@ validate the agreed allowance. Broader coverage requires explicit review.
 ## Evidence log
 Record: tenant; UTC/local time; symptom; call/event ID; provider delivery state; operator;
 change/rollback; acceptance result. Keep personal information and credentials out of
-shared launch reports. Customer-ready tagging remains pending the afternoon calls.
+shared launch reports. Randy accepted the demo call tests on September 25 with the known possibility of transfer to the recipient's voicemail. Each new customer still needs its own acceptance; this does not establish guaranteed human pickup.
 
 ## Backup tooling (operator only)
 Use `npm run backup` only against a stopped writer or an isolated consistent snapshot.
@@ -53,7 +53,7 @@ pause the service itself. Do not stop production during Randy’s call tests.
 Supply `BACKUP_ENCRYPTION_KEY` as a 64-character hex secret through the approved secret
 manager, never in chat or a committed file. Keep its protected recovery copy separate
 from the archives. Set `BACKUP_DIRECTORY` to protected storage. Existing STATE_FILE,
-RECOVERY_STATE_FILE, LEADS_FILE and BILLING_STATE_FILE overrides are honored.
+RECOVERY_STATE_FILE, LEADS_FILE, BILLING_STATE_FILE, CALL_HISTORY_FILE and WEB_CHAT_STATE_FILE overrides are honored. A custom billing path uses the configured billing mode's archive name; the other mode remains separate.
 The result lists missing stores and complete=false if any are absent; an empty backup
 is rejected. Investigate missing files before accepting a production snapshot.
 

@@ -4,3 +4,7 @@ node_modules/
 !.env.example
 data/
 *.private.json
+backups/
+restores/
+*.brbackup
+website/dist/
