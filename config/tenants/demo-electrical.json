@@ -1,0 +1,145 @@
+{
+  "tenantId": "demo-electrical",
+  "businessName": "Demo Electric & Generator",
+  "trade": "Electrical and generators",
+  "timeZone": "America/Chicago",
+  "serviceArea": [
+    "Southeast Texas"
+  ],
+  "businessHours": {
+    "mon": [
+      "07:30",
+      "17:00"
+    ],
+    "tue": [
+      "07:30",
+      "17:00"
+    ],
+    "wed": [
+      "07:30",
+      "17:00"
+    ],
+    "thu": [
+      "07:30",
+      "17:00"
+    ],
+    "fri": [
+      "07:30",
+      "17:00"
+    ],
+    "sat": null,
+    "sun": null
+  },
+  "escalation": {
+    "humanPhone": "+14096518573",
+    "urgentAfterHours": true,
+    "safetyRule": "For burning smells, smoke, sparking, exposed energized equipment, fire, shock risk, downed lines, or other immediate electrical danger, tell the caller to move to safety and contact emergency services or the utility when appropriate. Do not instruct callers to open or troubleshoot electrical equipment."
+  },
+  "policies": {
+    "bookingMode": "confirm_only",
+    "quietHours": {
+      "start": 20,
+      "end": 8
+    },
+    "sms": {
+      "allowTransactionalWhenInbound": true
+    },
+    "recordCalls": false,
+    "quotePrices": false,
+    "transcriptRetentionApproved": true
+  },
+  "economics": {
+    "defaultAverageJobValue": 550,
+    "averageJobValueByType": {
+      "repair": 550,
+      "maintenance": 300,
+      "replacement": 12500
+    },
+    "highValueThreshold": 3000
+  },
+  "integrations": {
+    "crm": {
+      "type": "wix",
+      "enabled": true
+    },
+    "phone": {
+      "type": "sip",
+      "enabled": true,
+      "inboundNumbers": [
+        "+14092139980"
+      ]
+    },
+    "sms": {
+      "type": "twilio",
+      "enabled": false
+    },
+    "email": {
+      "type": "resend",
+      "enabled": true,
+      "from": "BookedRadar <notifications@mail.bookedradar.com>"
+    },
+    "calendar": {
+      "type": "customer_specific",
+      "enabled": false
+    },
+    "webChat": {
+      "enabled": false,
+      "allowedOrigins": []
+    }
+  },
+  "secretsPrefix": "DEMO_HVAC",
+  "services": [
+    "Electrical repair",
+    "Panel and service work",
+    "Standby generators",
+    "EV circuits",
+    "Lighting",
+    "Electrical estimate"
+  ],
+  "features": {
+    "callerMemory": true,
+    "spamScreening": true,
+    "transcriptHistory": true,
+    "languages": [
+      "en",
+      "es"
+    ],
+    "callerTexting": false,
+    "twoWaySms": false,
+    "webChat": false,
+    "knowledgeGapLearning": true,
+    "membershipRadar": false,
+    "noShowGuard": false,
+    "reviewRadar": true
+  },
+  "commercial": {
+    "serviceTier": "demo",
+    "schedulingApproved": false,
+    "schedulingAgreementReference": "",
+    "serviceProfile": "recover",
+    "serviceProfileName": "RadarRecover",
+    "entitlements": {
+      "callerMemory": true,
+      "spamScreening": true,
+      "transcriptHistory": true,
+      "callerTexting": false,
+      "twoWaySms": false,
+      "webChat": false,
+      "knowledgeGapLearning": true,
+      "membershipRadar": false,
+      "noShowGuard": false,
+      "reviewRadar": true,
+      "languages": [
+        "en",
+        "es"
+      ]
+    },
+    "pricing": {
+      "monthlyUsd": 0,
+      "standardSetupUsd": 0,
+      "foundingMonthlyUsd": 0,
+      "foundingSetupUsd": 0
+    },
+    "dispatchMode": "shadow"
+  }
+}
