@@ -107,3 +107,46 @@ Held pending a confidently verified direct email or approved contact-form/phone 
 - Thermacon Service Company
 
 Do not guess email addresses. Refresh contact data before the next outreach attempt.
+
+
+## Deep research batch 3 — 2026-09-25
+
+### Air Services Unlimited — Vidor / Golden Triangle
+- Family-owned/local company dating to 1981; Edward Bailey is publicly listed as owner/president and Tiffany Bailey as owner/office manager.
+- Multi-trade operation: residential/commercial/industrial HVAC-R, electrical, generators, indoor air quality and maintenance memberships.
+- Advertises 24/7 emergency service while published office hours are Monday-Friday 7am-4pm.
+- Public web intake already distinguishes replacement, repair and maintenance and contains consent language for phone/text/email.
+- Financing is available for HVAC, commercial and generator work.
+- BookedRadar angle: complement their existing intake rather than replace it; peak/emergency overflow, cross-trade classification, membership vs repair vs replacement routing, financing/estimate recovery.
+- Contact route: official website message form / 409-842-4429. Do not guess a direct email.
+
+### American Air Systems — Beaumont / Lumberton
+- Long-established HVAC/home-services company; Lee Potter is President, Terri Potter VP, Tommy Stanford Operations Manager, and Jamie Talbert Lead Customer Service Representative.
+- HVAC installation/service/maintenance, Generac standby generators, plumbing/water-treatment services and maintenance programs.
+- Office hours Monday-Friday 7:30am-4:30pm; official site explicitly says after-hours/holiday emails are answered next business day.
+- Multiple financing providers are offered; company operates Beaumont and Lumberton locations and serves Chambers, Hardin, Jefferson and Orange counties.
+- BookedRadar angle: after-hours voice intake while office/email is closed; classify HVAC vs generator vs plumbing; replacement/financing questions; maintenance-plan inquiries and stale-estimate recovery.
+- Verified email: jamie@amerair.com.
+
+### First-Choice Plumbing — Beaumont / Southeast Texas
+- Family-owned operation with 20+ years of experience; residential and commercial plumbing.
+- Standard hours Monday-Friday 7:30am-4pm, weekends closed, with after-hours by appointment and “call anytime” messaging.
+- Free estimates, 90-day labor warranty, financing, senior/military/veteran discounts.
+- Broad services include leaks, drains, water heaters, sewer, backflow and gas-line work.
+- BookedRadar angle: unanswered/after-hours intake, distinguish urgent leak/gas/sewer issues from estimates and routine appointments, preserve financing questions, and organize callbacks.
+- Verified email: texasfirstchoiceplumbing@gmail.com.
+
+### Beaumont Plumbing LLC — Beaumont / Golden Triangle
+- Locally owned since 2006; Damian Diaz publicly listed as owner and Melissa Diaz as owner/manager; master plumber license M37705.
+- Residential/commercial plumbing, water/sewer, water heaters and gas lines; emergency and same-day service promoted.
+- Published hours Monday-Friday 8am-6pm, weekends closed; website says calls/emails are returned within 24 hours.
+- Free estimates and manufacturer warranties.
+- BookedRadar angle: bridge the gap between emergency availability and closed office/weekend hours; safety-aware gas-line escalation; same-day service intake; estimate follow-up.
+- Verified email: damian8399@sbcglobal.net.
+
+### Roofing On Demand — Beaumont / Southeast Texas + Houston
+- Locally owned storm-restoration specialist; BBB lists Tito Solis as owner.
+- Roofing, siding and gutters; free inspections/estimates, financing, windstorm certification and 24/7 emergency tarping/response.
+- Uses dedicated project managers; its careers page explicitly describes PM duties including following up prospective leads, scheduling appointments, providing estimates and following up with clients, updating the database and explaining financing.
+- BookedRadar angle: storm-surge lead capture, 24/7 emergency intake, inspection scheduling requests, financing questions, estimate follow-up and structured handoff to project managers.
+- Verified email: info@roofingondemand.com.
