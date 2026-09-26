@@ -6,6 +6,7 @@ import { createWarmTransfer, createTransferController, validTwilioSignature } fr
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
 import { createBilling } from "./src/billing/http.js";
+import { provisionDemoNumbers } from "./src/demo-number-provision.js";
 import OpenAI from "openai";
 import WebSocket from "ws";
 
@@ -106,6 +107,7 @@ const {
   TWILIO_A2P_DIAGNOSTIC_ON_STARTUP = "false",
   TWILIO_A2P_MESSAGING_SERVICE_SID = "",
   TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
+  DEMO_NUMBER_PROVISION_MODE = "off",
   CALL_HISTORY_FILE = "./data/call-history.json",
   CALL_HISTORY_RETENTION_DAYS = "30",
   SMS_PUBLIC_BASE_URL = "",
@@ -206,6 +208,30 @@ const webChatStore = new WebChatStore(WEB_CHAT_STATE_FILE, {
 await webChatStore.load();
 
 const registry = await TenantRegistry.loadDirectory(TENANT_CONFIG_DIR);
+const demoTenantForProvisioning = registry.get?.("demo-hvac") || registry.list().find(t => t.tenantId === "demo-hvac");
+const existingDemoNumberForProvisioning = demoTenantForProvisioning?.integrations?.phone?.inboundNumbers?.[0] || "";
+if (DEMO_NUMBER_PROVISION_MODE !== "off") {
+  try {
+    const result = await provisionDemoNumbers({
+      accountSid: TWILIO_ACCOUNT_SID,
+      authToken: TWILIO_AUTH_TOKEN,
+      existingDemoNumber: existingDemoNumberForProvisioning,
+      mode: DEMO_NUMBER_PROVISION_MODE,
+      log: message => console.log(message),
+    });
+    if (DEMO_NUMBER_PROVISION_MODE === "discover") {
+      console.log(JSON.stringify({ event: "demo.number.discovery_result", numbers: result.available || [] }));
+    }
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "demo.number.provision_failed",
+      mode: DEMO_NUMBER_PROVISION_MODE,
+      status: error?.status || null,
+      reason: String(error?.message || "provision_failed").slice(0, 120),
+      provider_detail: String(error?.detail || "").slice(0, 180),
+    }));
+  }
+}
 for (const tenant of registry.list()) {
   const readiness = tenantReadiness(tenant);
   console.log(JSON.stringify({
