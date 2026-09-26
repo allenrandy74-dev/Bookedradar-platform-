@@ -1,0 +1,145 @@
+{
+  "tenantId": "demo-home-services",
+  "businessName": "Demo Home Services",
+  "trade": "HVAC, plumbing, electrical and generators",
+  "timeZone": "America/Chicago",
+  "serviceArea": [
+    "Southeast Texas"
+  ],
+  "businessHours": {
+    "mon": [
+      "07:30",
+      "17:00"
+    ],
+    "tue": [
+      "07:30",
+      "17:00"
+    ],
+    "wed": [
+      "07:30",
+      "17:00"
+    ],
+    "thu": [
+      "07:30",
+      "17:00"
+    ],
+    "fri": [
+      "07:30",
+      "17:00"
+    ],
+    "sat": null,
+    "sun": null
+  },
+  "escalation": {
+    "humanPhone": "+14096518573",
+    "urgentAfterHours": true,
+    "safetyRule": "For gas odors, fire, smoke, electrical hazards, flooding, structural danger, or other immediate safety threats, direct the caller to move to safety and contact emergency services or the utility when appropriate. Do not diagnose hazardous conditions."
+  },
+  "policies": {
+    "bookingMode": "confirm_only",
+    "quietHours": {
+      "start": 20,
+      "end": 8
+    },
+    "sms": {
+      "allowTransactionalWhenInbound": true
+    },
+    "recordCalls": false,
+    "quotePrices": false,
+    "transcriptRetentionApproved": true
+  },
+  "economics": {
+    "defaultAverageJobValue": 500,
+    "averageJobValueByType": {
+      "repair": 500,
+      "maintenance": 250,
+      "replacement": 9500
+    },
+    "highValueThreshold": 3000
+  },
+  "integrations": {
+    "crm": {
+      "type": "wix",
+      "enabled": true
+    },
+    "phone": {
+      "type": "sip",
+      "enabled": true,
+      "inboundNumbers": [
+        "+14092304297"
+      ]
+    },
+    "sms": {
+      "type": "twilio",
+      "enabled": false
+    },
+    "email": {
+      "type": "resend",
+      "enabled": true,
+      "from": "BookedRadar <notifications@mail.bookedradar.com>"
+    },
+    "calendar": {
+      "type": "customer_specific",
+      "enabled": false
+    },
+    "webChat": {
+      "enabled": false,
+      "allowedOrigins": []
+    }
+  },
+  "secretsPrefix": "DEMO_HVAC",
+  "services": [
+    "HVAC repair",
+    "HVAC replacement",
+    "Plumbing",
+    "Electrical",
+    "Standby generators",
+    "Home-service estimate"
+  ],
+  "features": {
+    "callerMemory": true,
+    "spamScreening": true,
+    "transcriptHistory": true,
+    "languages": [
+      "en",
+      "es"
+    ],
+    "callerTexting": false,
+    "twoWaySms": false,
+    "webChat": false,
+    "knowledgeGapLearning": true,
+    "membershipRadar": false,
+    "noShowGuard": false,
+    "reviewRadar": true
+  },
+  "commercial": {
+    "serviceTier": "demo",
+    "schedulingApproved": false,
+    "schedulingAgreementReference": "",
+    "serviceProfile": "recover",
+    "serviceProfileName": "RadarRecover",
+    "entitlements": {
+      "callerMemory": true,
+      "spamScreening": true,
+      "transcriptHistory": true,
+      "callerTexting": false,
+      "twoWaySms": false,
+      "webChat": false,
+      "knowledgeGapLearning": true,
+      "membershipRadar": false,
+      "noShowGuard": false,
+      "reviewRadar": true,
+      "languages": [
+        "en",
+        "es"
+      ]
+    },
+    "pricing": {
+      "monthlyUsd": 0,
+      "standardSetupUsd": 0,
+      "foundingMonthlyUsd": 0,
+      "foundingSetupUsd": 0
+    },
+    "dispatchMode": "shadow"
+  }
+}
