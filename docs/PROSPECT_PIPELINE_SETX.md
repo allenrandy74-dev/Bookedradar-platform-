@@ -89,3 +89,21 @@ BookedRadar discovery angle: Broad Southeast Texas coverage plus generator/elect
 
 ## Outreach rule for this batch
 Do not claim any of these companies miss calls or lose revenue. Before contact, refresh their public site, identify the specific workflow signal that justifies the conversation, and tailor the opener around learning how they currently handle after-hours, overflow, estimates and human escalation.
+
+
+## Outreach status — 2026-09-25
+Sent from randy@bookedradar.com after owner approval:
+- EcoWorks Plumbing — ecoworksplumbing@gmail.com
+- Marathon Plumbing — office@marathonplumbinginc.com
+- Delta Air Conditioning (SETX) — SETX@deltaairpro.com
+- M&M Roofing, Siding & Windows — info@mmroofsiding.com
+- Switch Electric — info@switchelectric409.com
+
+Held pending a confidently verified direct email or approved contact-form/phone outreach:
+- Sumrall Air Conditioning
+- Plumbing Solutions
+- Miles Electric
+- Texas Lone Star Plumbing
+- Thermacon Service Company
+
+Do not guess email addresses. Refresh contact data before the next outreach attempt.
