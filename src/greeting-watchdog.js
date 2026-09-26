@@ -92,7 +92,7 @@ export function createGreetingWatchdog({ send, businessName, log, fallback,
 // Observe only the opening audio; never collect transcripts or change playback.
 export function createOpeningAudioMonitor({ log, now = Date.now }) {
   const startedAt = now(), greetingIds = new Set();
-  let closed = false, playbackId, playbackAt, firstAudio = false;
+  let closed = false, playbackId, playbackAt, firstAudio = false, reflectedAudio = false;
   const emit = (event, fields = {}) => log(`opening.${event}`, { elapsed_ms: now() - startedAt, ...fields });
   return {
     open() { if (!closed) emit('sideband_open'); },
@@ -101,6 +101,10 @@ export function createOpeningAudioMonitor({ log, now = Date.now }) {
       if (event.type === 'response.created' && event.response?.metadata?.purpose === 'opening_greeting') {
         greetingIds.add(event.response.id);
         emit('generation_started');
+      }
+      if (!reflectedAudio && ['session.output_audio.delta', 'response.output_audio.delta'].includes(event.type)) {
+        reflectedAudio = true;
+        emit('reflected_audio_started', { source: event.type });
       }
       if (event.type === 'response.done' && greetingIds.has(event.response?.id)) {
         emit('generation_finished', { status: event.response.status || 'unknown' });
@@ -117,7 +121,7 @@ export function createOpeningAudioMonitor({ log, now = Date.now }) {
       }
     },
     close() {
-      if (!closed) emit('connection_closed', { audio_started: firstAudio });
+      if (!closed) emit('connection_closed', { audio_started: firstAudio, reflected_audio_seen: reflectedAudio });
       closed = true;
     },
   };
