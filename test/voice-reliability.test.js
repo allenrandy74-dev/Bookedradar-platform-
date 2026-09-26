@@ -285,6 +285,20 @@ test('opening monitor records successful completion without storing transcript c
   assert.doesNotMatch(JSON.stringify(logs), /private customer content/);
 });
 
+test('opening monitor records reflected audio telemetry without logging payload bytes', () => {
+  const logs = [];
+  const m = createOpeningAudioMonitor({ log: (event, fields) => logs.push({ event, ...fields }) });
+  m.open();
+  m.event({ type: 'session.output_audio.delta', delta: 'PRIVATE_BASE64_AUDIO', start_ms: 0, end_ms: 20 });
+  m.event({ type: 'session.output_audio.delta', delta: 'SECOND_PRIVATE_CHUNK', start_ms: 20, end_ms: 40 });
+  m.close();
+  assert.equal(logs.filter(x => x.event === 'opening.reflected_audio_started').length, 1);
+  assert.equal(logs.find(x => x.event === 'opening.reflected_audio_started').source, 'session.output_audio.delta');
+  assert.equal(logs.at(-1).event, 'opening.connection_closed');
+  assert.equal(logs.at(-1).reflected_audio_seen, true);
+  assert.doesNotMatch(JSON.stringify(logs), /PRIVATE_BASE64_AUDIO|SECOND_PRIVATE_CHUNK/);
+});
+
 test('opening monitor reports disconnect before audio and watchdog stops on socket close', async () => {
   const c = clock(), logs = [];
   const m = createOpeningAudioMonitor({ ...c, log: (event, fields) => logs.push({ event, ...fields }) });
