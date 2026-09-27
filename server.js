@@ -29,6 +29,7 @@ import {
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
+import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
@@ -111,6 +112,7 @@ const {
   TWILIO_A2P_EXPECTED_ACCOUNT_SID = "",
   DEMO_NUMBER_PROVISION_MODE = "off",
   CALL_HISTORY_FILE = "./data/call-history.json",
+  GROWTH_METRICS_FILE = "./data/growth-metrics.json",
   CALL_HISTORY_RETENTION_DAYS = "30",
   SMS_PUBLIC_BASE_URL = "",
   SMS_RESPONSE_MODEL = "gpt-5.6-luna",
@@ -1647,6 +1649,17 @@ app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) 
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
 });
 
+app.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, max: 60 }), async (req, res) => {
+  const parsed = normalizeGrowthEvent(req.body || {});
+  if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
+  await growthMetrics.record(parsed.event);
+  return res.status(202).json({ ok: true });
+});
+
+app.get("/api/v1/growth-metrics", requireAdmin, async (_req, res) => {
+  return res.json({ ok: true, ...(await growthMetrics.summary()) });
+});
+
 app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
   const parsed = normalizeProofPilotInquiry(req.body || {});
   if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
@@ -1678,6 +1691,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       retries,
     });
     if (!task?.ok) throw new Error("task_create_failed");
+    await growthMetrics.record({ event: "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: "short_form" });
     console.log(JSON.stringify({
       event: "growth.proof_pilot_inquiry",
       trade: parsed.inquiry.trade,
