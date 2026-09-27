@@ -180,6 +180,8 @@ app.use(express.json({ limit: "256kb" }));
 const state = new JsonStateStore(STATE_FILE);
 await state.load();
 
+const growthMetrics = new GrowthMetricsStore(GROWTH_METRICS_FILE);
+
 const recoveryStore = new RecoveryStore(RECOVERY_STATE_FILE);
 await recoveryStore.load();
 
@@ -1691,7 +1693,11 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       retries,
     });
     if (!task?.ok) throw new Error("task_create_failed");
-    await growthMetrics.record({ event: "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: "short_form" });
+    // CRM capture is already complete. A metrics failure must not release the
+    // submission key or tell the visitor to retry a successfully captured lead.
+    await growthMetrics.record({ event: "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: "short_form" }).catch(error => {
+      console.error(JSON.stringify({ event: "growth.proof_pilot_metric_failed", reason: String(error?.message || "failed").slice(0, 120) }));
+    });
     console.log(JSON.stringify({
       event: "growth.proof_pilot_inquiry",
       trade: parsed.inquiry.trade,
