@@ -170,6 +170,25 @@ export class CallHistoryStore {
       }));
   }
 
+  async statsSince(tenantId, sinceMs = 0) {
+    await this.load();
+    const calls = Object.values(this.data.calls).filter(call =>
+      call.tenantId === tenantId && Number(call.startedAt || 0) >= Number(sinceMs || 0)
+    );
+    return {
+      callsHandled: calls.length,
+      humanTransfers: calls.filter(call => call.transferred).length,
+      incompleteCalls: calls.filter(call => {
+        const lead = call.leadSummary || {};
+        return !lead.serviceType || !lead.callback || !lead.urgency || !lead.preferredWindow;
+      }).length,
+      callsWithUsefulLead: calls.filter(call => Boolean(call.leadSummary?.serviceType && call.leadSummary?.callback)).length,
+      firstUsefulLeadAt: calls
+        .filter(call => Boolean(call.leadSummary?.serviceType && call.leadSummary?.callback))
+        .sort((a,b) => Number(a.startedAt || 0) - Number(b.startedAt || 0))[0]?.startedAt || null,
+    };
+  }
+
   async stats(tenantId) {
     await this.load();
     const calls = Object.values(this.data.calls).filter(call => call.tenantId === tenantId);
