@@ -43,6 +43,13 @@ export class JsonStateStore {
     await this.persist();
     return true;
   }
+  async releaseWebhook(id) {
+    await this.load();
+    if (!id || !this.state.processedWebhooks[id]) return false;
+    delete this.state.processedWebhooks[id];
+    await this.persist();
+    return true;
+  }
   async getCall(callId) { await this.load(); return this.state.calls[callId] || null; }
   async patchCall(callId, patch) {
     await this.load();
