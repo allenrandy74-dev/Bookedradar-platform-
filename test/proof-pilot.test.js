@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeProofPilotInquiry, proofPilotLead } from "../src/proof-pilot.js";
+import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "../src/proof-pilot.js";
 
 test("proof pilot inquiry requires business context and contact", () => {
   assert.equal(normalizeProofPilotInquiry({ name:"A", business:"B", trade:"HVAC" }).ok, false);
@@ -14,4 +14,13 @@ test("proof pilot inquiry becomes CRM-ready lead", () => {
   const lead=proofPilotLead(result.inquiry);
   assert.match(lead.service_type,/Proof Pilot/);
   assert.match(lead.notes,/Owner answers/);
+});
+
+test("proof pilot idempotency key is stable and does not expose contact data", () => {
+  const inquiry={business:"Jane HVAC",email:"Jane@Example.com",phone:"409-555-1212"};
+  const a=proofPilotInquiryKey(inquiry);
+  const b=proofPilotInquiryKey({...inquiry,email:"jane@example.com"});
+  assert.equal(a,b);
+  assert.equal(a.includes("example.com"),false);
+  assert.equal(a.includes("4095551212"),false);
 });
