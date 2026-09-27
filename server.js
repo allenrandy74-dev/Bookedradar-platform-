@@ -28,6 +28,7 @@ import {
 } from "./src/operator.js";
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead } from "./src/proof-pilot.js";
+import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
@@ -1795,6 +1796,49 @@ app.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTe
       : res.status(404).json({ ok: false, error: "cancellation_opportunity_not_found" });
   } catch {
     return res.status(500).json({ ok: false, error: "backfill_candidate_query_failed" });
+  }
+});
+
+app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, res) => {
+  try {
+    const tenant = req.bookedRadarTenant;
+    const config = tenant?.commercial?.proofPilot || {};
+    const startMs = Date.parse(config.startAt || "") || 0;
+    const callStats = await callHistory.statsSince(tenant.tenantId, startMs);
+    const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs });
+    const failedActions = await recoveryStore.failedActions(tenant.tenantId);
+    const criticalFailures = failedActions.filter(action =>
+      ["human_alert", "human_task"].includes(String(action.channel || "")) ||
+      String(action.lastError || "").toLowerCase().includes("transfer")
+    ).length;
+    const status = proofPilotStatus(config, {
+      callsHandled: callStats.callsHandled,
+      criticalFailures,
+      firstValueAt: callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "",
+    });
+    const scorecard = proofPilotScorecard({
+      status: status.status,
+      callsHandled: callStats.callsHandled,
+      qualifiedOpportunities: proof.opportunitiesCaptured,
+      humanTransfers: callStats.humanTransfers,
+      incompleteCalls: callStats.incompleteCalls,
+      recoveredOpportunities: proof.recoveredOpportunities,
+      confirmedRevenue: proof.confirmedRevenue,
+      criticalFailures,
+      firstValueAt: status.firstValueAt,
+    });
+    return res.json({
+      ok: true,
+      tenantId: tenant.tenantId,
+      status,
+      scorecard,
+      proof,
+      guardrail: status.status === "ACTIVE" || status.status === "SCHEDULED"
+        ? "PILOT_WITHIN_APPROVED_SCOPE"
+        : "DO_NOT_EXPAND_OR_CONTINUE_PILOT_TRAFFIC_UNTIL_REVIEWED",
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "proof_pilot_status_failed" });
   }
 });
 
