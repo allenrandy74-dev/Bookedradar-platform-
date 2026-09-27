@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 export function normalizeProofPilotInquiry(input = {}) {
   const clean = (value, max) => String(value || "").trim().slice(0, max);
   const name = clean(input.name, 120);
@@ -35,4 +37,14 @@ export function proofPilotLead(inquiry) {
       "Source: bookedradar.com/try",
     ].filter(Boolean).join("\n"),
   };
+}
+
+
+export function proofPilotInquiryKey(inquiry = {}) {
+  const identity = [
+    String(inquiry.business || "").trim().toLowerCase(),
+    String(inquiry.email || "").trim().toLowerCase(),
+    String(inquiry.phone || "").replace(/\D/g, ""),
+  ].join("|");
+  return "proof-pilot:" + crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
 }
