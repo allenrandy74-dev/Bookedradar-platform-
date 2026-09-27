@@ -49,7 +49,8 @@
     },
     "recordCalls": false,
     "quotePrices": false,
-    "transcriptRetentionApproved": true
+    "transcriptRetentionApproved": true,
+    "assistantDisclosure": true
   },
   "economics": {
     "defaultAverageJobValue": 450,
