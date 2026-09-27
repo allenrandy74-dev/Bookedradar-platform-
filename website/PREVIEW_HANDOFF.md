@@ -1,29 +1,55 @@
 # BookedRadar native homepage preview
 
-This branch is a draft. It does not modify the live homepage or phone system.
+Target existing Wix site: dc96494e-5565-41be-8513-deeeedcf59d7.
+The native homepage remains unpublished. Do not create a new site.
 
-## Windows
+## Windows: refresh the preview
 
-1. Download this branch using GitHub **Code > Download ZIP**, then extract the ZIP.
-2. Open the extracted `website` folder.
-3. Double-click `Preview-Windows.cmd`.
-4. If prompted, approve Wix CLI login for the existing BookedRadar account.
-5. Copy the preview URL back into the ChatGPT conversation.
+1. Download this updated branch using GitHub Code > Download ZIP and extract into a fresh folder.
+2. Open the website folder and double-click Preview-Windows.cmd.
+3. Return the preview URL for verification. Do not run release yet.
+4. Capture the preview at iPhone width (390 CSS pixels) for mobile review.
 
-The launcher checks the existing site ID, builds the static files, and creates a preview. It never calls `release`. Node.js 22 or newer must be installed. The Wix CLI is pinned to 1.1.251, whose preview command was inspected during preparation.
+Node.js 22 or newer is required. The launcher verifies the existing Wix IDs and only builds/previews.
 
-## Acceptance still required
+## Verified September 27, 2026
 
-- Desktop and iPhone-width visual review; no horizontal overflow.
-- Every CTA and all five telephone destinations (do not place calls).
-- One synthetic Proof Pilot form submission; verify exactly one CRM contact and one linked task, with no customer outreach.
-- Pricing against current production commercial settings.
-- Policy pages, sitemap, robots, aliases and redirects. Pre-release probes returned 404 for /privacy, /terms, /security, /pilot, /pilot.html and /sitemap.xml; these are unresolved, not verified fixes.
-- Verify native homepage funnel measurement. Current form links retain source/variant attribution, but native demo-click recording has not been verified.
-- Capture the current Wix release and rollback procedure before publishing.
+- Desktop hero, live-demo layout, pricing, capped Proof Pilot section and FAQ reviewed in the Wix preview. No desktop horizontal overflow.
+- All five phone targets match production configuration. No calls placed.
+- Pricing: Answer 149; Recover 497/397 founding; Grow 697/597; Schedule 897/797; Dispatch custom.
+- One synthetic form submission created exactly one contact and one task. It showed a false failure due to an uninitialized growthMetrics variable.
+- The form correction is deployed. Metrics failures can no longer invalidate completed CRM capture or release its deduplication key.
+- Production health returned 200; initialized growth-event endpoint returned 202. Startup fallback_ready remains true.
+- 222/222 tests pass. Isolated real-server checks validate JSON and native text/plain beacons, reject malformed/unsupported input, and confirm persisted event counts.
+- Isolated form-handler tests verify successful capture and duplicate suppression both with working metrics and with simulated metrics failure. No second live CRM submission was made.
+- Live /privacy, /terms and /security resolve to existing policy content.
+- Live /pilot and /pilot.html resolve through /proof-pilot to the existing form.
+- All eight original Wix redirects preserved. Four missing destination/shortcut redirects added.
+- Supporting HTML pages and robots return 200. Search Console verification retained.
+- No obsolete Founding Partner Pilot language found in the new homepage or checked supporting pages.
 
-## Preservation
+## Latest preview changes
 
-Only the homepage and its dedicated assets are changed. Existing supporting page sources, forms integration, domain binding, Search Console verification tag and backend/phone code are preserved. Proof Pilot calls to action currently link to the existing backend-hosted form, rather than adding a new cross-origin form.
+- Native page views and five trade-demo click events now use the existing validated growth endpoint.
+- Old /#pilot links retain an alias to the new Proof Pilot section.
+- A non-reserved sitemap-index.xml copy is included in the build. Existing sitemap.xml is retained.
 
-Repository baseline: `978932573e1bf3514c57455cbdcf98a443989c9e`. This baseline is a source fallback, not confirmation of the exact current Wix release. Release remains blocked until the acceptance checks above pass.
+## Remaining release gates
+
+- Refresh the Wix preview to include the latest changes; check actual browser-origin beacon delivery.
+- Finish CTA destination checks on that revision.
+- iPhone-width visual review is still unverified: the agent browser lacks a viewport resize API.
+- /sitemap.xml still returns 404. Verify the new /sitemap-index.xml, then resolve the canonical sitemap route and robots reference before release.
+- Form success has been verified with isolated handler tests, not another live CRM submission.
+- Record the current Wix release/version and confirm rollback before publishing.
+- Publish only the existing Wix site, then verify the live homepage and routes.
+
+## Rollback and constraints
+
+Native source baseline: 978932573e1bf3514c57455cbdcf98a443989c9e. This can rebuild the prior website source, but has not been confirmed as the exact previous Wix release.
+Backend previous live revision: 978932573e1bf3514c57455cbdcf98a443989c9e.
+Backend current live revision: 3dfe0dfa6c95448a00f724d10aa885dce736c7cb.
+
+The backend changes affect the website inquiry/measurement handlers only. No phone configuration, routing, credentials, messaging settings, billing, or customer outreach changed.
+
+Wix CLI release is blocked from the agent environment by network policy. The user successfully generated a preview on Windows. Continue that authorized workflow for preview/release; do not work around the network restriction.
