@@ -1651,8 +1651,14 @@ app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) 
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
 });
 
-app.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, max: 60 }), async (req, res) => {
-  const parsed = normalizeGrowthEvent(req.body || {});
+app.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, max: 60 }), express.text({ type: "text/plain", limit: "2kb" }), async (req, res) => {
+  let input = req.body || {};
+  // Native Wix pages send a simple cross-origin beacon without credentials.
+  if (typeof input === "string") {
+    try { input = JSON.parse(input); }
+    catch { return res.status(400).json({ ok: false, error: "invalid_json" }); }
+  }
+  const parsed = normalizeGrowthEvent(input);
   if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
   await growthMetrics.record(parsed.event);
   return res.status(202).json({ ok: true });
