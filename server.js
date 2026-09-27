@@ -27,7 +27,7 @@ import {
   tools,
 } from "./src/operator.js";
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
-import { normalizeProofPilotInquiry, proofPilotLead } from "./src/proof-pilot.js";
+import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
@@ -1653,6 +1653,11 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
   const crmTenant = registry.get("demo-hvac");
   const wix = crmTenant ? wixCredentialsForTenant(crmTenant) : null;
   if (!wix) return res.status(503).json({ ok: false, error: "crm_unavailable" });
+  const submissionKey = proofPilotInquiryKey(parsed.inquiry);
+  const firstSubmission = await state.markWebhookOnce(submissionKey);
+  if (!firstSubmission) {
+    return res.status(200).json({ ok: true, duplicate: true, message: "We already received this Proof Pilot request." });
+  }
   try {
     const lead = proofPilotLead(parsed.inquiry);
     const contact = await createWixContact({
@@ -1681,6 +1686,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
     }));
     return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your workflow and follow up." });
   } catch (error) {
+    await state.releaseWebhook(submissionKey).catch(() => {});
     console.error(JSON.stringify({ event: "growth.proof_pilot_inquiry_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     return res.status(503).json({ ok: false, error: "inquiry_capture_failed" });
   }
