@@ -12,10 +12,10 @@
 <p>BookedRadar helps home-service businesses handle selected after-hours and overflow demand, escalate to people when needed, recover stale opportunities, and show owners what actually happened.</p>
 <div class="trust">Try it yourself first. Live trade demos—not recordings. No meeting required.</div></section>
 <section class="grid">
-<div class="card"><span class="pill">HVAC</span><h2>Demo HVAC</h2><p>Repair, urgency, replacement inquiries, financing questions and human transfer.</p><a class="call" href="tel:+14092574186">Call (409) 257-4186</a><div class="try">Try saying: “My AC stopped cooling and it's 82 degrees inside.”</div></div>
-<div class="card"><span class="pill">PLUMBING</span><h2>Demo Plumbing & Drain</h2><p>Emergency-versus-routine intake, exact service details, estimates and escalation.</p><a class="call" href="tel:+14095477916">Call (409) 547-7916</a><div class="try">Try saying: “Water is coming through the ceiling under the upstairs bathroom.”</div></div>
-<div class="card"><span class="pill">ELECTRICAL</span><h2>Demo Electric & Generator</h2><p>Safety-aware intake, generator leads, routine estimates and human escalation.</p><a class="call" href="tel:+14092139980">Call (409) 213-9980</a><div class="try">Try saying: “Half the house lost power and I smell something hot near the panel.”</div></div>
-<div class="card"><span class="pill">ROOFING</span><h2>Demo Roofing & Storm</h2><p>Storm surges, emergency tarp requests, inspections, estimates and follow-up context.</p><a class="call" href="tel:+14092321112">Call (409) 232-1112</a><div class="try">Try saying: “A limb hit the roof and water is getting into a bedroom.”</div></div>
+<div class="card"><span class="pill">HVAC</span><h2>Demo HVAC</h2><p>Repair, urgency, replacement inquiries, financing questions and human transfer.</p><a class="call" data-trade="hvac" href="tel:+14092574186">Call (409) 257-4186</a><div class="try">Try saying: “My AC stopped cooling and it's 82 degrees inside.”</div></div>
+<div class="card"><span class="pill">PLUMBING</span><h2>Demo Plumbing & Drain</h2><p>Emergency-versus-routine intake, exact service details, estimates and escalation.</p><a class="call" data-trade="plumbing" href="tel:+14095477916">Call (409) 547-7916</a><div class="try">Try saying: “Water is coming through the ceiling under the upstairs bathroom.”</div></div>
+<div class="card"><span class="pill">ELECTRICAL</span><h2>Demo Electric & Generator</h2><p>Safety-aware intake, generator leads, routine estimates and human escalation.</p><a class="call" data-trade="electrical" href="tel:+14092139980">Call (409) 213-9980</a><div class="try">Try saying: “Half the house lost power and I smell something hot near the panel.”</div></div>
+<div class="card"><span class="pill">ROOFING</span><h2>Demo Roofing & Storm</h2><p>Storm surges, emergency tarp requests, inspections, estimates and follow-up context.</p><a class="call" data-trade="roofing" href="tel:+14092321112">Call (409) 232-1112</a><div class="try">Try saying: “A limb hit the roof and water is getting into a bedroom.”</div></div>
 </section>
 <section class="section"><h2>Built to support your team—not put a wall between you and your customer.</h2>
 <div class="proof"><div><h3>Caller experience</h3><p>Each demo identifies itself as the company's virtual assistant. If the caller asks for a person—or the situation needs one—BookedRadar follows the configured human-escalation path.</p></div><div><h3>Business outcome</h3><p>BookedRadar is designed around structured intake, clean handoff, opportunity recovery and evidence. We care about what happened after the call, not just whether a bot answered it.</p></div></div></section>
@@ -39,6 +39,17 @@
 </form></section>
 <div class="fine">BookedRadar LLC • Demonstration scenarios use synthetic businesses and examples. Pilot availability and scope are subject to qualification and agreement.</div>
 </main><script>
+const params=new URLSearchParams(location.search);
+const source=params.get('source')||params.get('utm_source')||'direct';
+const variant=params.get('variant')||'default';
+function metric(event,trade='unknown'){
+ const payload=JSON.stringify({event,trade,source,variant});
+ try{navigator.sendBeacon('/api/v1/public/growth-event',new Blob([payload],{type:'application/json'}));}catch{}
+}
+metric('page_view');
+document.querySelectorAll('a[data-trade]').forEach(a=>a.addEventListener('click',()=>metric('demo_call_click',a.dataset.trade)));
+let pilotStarted=false;
+document.getElementById('pilot')?.addEventListener('focusin',()=>{if(!pilotStarted){pilotStarted=true;metric('proof_pilot_start');}});
 const form=document.getElementById('pilot'),status=document.getElementById('status');
 form.addEventListener('submit',async(e)=>{
  e.preventDefault();status.textContent='Sending…';
