@@ -27,6 +27,7 @@ import {
   tools,
 } from "./src/operator.js";
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
+import { normalizeProofPilotInquiry, proofPilotLead } from "./src/proof-pilot.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { radarProof } from "./src/recovery/radarproof.js";
@@ -1643,6 +1644,45 @@ app.get("/api/v1/calls/:callId", requireAdmin, requireTenant, async (req, res) =
 app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) => {
   const actions = await recoveryStore.failedActions(req.bookedRadarTenant.tenantId);
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
+});
+
+app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
+  const parsed = normalizeProofPilotInquiry(req.body || {});
+  if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
+  const crmTenant = registry.get("demo-hvac");
+  const wix = crmTenant ? wixCredentialsForTenant(crmTenant) : null;
+  if (!wix) return res.status(503).json({ ok: false, error: "crm_unavailable" });
+  try {
+    const lead = proofPilotLead(parsed.inquiry);
+    const contact = await createWixContact({
+      apiKey: wix.apiKey,
+      siteId: wix.siteId,
+      lead,
+      timeoutMs,
+      retries,
+    });
+    if (!contact?.ok || !contact?.contactId) throw new Error("contact_create_failed");
+    const task = await createWixFollowupTask({
+      apiKey: wix.apiKey,
+      siteId: wix.siteId,
+      contactId: contact.contactId,
+      lead,
+      dueInMinutes: 15,
+      timeoutMs,
+      retries,
+    });
+    if (!task?.ok) throw new Error("task_create_failed");
+    console.log(JSON.stringify({
+      event: "growth.proof_pilot_inquiry",
+      trade: parsed.inquiry.trade,
+      crm_contact_id: contact.contactId,
+      task_id: task.taskId || null,
+    }));
+    return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your workflow and follow up." });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "growth.proof_pilot_inquiry_failed", reason: String(error?.message || "failed").slice(0, 120) }));
+    return res.status(503).json({ ok: false, error: "inquiry_capture_failed" });
+  }
 });
 
 app.post("/api/v1/onboarding/prepare", requireAdmin, (req, res) => {
