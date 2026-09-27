@@ -1138,6 +1138,7 @@ async function handleIncomingCall(event) {
     businessHoursText: businessContext.businessHoursText,
     timeZone: tenant?.timeZone || "America/Chicago",
     featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
+    assistantDisclosure: Boolean(tenant?.policies?.assistantDisclosure),
   });
 
   await acceptRealtimeCall({
