@@ -2,6 +2,7 @@ import { humanTransferTarget } from "../recovery/tenant-registry.js";
 import { validateTenant } from "../recovery/tenant.js";
 import { buildTenantAdapters, bookingAdapterForTenant, wixCredentialsForTenant } from "../integrations/tenant-adapters.js";
 import { serviceProfile } from "./service-profiles.js";
+import { proofPilotReadiness } from "../proof-pilot-control.js";
 
 function add(items, code, message) {
   items.push({ code, message });
@@ -119,6 +120,14 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   const secretPrefixReady = Boolean(String(tenant?.secretsPrefix || "").trim());
   checks.push({ code: "secret_isolation", ok: secretPrefixReady });
   if (!secretPrefixReady) add(blockers, "secret_isolation", "A tenant-specific secretsPrefix is required for isolated customer credentials.");
+
+  const pilot = proofPilotReadiness(tenant?.commercial?.proofPilot || {});
+  checks.push({ code: "proof_pilot_scope", ok: pilot.ready });
+  if (pilot.enabled && !pilot.ready) {
+    for (const reason of pilot.blockers) {
+      add(blockers, "proof_pilot_scope", `Proof Pilot blocked: ${reason}.`);
+    }
+  }
 
   const ready = blockers.length === 0;
   return {
