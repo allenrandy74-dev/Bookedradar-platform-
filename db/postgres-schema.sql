@@ -11,6 +11,16 @@ CREATE TABLE IF NOT EXISTS bookedradar.webhook_receipts (
   received_at timestamptz NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bookedradar.call_control_state (
+  call_id text PRIMARY KEY,
+  tenant_id text,
+  updated_at timestamptz NOT NULL,
+  payload jsonb NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS call_control_state_tenant_updated_idx
+  ON bookedradar.call_control_state (tenant_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS bookedradar.voice_calls (
   call_id text PRIMARY KEY,
   tenant_id text NOT NULL,
@@ -41,6 +51,19 @@ CREATE TABLE IF NOT EXISTS bookedradar.call_turns (
 
 CREATE INDEX IF NOT EXISTS call_turns_call_time_idx
   ON bookedradar.call_turns (call_id, occurred_at);
+
+CREATE TABLE IF NOT EXISTS bookedradar.lead_captures (
+  lead_id bigserial PRIMARY KEY,
+  tenant_id text NOT NULL,
+  call_id text,
+  captured_at timestamptz,
+  payload jsonb NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS lead_captures_tenant_time_idx
+  ON bookedradar.lead_captures (tenant_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS lead_captures_call_idx
+  ON bookedradar.lead_captures (call_id);
 
 CREATE TABLE IF NOT EXISTS bookedradar.recovery_contacts (
   contact_key text PRIMARY KEY,
