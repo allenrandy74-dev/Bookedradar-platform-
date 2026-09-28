@@ -71,6 +71,7 @@ import {
 import { CallHistoryStore } from "./src/call-history.js";
 import { assessVoiceHealth } from "./src/ops-health.js";
 import { assessCustomerHealth } from "./src/customer-health.js";
+import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -123,6 +124,9 @@ const {
   WEB_CHAT_RESPONSE_MODEL = "gpt-5.6-luna",
   ACCEPTANCE_AUDIT_ON_STARTUP = "false",
   ACCEPTANCE_AUDIT_CALL_IDS = "",
+  DATABASE_URL = "",
+  POSTGRES_HEALTH_ON_STARTUP = "false",
+  POSTGRES_HEALTH_TIMEOUT_MS = "5000",
 } = process.env;
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
@@ -134,6 +138,14 @@ if (voiceEnabled && !OPENAI_WEBHOOK_SECRET) {
 }
 
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+const postgresStartupHealth = await runStartupPostgresHealth({
+  enabled: POSTGRES_HEALTH_ON_STARTUP.toLowerCase() === "true",
+  connectionString: DATABASE_URL,
+  timeoutMs: Number(POSTGRES_HEALTH_TIMEOUT_MS),
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
 const app = express();
 app.disable("x-powered-by");
 
@@ -2192,6 +2204,12 @@ app.get("/ready", requireAdmin, (_req, res) => {
       enabled: voiceEnabled,
       apiKeyConfigured: Boolean(OPENAI_API_KEY),
       webhookSecretConfigured: Boolean(OPENAI_WEBHOOK_SECRET),
+    },
+    postgresShadow: {
+      configured: Boolean(DATABASE_URL),
+      healthCheckEnabled: POSTGRES_HEALTH_ON_STARTUP.toLowerCase() === "true",
+      startup: postgresStartupHealth,
+      authoritative: false,
     },
   });
 });
