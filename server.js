@@ -70,6 +70,7 @@ import {
 } from "./src/web-chat.js";
 import { CallHistoryStore } from "./src/call-history.js";
 import { assessVoiceHealth } from "./src/ops-health.js";
+import { assessCustomerHealth } from "./src/customer-health.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -2048,6 +2049,73 @@ app.get("/api/v1/ops/voice-health", requireAdmin, async (req, res) => {
     });
   } catch {
     return res.status(500).json({ ok: false, error: "voice_health_failed" });
+  }
+});
+
+app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
+  try {
+    const tenantId = String(req.query.tenant || "").trim();
+    const tenant = registry.get(tenantId);
+    if (!tenant) {
+      return res.status(400).json({ ok: false, error: "known_tenant_required" });
+    }
+
+    const hours = Math.min(Math.max(Number(req.query.hours || 168), 1), 720);
+    const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+    const voiceSummary = await callHistory.operationalSummary({ tenantId, sinceMs });
+    const voiceAssessment = assessVoiceHealth(voiceSummary);
+    const readiness = tenantReadiness(tenant);
+    const failedActions = await recoveryStore.failedActions(tenantId);
+    const criticalFailedActions = failedActions.filter(action =>
+      ["human_alert", "human_task"].includes(String(action.channel || "")) ||
+      String(action.lastError || "").toLowerCase().includes("transfer")
+    ).length;
+    const proof = await radarProof(recoveryStore, tenantId);
+    const callActivity = await callHistory.stats(tenantId);
+
+    const health = assessCustomerHealth({
+      voiceAssessment,
+      readinessBlockers: readiness.blockers.length,
+      criticalFailedActions,
+      totalFailedActions: failedActions.length,
+      crmSyncFailures: voiceSummary.crmSyncFailures,
+      recentCalls: voiceSummary.callsStarted,
+      opportunitiesCaptured: proof.opportunitiesCaptured,
+    });
+
+    return res.json({
+      ok: true,
+      tenantId,
+      businessName: tenant.businessName,
+      windowHours: hours,
+      health,
+      evidence: {
+        readiness: {
+          ready: readiness.ready,
+          status: readiness.status,
+          blockerCodes: [...new Set(readiness.blockers.map(item => item.code))],
+        },
+        voice: {
+          summary: voiceSummary,
+          assessment: voiceAssessment,
+        },
+        recovery: {
+          failedActions: failedActions.length,
+          criticalFailedActions,
+        },
+        value: {
+          opportunitiesCaptured: proof.opportunitiesCaptured,
+          recoveredOpportunities: proof.recoveredOpportunities,
+          confirmedRevenue: proof.confirmedRevenue,
+          estimatedRecoveredValue: proof.estimatedRecoveredValue,
+        },
+        learning: {
+          knowledgeGapsObserved: callActivity.knowledgeGaps,
+        },
+      },
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "customer_health_failed" });
   }
 });
 
