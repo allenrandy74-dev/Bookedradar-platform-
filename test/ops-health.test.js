@@ -60,3 +60,32 @@ test("voice health surfaces Realtime, accept, and transfer gaps without overstat
     "transfer_not_initiated",
   ]);
 });
+
+test("voice health escalates explicit accept, persistence, and transfer failures", () => {
+  const result = assessVoiceHealth({
+    callsStarted: 6,
+    callsAccepted: 5,
+    callsEndedWithoutFirstAudio: 0,
+    greetingFailures: 0,
+    realtimeErrors: 0,
+    sidebandErrors: 1,
+    acceptFailures: 1,
+    leadPersistFailures: 1,
+    crmSyncFailures: 1,
+    unroutedCalls: 1,
+    transferRequests: 2,
+    transfersInitiated: 1,
+    transferFailures: 1,
+  });
+  assert.equal(result.status, "critical");
+  assert.deepEqual(result.signals.map(x => x.code), [
+    "call_accept_failure",
+    "lead_persistence_failure",
+    "transfer_failure",
+    "sideband_error",
+    "crm_sync_failure",
+    "unrouted_call",
+    "call_accept_gap",
+    "transfer_not_initiated",
+  ]);
+});
