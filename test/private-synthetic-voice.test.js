@@ -105,7 +105,8 @@ test("armed private synthetic voice creates bounded provider calls and returns S
   assert.equal(result.ok, true);
   assert.equal(result.callsCreated, 2);
   assert.equal(bodies.length, 2);
-  assert.match(decodeURIComponent(bodies[0]), /My air conditioner stopped cooling/);
+  const firstBody = new URLSearchParams(bodies[0]);
+  assert.match(firstBody.get("Twiml") || "", /My air conditioner stopped cooling/);
 });
 
 test("synthetic TwiML escapes untrusted scenario text", () => {
