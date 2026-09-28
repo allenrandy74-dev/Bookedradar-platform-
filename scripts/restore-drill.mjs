@@ -35,6 +35,7 @@ export async function runRestoreDrill({ archive, key, destinationRoot }) {
   if (!key) throw new Error("BACKUP_ENCRYPTION_KEY is required");
 
   const root = destinationRoot || await fs.mkdtemp(path.join(os.tmpdir(), "bookedradar-restore-drill-"));
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
   const destination = path.join(root, `restore-${Date.now()}-${randomBytes(3).toString("hex")}`);
 
   const startedAt = Date.now();
