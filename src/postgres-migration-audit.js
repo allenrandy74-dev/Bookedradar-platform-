@@ -14,8 +14,18 @@ function tenantFromContactKey(contactKey = "") {
   return index > 0 ? value.slice(0, index) : "";
 }
 
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map(key => [key, canonicalize(value[key])])
+    );
+  }
+  return value;
+}
+
 function stableHash(value) {
-  const json = JSON.stringify(value, Object.keys(value || {}).sort());
+  const json = JSON.stringify(canonicalize(value));
   return crypto.createHash("sha256").update(json).digest("hex");
 }
 
@@ -284,7 +294,17 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     counts,
     errors,
     warnings,
-    snapshotFingerprint: stableHash(counts),
+    snapshotFingerprint: stableHash({
+      state,
+      recovery,
+      callHistory,
+      webChat,
+      transfers,
+      growth,
+      leads,
+      billingTest,
+      billingLive,
+    }),
   };
 }
 
@@ -341,6 +361,8 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         startedAt: payload?.startedAt ? new Date(Number(payload.startedAt)).toISOString() : null,
         endedAt: payload?.endedAt ? new Date(Number(payload.endedAt)).toISOString() : null,
         updatedAt: payload?.updatedAt ? new Date(Number(payload.updatedAt)).toISOString() : null,
+        callerMasked: payload?.callerMasked || null,
+        dialedMasked: payload?.dialedMasked || null,
         transferred: Boolean(payload?.transferred),
         spamEnded: Boolean(payload?.spamEnded),
         payload,
@@ -356,6 +378,7 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         }))
       ),
       leads: array(snapshot.leads).map(payload => ({
+        sourceKey: stableHash(payload),
         tenantId: String(payload?.tenant_id || payload?.tenantId || ""),
         callId: payload?.call_id || payload?.callId || null,
         capturedAt: payload?.captured_at || payload?.capturedAt || payload?.timestamp || null,
