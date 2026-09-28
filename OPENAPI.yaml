@@ -59,6 +59,21 @@ paths:
         "200": { description: Protected voice operations health summary and assessment }
         "400": { description: Unknown tenant or invalid request }
         "401": { description: Unauthorized }
+  /api/v1/ops/customer-health:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: tenant
+          required: true
+          schema: { type: string }
+        - in: query
+          name: hours
+          schema: { type: integer, minimum: 1, maximum: 720, default: 168 }
+      responses:
+        "200": { description: Explainable customer operational health and evidence }
+        "400": { description: Known tenant required }
+        "401": { description: Unauthorized }
   /api/v1/radarproof:
     get:
       security: [{ BearerAuth: [] }]
