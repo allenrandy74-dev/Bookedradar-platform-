@@ -218,7 +218,7 @@ export class CallHistoryStore {
       callsEndedWithoutFirstAudio: completedWithoutFirstAudio.length,
       usefulLeadCalls: usefulLead.length,
       transferRequests: calls.filter(call => call.milestones?.["transfer.requested"]).length,
-      transfersCompleted: calls.filter(call => call.milestones?.["transfer.completed"] || call.transferred).length,
+      transfersInitiated: calls.filter(call => call.milestones?.["transfer.initiated"] || call.transferred).length,
       greetingFailures: calls.filter(call => call.milestones?.["greeting.failed"]).length,
       greetingFallbacks: calls.filter(call => call.milestones?.["greeting.fallback"]).length,
       realtimeErrors: calls.reduce((sum, call) => sum + Number(call.milestones?.["realtime.error"]?.count || 0), 0),
