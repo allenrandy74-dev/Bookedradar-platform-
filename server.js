@@ -1,3 +1,4 @@
+import { createPostSaveResponse } from "./src/post-save-response.js";
 import { createCallLifecycle } from "./src/call-lifecycle.js";
 import "dotenv/config";
 import path from "node:path";
@@ -892,6 +893,7 @@ async function attachSideband({
     log: voiceLog,
     shouldRestore: () => !transferHold.isActive(),
   });
+  const postSaveResponse = createPostSaveResponse({ send: event => send(ws, event), log: voiceLog });
   const openingAudio = createOpeningAudioMonitor({ log: voiceLog });
   const greetingTurns = createGreetingTurnGuard({ send: event => send(ws, event), log: voiceLog });
   let fallbackStarted = false;
@@ -944,6 +946,7 @@ async function attachSideband({
     greeting.event(event);
     transferHold.event(event);
     conversationOutputGuard.event(event);
+    postSaveResponse.event(event);
 
 
     if (event.type === "response.output_audio_transcript.done") {
@@ -1041,7 +1044,8 @@ async function attachSideband({
           output: JSON.stringify(output),
         },
       });
-      send(ws, { type: "response.create" });
+      if (toolCall.name === "capture_lead") postSaveResponse.request(output?.captured === true);
+      else send(ws, { type: "response.create" });
       return;
     }
 
@@ -1081,6 +1085,7 @@ async function attachSideband({
         } : null,
       });
     })().catch(() => {});
+    postSaveResponse.stop(); conversationOutputGuard.stop();
     openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop();
   });
 }
