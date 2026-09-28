@@ -77,6 +77,7 @@ export class CallHistoryStore {
     const now = Date.now();
     this.data.calls[callId] = {
       ...(this.data.calls[callId] || {}),
+      ...(!this.data.calls[callId] ? { telemetryVersion: 1 } : {}),
       callId,
       tenantId: clean(tenantId, 120),
       callerMasked: clean(callerMasked, 40),
@@ -193,7 +194,10 @@ export class CallHistoryStore {
     const acceptedLatency = values("call.accepted", "from_start");
     const firstAudioLatency = values("greeting.first_audio", "from_start");
     const ended = calls.filter(call => Boolean(call.endedAt));
-    const completedWithoutFirstAudio = ended.filter(call => !call.milestones?.["greeting.first_audio"]);
+    // Older persisted calls predate milestone recording. Missing evidence on
+    // those records cannot establish a failed acceptance or silent greeting.
+    const observed = calls.filter(call => call.telemetryVersion >= 1 || Object.keys(call.milestones || {}).length > 0);
+    const completedWithoutFirstAudio = observed.filter(call => call.endedAt && !call.milestones?.["greeting.first_audio"]);
     const usefulLead = calls.filter(call =>
       Boolean(
         call.milestones?.["lead.persisted"] ||
@@ -211,6 +215,8 @@ export class CallHistoryStore {
       generatedAt: new Date(now).toISOString(),
       tenantId: tenantId || null,
       callsStarted: calls.length,
+      callsWithTelemetry: observed.length,
+      callsWithoutTelemetry: calls.length - observed.length,
       callsEnded: ended.length,
       callsActive: calls.filter(call => !call.endedAt).length,
       callsAccepted: calls.filter(call => call.milestones?.["call.accepted"]).length,
