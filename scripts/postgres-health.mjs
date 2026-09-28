@@ -2,7 +2,10 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { createPostgresPool, postgresHealth } from "../src/postgres-runtime.js";
 
-export async function runPostgresHealthProbe(env = process.env) {
+export async function runPostgresHealthProbe(
+  env = process.env,
+  { createPool = createPostgresPool, healthCheck = postgresHealth } = {}
+) {
   const databaseUrl = String(env.DATABASE_URL || "").trim();
   if (!databaseUrl) {
     return {
@@ -12,14 +15,14 @@ export async function runPostgresHealthProbe(env = process.env) {
     };
   }
 
-  const pool = createPostgresPool({
+  const pool = createPool({
     connectionString: databaseUrl,
     max: 1,
     connectionTimeoutMillis: Number(env.POSTGRES_HEALTH_TIMEOUT_MS || 5000),
   });
 
   try {
-    const health = await postgresHealth(pool);
+    const health = await healthCheck(pool);
     return {
       ok: true,
       configured: true,
