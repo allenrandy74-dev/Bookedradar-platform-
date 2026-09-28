@@ -62,7 +62,7 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0 } = {}) {
     opportunitiesCaptured: opportunities.length,
     recoveredOpportunities: recovered.length,
     recoveryRate:
-      opportunities.length ? recovered.length / opportunities.length : 0,
+      opportunities.length ? recovered.length / opportunities.length : null,
     estimatedOpportunityValue,
     estimatedRecoveredValue,
     confirmedRevenue,
