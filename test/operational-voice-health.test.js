@@ -82,3 +82,31 @@ test("milestones are call-isolated under concurrency", async (t) => {
     assert.equal(call.milestones["greeting.first_audio"].latencyMs, 100 + i);
   }
 });
+
+test("voice health summary exposes explicit failure counters and unrouted calls", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "br-voice-failures-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const history = new CallHistoryStore(path.join(dir, "calls.json"), { retentionDays: 30 });
+  await history.load();
+
+  await history.start("failed-routed", { tenantId: "demo-hvac" });
+  await history.mark("failed-routed", "call.accept_failed");
+  await history.mark("failed-routed", "lead.persist_failed");
+  await history.mark("failed-routed", "crm.sync_failed");
+  await history.mark("failed-routed", "sideband.error");
+  await history.mark("failed-routed", "transfer.requested");
+  await history.mark("failed-routed", "transfer.failed");
+  await history.finish("failed-routed");
+
+  await history.start("unrouted", { tenantId: "__unrouted__" });
+  await history.mark("unrouted", "route.rejected");
+  await history.finish("unrouted");
+
+  const summary = await history.operationalSummary({ sinceMs: 0 });
+  assert.equal(summary.acceptFailures, 1);
+  assert.equal(summary.leadPersistFailures, 1);
+  assert.equal(summary.crmSyncFailures, 1);
+  assert.equal(summary.sidebandErrors, 1);
+  assert.equal(summary.transferFailures, 1);
+  assert.equal(summary.unroutedCalls, 1);
+});
