@@ -7,6 +7,34 @@ on:
     branches: [main]
 
 jobs:
+  postgres-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: bookedradar_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d bookedradar_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Verify concurrent state and rollback on disposable Postgres 18
+        run: node --test test/postgres-state-store.integration.test.js
+        env:
+          POSTGRES_TEST_URL: postgresql://test_user:disposable_ci_only@127.0.0.1:5432/bookedradar_test
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
