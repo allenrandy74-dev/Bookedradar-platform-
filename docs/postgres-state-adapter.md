@@ -51,3 +51,32 @@ only a loopback host and database `bookedradar_test`; it destroys that database'
 - Approve a controlled production activation window with a tested rollback.
 
 The existing shadow import is a point-in-time copy, not ongoing replication.
+
+## Billing component
+
+`PostgresBillingStore` retains the existing BillingService transaction callback
+contract. It locks the billing-state row for the selected mode, reads fresh
+state, validates the envelope, commits once and releases the connection. This
+serializes the global five-partner quota across workers. Test and live modes
+have distinct rows. It does not expose a cached `data` property or automatically
+retry callbacks that may call Stripe. Failures roll back local database changes.
+
+The integration suite uses the existing BillingService with local provider
+stubs. It checks concurrent enrollment/quota allocation and duplicate enrollment
+along with state increments, event deduplication, failed transactions, mode
+separation and export/reload through BillingStore. No Stripe endpoint is called.
+Integration test files run sequentially because each creates and removes the
+same disposable schema.
+
+`exportPostgresBillingState` creates a new private billing JSON file only after
+the caller asserts a writer freeze. This is another component recovery drill,
+not complete platform rollback. Stripe is still authoritative for provider
+objects; rolling back the database cannot undo customer creation or a payment.
+
+Before wiring billing into production, bound provider request duration and
+prove reconciliation after an external operation succeeds but the database
+commit fails. The adapter imposes database lock/statement timeouts, but these
+do not time out JavaScript callbacks. BillingService currently calls Stripe
+inside its transaction callback, so slow provider requests hold the mode-level
+lock. A hung request is an activation blocker, not a reason to silently fall
+back to JSON or automatically replay provider operations.
