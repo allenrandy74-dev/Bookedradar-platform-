@@ -15,6 +15,12 @@ export function assessVoiceHealth(summary = {}) {
   const noFirstAudio = Number(summary.callsEndedWithoutFirstAudio || 0);
   const greetingFailures = Number(summary.greetingFailures || 0);
   const realtimeErrors = Number(summary.realtimeErrors || 0);
+  const sidebandErrors = Number(summary.sidebandErrors || 0);
+  const acceptFailures = Number(summary.acceptFailures || 0);
+  const leadPersistFailures = Number(summary.leadPersistFailures || 0);
+  const crmSyncFailures = Number(summary.crmSyncFailures || 0);
+  const unroutedCalls = Number(summary.unroutedCalls || 0);
+  const transferFailures = Number(summary.transferFailures || 0);
   const accepted = Number(summary.callsAccepted || 0);
   const transferRequests = Number(summary.transferRequests || 0);
   const transfersInitiated = Number(summary.transfersInitiated || 0);
@@ -33,11 +39,53 @@ export function assessVoiceHealth(summary = {}) {
       message: "Greeting watchdog failure/fallback occurred.",
     });
   }
+  if (acceptFailures > 0) {
+    critical.push({
+      code: "call_accept_failure",
+      count: acceptFailures,
+      message: "One or more routed calls failed during acceptance/control setup.",
+    });
+  }
+  if (leadPersistFailures > 0) {
+    critical.push({
+      code: "lead_persistence_failure",
+      count: leadPersistFailures,
+      message: "One or more lead captures failed durable persistence.",
+    });
+  }
+  if (transferFailures > 0) {
+    critical.push({
+      code: "transfer_failure",
+      count: transferFailures,
+      message: "One or more requested human transfers failed to initiate.",
+    });
+  }
   if (realtimeErrors > 0) {
     attention.push({
       code: "realtime_error",
       count: realtimeErrors,
       message: "OpenAI Realtime emitted one or more errors.",
+    });
+  }
+  if (sidebandErrors > 0) {
+    attention.push({
+      code: "sideband_error",
+      count: sidebandErrors,
+      message: "One or more Realtime sideband WebSocket errors occurred.",
+    });
+  }
+  if (crmSyncFailures > 0) {
+    attention.push({
+      code: "crm_sync_failure",
+      count: crmSyncFailures,
+      message: "Lead persistence succeeded but one or more CRM sync attempts failed.",
+    });
+  }
+  if (unroutedCalls > 0) {
+    attention.push({
+      code: "unrouted_call",
+      count: unroutedCalls,
+      message: "One or more inbound calls arrived on an unrecognized route.",
     });
   }
   if (accepted < callsStarted) {
