@@ -11,7 +11,35 @@ const STATUSES = new Set([
 const SEVERITIES = new Set(["SEV-1", "SEV-2", "SEV-3", "REQUEST"]);
 const SOURCES = new Set(["customer", "monitoring", "provider", "internal"]);
 
-const PROHIBITED_KEY = /(password|secret|token|credential|transcript|recording|caller.?phone|caller.?name|service.?address|payment|card.?number|ssn|social.?security)/i;
+const PROHIBITED_EXACT_KEYS = new Set([
+  "password",
+  "secret",
+  "token",
+  "credential",
+  "transcript",
+  "recording",
+  "callerphone",
+  "callername",
+  "serviceaddress",
+  "payment",
+  "cardnumber",
+  "paymentcardnumber",
+  "ssn",
+  "socialsecurity",
+]);
+
+function prohibitedSupportKey(key) {
+  const normalized = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (PROHIBITED_EXACT_KEYS.has(normalized)) return true;
+  return (
+    /(?:password|secret|token|credential)$/.test(normalized) ||
+    /^(?:transcript|recording)/.test(normalized) ||
+    /^caller(?:phone|name)/.test(normalized) ||
+    /^serviceaddress/.test(normalized) ||
+    /^(?:payment|cardnumber|paymentcardnumber)/.test(normalized) ||
+    /^(?:ssn|socialsecurity)/.test(normalized)
+  );
+}
 
 function clean(value, max = 1000) {
   return String(value ?? "").trim().slice(0, max);
@@ -57,7 +85,7 @@ export function normalizeSupportCase(input = {}) {
     return { ok: false, error: "support_case_object_required" };
   }
 
-  const prohibited = Object.keys(input).find(key => PROHIBITED_KEY.test(key));
+  const prohibited = Object.keys(input).find(prohibitedSupportKey);
   if (prohibited) {
     return {
       ok: false,
