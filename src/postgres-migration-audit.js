@@ -145,9 +145,37 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     }
   }
 
+  const seenEventIds = new Set();
+  const seenEventKeys = new Map();
+  const eventKeyMap = object(recovery.eventKeys);
+
   for (const event of events) {
     const eventId = String(event?.id || "");
     if (!eventId) issue(errors, "event_missing_id");
+    if (eventId && seenEventIds.has(eventId)) {
+      issue(errors, "duplicate_event_id", { eventId });
+    }
+    if (eventId) seenEventIds.add(eventId);
+
+    const idempotencyKey = String(event?.idempotencyKey || "");
+    if (idempotencyKey) {
+      const priorEventId = seenEventKeys.get(idempotencyKey);
+      if (priorEventId && priorEventId !== eventId) {
+        issue(errors, "duplicate_event_idempotency_key", {
+          keyRef: safeRef(idempotencyKey),
+          eventIds: [priorEventId, eventId],
+        });
+      } else {
+        seenEventKeys.set(idempotencyKey, eventId);
+      }
+      if (eventKeyMap[idempotencyKey] && String(eventKeyMap[idempotencyKey]) !== eventId) {
+        issue(errors, "event_key_map_mismatch", {
+          keyRef: safeRef(idempotencyKey),
+          eventId,
+          mappedEventId: String(eventKeyMap[idempotencyKey]),
+        });
+      }
+    }
     if (!event?.occurredAt) issue(errors, "event_missing_occurred_at", { eventId });
     let tenantId = String(event?.tenantId || "");
     if (!tenantId && event?.opportunityId) {
