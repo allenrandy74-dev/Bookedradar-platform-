@@ -1,3 +1,5 @@
+import { INTAKE_CONTINUATION_RULES } from './operator.js';
+
 // Recover only an empty, completed response requested after capture_lead.
 // This is not an idle timer: normal confirmation waits must remain silent.
 export function createPostSaveResponse({ send, log = () => {} }) {
@@ -13,7 +15,8 @@ export function createPostSaveResponse({ send, log = () => {} }) {
       instructions: [
         'Resume the service conversation after the capture_lead tool result.',
         saved ? 'The lead save succeeded. This does not confirm an appointment, dispatch, or completed human notification.' : 'The lead save failed. Do not claim the details were saved or delivered.',
-        'A saving announcement such as getting the details lined up must be followed by a useful spoken next step, not silence.',
+        INTAKE_CONTINUATION_RULES,
+        'Continue directly with the next useful question or confirmation. Do not repeat a saving announcement or summarize internal work.',
         'Use the conversation so far. If you already asked a question and the caller has not answered, briefly repeat only that pending question, then stop and wait. Do not treat the tool result as their answer.',
         'Otherwise ask only the next missing intake or confirmation question; if all required details are already confirmed, continue the normal closing invitation. If the caller already said goodbye, give only a brief goodbye.',
         'Do not repeat confirmed details, assume consent, invent information, or announce another delay. Preserve safety priority and explicit requests for human assistance.',
