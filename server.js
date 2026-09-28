@@ -69,6 +69,7 @@ import {
   webChatEnabled,
 } from "./src/web-chat.js";
 import { CallHistoryStore } from "./src/call-history.js";
+import { assessVoiceHealth } from "./src/ops-health.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -608,6 +609,27 @@ function send(ws, event) {
   }
 }
 
+function recordCallMilestone(callId, event, fields = {}) {
+  const latencyCandidate =
+    fields.latencyMs ?? fields.elapsed_ms ?? fields.acceptance_ms;
+  const reason =
+    fields.reason ?? fields.outcome ?? fields.code ?? "";
+  void callHistory.mark(callId, event, {
+    at: Date.now(),
+    ...(Number.isFinite(Number(latencyCandidate))
+      ? { latencyMs: Number(latencyCandidate) }
+      : {}),
+    ...(reason ? { reason: String(reason).slice(0, 160) } : {}),
+    ...(fields.ok === false ? { ok: false } : {}),
+  }).catch(() => {
+    console.error(JSON.stringify({
+      event: "ops.milestone_write_failed",
+      call_id: callId,
+      milestone: event,
+    }));
+  });
+}
+
 async function executeTool({
   name,
   args,
@@ -627,10 +649,18 @@ async function executeTool({
       previous_lead: existingCall?.lastLead,
     });
 
-    await appendLead(LEADS_FILE, {
-      ...lead,
-      tenant_id: tenant.tenantId,
-    });
+    try {
+      await appendLead(LEADS_FILE, {
+        ...lead,
+        tenant_id: tenant.tenantId,
+      });
+    } catch (error) {
+      recordCallMilestone(callId, "lead.persist_failed", {
+        ok: false,
+        reason: "lead_log_write_failed",
+      });
+      throw error;
+    }
 
     let recoveryResult;
 
@@ -702,6 +732,10 @@ async function executeTool({
         });
         crmContactId = contactResult?.contactId || null;
       } catch (error) {
+        recordCallMilestone(callId, "crm.sync_failed", {
+          ok: false,
+          reason: "crm_contact_error",
+        });
         console.error(JSON.stringify({
           event: "voice.crm_contact_error",
           tenant_id: tenant.tenantId,
@@ -718,6 +752,7 @@ async function executeTool({
       lastLeadAt: Date.now(),
       lastLead: lead,
     });
+    recordCallMilestone(callId, "lead.persisted");
 
     console.log(JSON.stringify({
       event: "lead.captured",
@@ -835,8 +870,13 @@ async function executeTool({
   }
 
   if (name === "transfer_to_human") {
+    recordCallMilestone(callId, "transfer.requested");
     const target = humanTransferTarget(tenant);
     if (!target) {
+      recordCallMilestone(callId, "transfer.failed", {
+        ok: false,
+        reason: "human_transfer_number_not_configured",
+      });
       return {
         ok: false,
         transferred: false,
@@ -858,11 +898,17 @@ async function executeTool({
       return lead;
     } });
     if (result.transferred) {
+      recordCallMilestone(callId, "transfer.initiated");
       try {
         await state.patchCall(callId, { transferId: result.transferId, transferRequested: true });
         await callHistory.finish(callId, { transferred: true, transferId: result.transferId || null });
       }
       catch { console.error(JSON.stringify({ event: "transfer.failed", call_id: callId, reason: "state_update_failed" })); }
+    } else {
+      recordCallMilestone(callId, "transfer.failed", {
+        ok: false,
+        reason: result?.reason || "transfer_not_initiated",
+      });
     }
     return result;
   }
@@ -886,7 +932,17 @@ async function attachSideband({
   );
 
   const handledToolCalls = new Set();
-  const voiceLog = (event, fields = {}) => console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
+  const trackedVoiceMilestones = new Set([
+    "greeting.first_audio",
+    "greeting.failed",
+    "greeting.fallback",
+  ]);
+  const voiceLog = (event, fields = {}) => {
+    console.log(JSON.stringify({ event, tenant_id: tenant.tenantId, call_id: callId, ...fields }));
+    if (trackedVoiceMilestones.has(event)) {
+      recordCallMilestone(callId, event, fields);
+    }
+  };
   const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog, restoreTurnDetection: CONVERSATION_TURN_DETECTION });
   const conversationOutputGuard = createConversationOutputGuard({
     send: event => send(ws, event),
@@ -930,7 +986,12 @@ async function attachSideband({
     },
   });
 
-  ws.on("open", () => { openingAudio.open(); greetingTurns.open(); greeting.open(); });
+  ws.on("open", () => {
+    recordCallMilestone(callId, "sideband.open");
+    openingAudio.open();
+    greetingTurns.open();
+    greeting.open();
+  });
 
   ws.on("message", async (raw) => {
     let event;
@@ -1050,6 +1111,10 @@ async function attachSideband({
     }
 
     if (event.type === "error") {
+      recordCallMilestone(callId, "realtime.error", {
+        ok: false,
+        reason: event?.error?.code || "unknown",
+      });
       console.error(JSON.stringify({
         event: "realtime.error",
         tenant_id: tenant.tenantId,
@@ -1061,6 +1126,10 @@ async function attachSideband({
   });
 
   ws.on("error", (error) => {
+    recordCallMilestone(callId, "sideband.error", {
+      ok: false,
+      reason: "websocket_error",
+    });
     console.error(JSON.stringify({
       event: "sideband.error",
       tenant_id: tenant.tenantId,
@@ -1101,6 +1170,16 @@ async function handleIncomingCall(event) {
   const tenant = registry.resolveByPhone(dialedNumber);
 
   if (!tenant) {
+    await callHistory.start(callId, {
+      tenantId: "__unrouted__",
+      callerMasked: maskPhone(callerNumber),
+      dialedMasked: maskPhone(dialedNumber),
+    });
+    await callHistory.mark(callId, "route.rejected", {
+      ok: false,
+      reason: "unknown_inbound_number",
+    });
+    await callHistory.finish(callId, { endReason: "no_tenant_route" });
     callLifecycle.end(callId);
     console.error(JSON.stringify({
       event: "call.no_tenant_route",
@@ -1162,9 +1241,12 @@ async function handleIncomingCall(event) {
     inputTranscription: inputTranscriptionForTenant(tenant),
   });
 
+  const acceptanceMs = Date.now() - receivedAt;
+  recordCallMilestone(callId, "call.accepted", { latencyMs: acceptanceMs });
+
   console.log(JSON.stringify({
     event: "call.accepted",
-    acceptance_ms: Date.now() - receivedAt,
+    acceptance_ms: acceptanceMs,
     tenant_id: tenant.tenantId,
     call_id: callId,
     caller_hint: maskPhone(callerNumber) || null,
@@ -1945,6 +2027,30 @@ app.get("/api/v1/radartrust", requireAdmin, requireTenant, async (req, res) => {
   }
 });
 
+app.get("/api/v1/ops/voice-health", requireAdmin, async (req, res) => {
+  try {
+    const hours = Math.min(Math.max(Number(req.query.hours || 24), 1), 168);
+    const tenantId = String(req.query.tenant || "").trim();
+    if (tenantId && tenantId !== "__unrouted__" && !registry.get(tenantId)) {
+      return res.status(400).json({ ok: false, error: "unknown_tenant" });
+    }
+    const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+    const summary = await callHistory.operationalSummary({ tenantId, sinceMs });
+    return res.json({
+      ok: true,
+      windowHours: hours,
+      summary,
+      assessment: assessVoiceHealth(summary),
+      runtime: {
+        activeVoiceCalls: callLifecycle.count(),
+        draining: callLifecycle.isDraining(),
+      },
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "voice_health_failed" });
+  }
+});
+
 app.get("/api/v1/radarproof", async (req, res) => {
   if (RADARPROOF_PUBLIC.toLowerCase() !== "true") {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -2041,8 +2147,15 @@ app.post("/openai/webhook", async (req, res) => {
   if (event.type === "realtime.call.incoming") {
     const callId = event?.data?.call_id;
     if (!callLifecycle.begin(callId)) return;
-    handleIncomingCall(event).catch((error) => {
+    handleIncomingCall(event).catch(async (error) => {
       callLifecycle.end(callId);
+      recordCallMilestone(callId, "call.accept_failed", {
+        ok: false,
+        reason: "incoming_call_failed",
+      });
+      try {
+        await callHistory.finish(callId, { endReason: "incoming_call_failed" });
+      } catch {}
       console.error(JSON.stringify({
         event: "incoming_call.failed",
         call_id: event?.data?.call_id || null,

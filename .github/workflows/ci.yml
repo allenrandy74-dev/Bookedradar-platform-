@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, world-class-ops-2026-09-28]
+    branches: [main]
 
 jobs:
   test:
