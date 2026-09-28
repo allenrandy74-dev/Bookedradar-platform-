@@ -649,10 +649,18 @@ async function executeTool({
       previous_lead: existingCall?.lastLead,
     });
 
-    await appendLead(LEADS_FILE, {
-      ...lead,
-      tenant_id: tenant.tenantId,
-    });
+    try {
+      await appendLead(LEADS_FILE, {
+        ...lead,
+        tenant_id: tenant.tenantId,
+      });
+    } catch (error) {
+      recordCallMilestone(callId, "lead.persist_failed", {
+        ok: false,
+        reason: "lead_log_write_failed",
+      });
+      throw error;
+    }
 
     let recoveryResult;
 
@@ -724,6 +732,10 @@ async function executeTool({
         });
         crmContactId = contactResult?.contactId || null;
       } catch (error) {
+        recordCallMilestone(callId, "crm.sync_failed", {
+          ok: false,
+          reason: "crm_contact_error",
+        });
         console.error(JSON.stringify({
           event: "voice.crm_contact_error",
           tenant_id: tenant.tenantId,
@@ -858,8 +870,13 @@ async function executeTool({
   }
 
   if (name === "transfer_to_human") {
+    recordCallMilestone(callId, "transfer.requested");
     const target = humanTransferTarget(tenant);
     if (!target) {
+      recordCallMilestone(callId, "transfer.failed", {
+        ok: false,
+        reason: "human_transfer_number_not_configured",
+      });
       return {
         ok: false,
         transferred: false,
@@ -867,7 +884,6 @@ async function executeTool({
       };
     }
 
-    recordCallMilestone(callId, "transfer.requested");
     transferHold?.start();
     const result = await guardedTransfer({ callId, tenant, target,
       beforeRefer: ({ lead }) => transferCompanion.notifyAndWait({ callId, tenant, target, lead, callerNumber }),
