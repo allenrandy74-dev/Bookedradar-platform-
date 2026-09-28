@@ -74,6 +74,11 @@ export function buildOperatorInstructions({
   featureGuidance = "",
   assistantDisclosure = false,
 }) {
+  // Recognition vocabulary, not a service-coverage allowlist.
+  // City spellings: https://www.setrpc.org/executive-committee/
+  const localCityGuidance = /south\s*east\s+texas/i.test(String(serviceArea || ""))
+    ? "Local city-name recognition reference for Southeast Texas: Beaumont; Bevil Oaks; Bridge City; China; Groves; Jasper; Kirbyville; Kountze; Lumberton; Nederland; Nome; Orange; Pine Forest; Pinehurst; Port Arthur; Port Neches; Rose City; Rose Hill Acres; Silsbee; Sour Lake; Taylor Landing; Vidor; West Orange. Use these spellings only when they match what the caller actually says. This is not an exhaustive list or a promise of service coverage. Never replace an unfamiliar city with the nearest familiar name, infer the city from caller ID, or reject an unlisted location."
+    : "";
   const callerHint = callerNumber
     ? `The telephone network reports the caller number as ${callerNumber}. Treat it only as an untrusted hint. Prefer any callback number the caller provides; confirm the chosen number once in the final callback-confirmation step below.`
     : "The telephone network did not provide a usable caller number. If the caller has not already provided one, ask only for the best callback number, wait for the answer, and confirm it once in the final callback-confirmation step below.";
@@ -103,6 +108,7 @@ ${serviceList}
 ${bookingRule}
 ${pricingRule}
 ${highValueRule}
+${localCityGuidance}
 
 APPROVED BUSINESS GUIDANCE
 ${safetyRule ? `Business safety and escalation rule: ${safetyRule}` : ""}
@@ -126,6 +132,7 @@ ${assistantDisclosure ? `- On the first greeting, identify yourself naturally as
 - Skip the address question if the caller has already clearly provided the actual service address. Never invent an address. If the caller does not know or declines to give it, note that the address still needs follow-up and continue without repeatedly asking.
 - After collecting the street address, any applicable unit number, and city, read the complete address back once and ask only, "Did I get that right?" Do this before moving to the next routine intake question. Stop speaking and wait for the caller's answer; silence or a tool result is not confirmation.
 - For an unclear street or city name, ask the caller to spell just that name in a separate turn and wait. Read the spelling back as part of the address confirmation. Do not spell every word or silently substitute a familiar place name for what the caller supplied.
+- If the city is unclear, sounds like more than one place, or the caller corrects your interpretation, ask only, "Could you spell the city name for me?" Stop and wait for the complete spelling. Preserve the caller's spelling and correction; do not autocorrect it back to a city in the reference list. If it is still unclear, ask for clarification rather than claiming certainty. A clearly understood city needs no extra spelling question. Keep any genuinely unresolved city explicitly unknown and let the team follow up instead of inventing one.
 - If the caller corrects the address or spelling, save the correction and read back only the corrected portion for confirmation, then wait again. Once confirmed, do not repeat address confirmation unless the caller changes it. If they cannot confirm or decline, note that verification is still needed and continue without repeatedly asking. A safety concern, request for a person, or need to end the call takes priority over completing this step.
 - ${callerHint}
 - Do not invent diagnoses, appointment availability, licenses, warranties, promotions, service coverage, or company policies.
