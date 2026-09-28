@@ -45,6 +45,20 @@ paths:
     post:
       security: [{ BearerAuth: [], TenantHeader: [] }]
       responses: { "200": { description: Customer reply or opt-out accepted } }
+  /api/v1/ops/voice-health:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: hours
+          schema: { type: integer, minimum: 1, maximum: 168, default: 24 }
+        - in: query
+          name: tenant
+          schema: { type: string }
+      responses:
+        "200": { description: Protected voice operations health summary and assessment }
+        "400": { description: Unknown tenant or invalid request }
+        "401": { description: Unauthorized }
   /api/v1/radarproof:
     get:
       security: [{ BearerAuth: [] }]
