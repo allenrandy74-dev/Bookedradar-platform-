@@ -80,3 +80,28 @@ do not time out JavaScript callbacks. BillingService currently calls Stripe
 inside its transaction callback, so slow provider requests hold the mode-level
 lock. A hung request is an activation blocker, not a reason to silently fall
 back to JSON or automatically replay provider operations.
+
+## Lead capture component
+
+`PostgresLeadStore(pool, tenantId)` requires explicit tenant ownership in the
+payload and scopes reads and pagination to that tenant. It reuses the exact
+canonical payload hash used by the shadow importer. Identical captures, even
+with a different object key order, are inserted once. A changed payload is a
+new historical capture. This is content-based replay protection, not a promise
+that two business events with different timestamps will be deduplicated.
+
+Writes never replace an existing lead payload. Listing uses the database ID as
+a cursor and bounds page size. The ID is returned as text to avoid JavaScript
+integer precision loss. A database error is returned to the caller, so the
+caller cannot treat a failed capture as successfully persisted.
+
+`exportPostgresLeads` writes all captures in database ID order to a fresh private
+`leads.jsonl`, compatible with the current append function. The test verifies
+complete JSON payloads and appending after restoration. Like the other exports,
+it requires the operator to freeze writers and is not a complete system rollback.
+The export currently materializes the result in memory; it needs a streaming
+implementation before use with a substantially larger lead history.
+
+No runtime route selects this adapter yet. Activation must preserve the existing
+capture failure handling and coordinate successful lead storage with recovery
+opportunity creation, including retries after one succeeds and the other fails.
