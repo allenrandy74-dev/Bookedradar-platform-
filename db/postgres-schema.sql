@@ -54,6 +54,7 @@ CREATE INDEX IF NOT EXISTS call_turns_call_time_idx
 
 CREATE TABLE IF NOT EXISTS bookedradar.lead_captures (
   lead_id bigserial PRIMARY KEY,
+  source_key text NOT NULL UNIQUE,
   tenant_id text NOT NULL,
   call_id text,
   captured_at timestamptz,
