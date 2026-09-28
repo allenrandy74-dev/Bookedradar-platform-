@@ -19,6 +19,10 @@ function stableHash(value) {
   return crypto.createHash("sha256").update(json).digest("hex");
 }
 
+function safeRef(value = "") {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
+}
+
 function issue(list, code, detail = {}) {
   list.push({ code, ...detail });
 }
@@ -73,10 +77,10 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   for (const [contactKey, contact] of Object.entries(contacts)) {
     const keyTenant = tenantFromContactKey(contactKey);
     const payloadTenant = String(contact?.tenantId || "");
-    if (!keyTenant) issue(errors, "contact_key_not_tenant_namespaced", { contactKey });
+    if (!keyTenant) issue(errors, "contact_key_not_tenant_namespaced", { contactRef: safeRef(contactKey) });
     if (payloadTenant && keyTenant && payloadTenant !== keyTenant) {
       issue(errors, "contact_cross_tenant_mismatch", {
-        contactKey,
+        contactRef: safeRef(contactKey),
         keyTenant,
         payloadTenant,
       });
@@ -109,7 +113,7 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
         issue(errors, "action_cross_tenant_contact", {
           id,
           tenantId,
-          contactKey: String(action.contactKey),
+          contactRef: safeRef(action.contactKey),
         });
       }
     }
