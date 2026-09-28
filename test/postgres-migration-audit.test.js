@@ -221,3 +221,20 @@ test("migration manifest gives leads deterministic idempotent source keys", () =
   assert.match(first.rows.leads[0].sourceKey, /^[a-f0-9]{64}$/);
   assert.equal(first.rows.leads[0].sourceKey, second.rows.leads[0].sourceKey);
 });
+
+test("migration audit rejects duplicate recovery idempotency keys and key-map mismatches", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.events.push({
+    id: "evt_2",
+    idempotencyKey: "phone-lead:demo-hvac:call_1",
+    occurredAt: new Date().toISOString(),
+    type: "phone_lead",
+  });
+  snapshot.recovery.eventKeys["phone-lead:demo-hvac:call_1"] = "evt_wrong";
+  const audit = auditPostgresMigrationSnapshot(snapshot);
+  assert.equal(audit.ok, false);
+  assert.ok(audit.errors.some(x => x.code === "duplicate_event_idempotency_key"));
+  assert.ok(audit.errors.some(x => x.code === "event_key_map_mismatch"));
+  const serialized = JSON.stringify(audit.errors);
+  assert.equal(serialized.includes("phone-lead:demo-hvac:call_1"), false);
+});
