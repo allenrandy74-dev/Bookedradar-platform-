@@ -22,6 +22,8 @@ export function assessVoiceHealth(summary = {}) {
   const unroutedCalls = Number(summary.unroutedCalls || 0);
   const transferFailures = Number(summary.transferFailures || 0);
   const accepted = Number(summary.callsAccepted || 0);
+  const observed = Number(summary.callsWithTelemetry ?? callsStarted);
+  const unobserved = Number(summary.callsWithoutTelemetry || 0);
   const transferRequests = Number(summary.transferRequests || 0);
   const transfersInitiated = Number(summary.transfersInitiated || 0);
 
@@ -88,10 +90,17 @@ export function assessVoiceHealth(summary = {}) {
       message: "One or more inbound calls arrived on an unrecognized route.",
     });
   }
-  if (accepted < callsStarted) {
+  if (unobserved > 0) {
+    attention.push({
+      code: "telemetry_unavailable",
+      count: unobserved,
+      message: "Historical calls lack event tracking; acceptance and first audio cannot be assessed for those records.",
+    });
+  }
+  if (accepted < observed) {
     attention.push({
       code: "call_accept_gap",
-      count: callsStarted - accepted,
+      count: observed - accepted,
       message: "Some tracked inbound calls were not marked accepted.",
     });
   }
