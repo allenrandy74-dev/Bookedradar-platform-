@@ -143,6 +143,95 @@ export class CallHistoryStore {
     return call;
   }
 
+  async mark(callId, event, fields = {}) {
+    await this.load();
+    const call = this.data.calls[callId];
+    if (!call) return null;
+    const key = clean(event, 80).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    if (!key) return call;
+    const now = Number(fields.at || Date.now());
+    call.milestones ??= {};
+    const existing = call.milestones[key] || { count: 0 };
+    call.milestones[key] = {
+      firstAt: existing.firstAt || now,
+      lastAt: now,
+      count: Number(existing.count || 0) + 1,
+      ...(Number.isFinite(Number(fields.latencyMs)) ? { latencyMs: Number(fields.latencyMs) } : {}),
+      ...(fields.ok === false ? { ok: false } : {}),
+      ...(fields.reason ? { reason: clean(fields.reason, 160) } : {}),
+    };
+    call.updatedAt = Date.now();
+    await this.persist();
+    return structuredClone(call.milestones[key]);
+  }
+
+  async operationalSummary({ tenantId = "", sinceMs = 0, now = Date.now() } = {}) {
+    await this.load();
+    const calls = Object.values(this.data.calls).filter(call =>
+      (!tenantId || call.tenantId === tenantId) &&
+      Number(call.startedAt || 0) >= Number(sinceMs || 0)
+    );
+
+    const values = (event, fallback = null) => calls
+      .map(call => {
+        const milestone = call.milestones?.[event];
+        if (milestone && Number.isFinite(Number(milestone.latencyMs))) return Number(milestone.latencyMs);
+        if (milestone?.firstAt && fallback === "from_start") {
+          return Math.max(0, Number(milestone.firstAt) - Number(call.startedAt || milestone.firstAt));
+        }
+        return null;
+      })
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+
+    const percentile = (items, p) => {
+      if (!items.length) return null;
+      const index = Math.min(items.length - 1, Math.max(0, Math.ceil(items.length * p) - 1));
+      return items[index];
+    };
+
+    const acceptedLatency = values("call.accepted", "from_start");
+    const firstAudioLatency = values("greeting.first_audio", "from_start");
+    const ended = calls.filter(call => Boolean(call.endedAt));
+    const completedWithoutFirstAudio = ended.filter(call => !call.milestones?.["greeting.first_audio"]);
+    const usefulLead = calls.filter(call =>
+      Boolean(
+        call.milestones?.["lead.persisted"] ||
+        (call.leadSummary?.serviceType && call.leadSummary?.callback)
+      )
+    );
+
+    const byTenant = {};
+    for (const call of calls) {
+      const key = call.tenantId || "unknown";
+      byTenant[key] = (byTenant[key] || 0) + 1;
+    }
+
+    return {
+      generatedAt: new Date(now).toISOString(),
+      tenantId: tenantId || null,
+      callsStarted: calls.length,
+      callsEnded: ended.length,
+      callsActive: calls.filter(call => !call.endedAt).length,
+      callsAccepted: calls.filter(call => call.milestones?.["call.accepted"]).length,
+      callsWithFirstAudio: calls.filter(call => call.milestones?.["greeting.first_audio"]).length,
+      callsEndedWithoutFirstAudio: completedWithoutFirstAudio.length,
+      usefulLeadCalls: usefulLead.length,
+      transferRequests: calls.filter(call => call.milestones?.["transfer.requested"]).length,
+      transfersCompleted: calls.filter(call => call.milestones?.["transfer.completed"] || call.transferred).length,
+      greetingFailures: calls.filter(call => call.milestones?.["greeting.failed"]).length,
+      greetingFallbacks: calls.filter(call => call.milestones?.["greeting.fallback"]).length,
+      realtimeErrors: calls.reduce((sum, call) => sum + Number(call.milestones?.["realtime.error"]?.count || 0), 0),
+      latencyMs: {
+        acceptP50: percentile(acceptedLatency, 0.50),
+        acceptP95: percentile(acceptedLatency, 0.95),
+        firstAudioP50: percentile(firstAudioLatency, 0.50),
+        firstAudioP95: percentile(firstAudioLatency, 0.95),
+      },
+      byTenant,
+    };
+  }
+
   async list(tenantId, { q = "", limit = 50 } = {}) {
     await this.load();
     const needle = clean(q, 200).toLowerCase();
