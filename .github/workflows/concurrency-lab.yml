@@ -1,0 +1,25 @@
+name: BookedRadar concurrency lab
+
+on:
+  push:
+    branches:
+      - concurrency-lab-2026-09-28
+  workflow_dispatch:
+
+jobs:
+  concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Run concurrency isolation tests
+        run: node --test test/concurrency-isolation.test.js
+      - name: Run full test suite
+        run: npm test
+      - name: Syntax checks
+        run: npm run check
