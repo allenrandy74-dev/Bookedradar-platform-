@@ -204,3 +204,20 @@ test("migration audit rejects billing mode mismatch and invalid growth counts", 
   assert.ok(audit.errors.some(x => x.code === "billing_live_mode_mismatch"));
   assert.ok(audit.errors.some(x => x.code === "growth_metric_invalid_count"));
 });
+
+test("migration fingerprint changes when source content changes even when counts do not", () => {
+  const a = validSnapshot();
+  const b = validSnapshot();
+  b.recovery.opportunities.opp_1.status = "engaged";
+  const auditA = auditPostgresMigrationSnapshot(a);
+  const auditB = auditPostgresMigrationSnapshot(b);
+  assert.notEqual(auditA.snapshotFingerprint, auditB.snapshotFingerprint);
+});
+
+test("migration manifest gives leads deterministic idempotent source keys", () => {
+  const snapshot = validSnapshot();
+  const first = buildPostgresMigrationManifest(snapshot);
+  const second = buildPostgresMigrationManifest(snapshot);
+  assert.match(first.rows.leads[0].sourceKey, /^[a-f0-9]{64}$/);
+  assert.equal(first.rows.leads[0].sourceKey, second.rows.leads[0].sourceKey);
+});
