@@ -92,7 +92,7 @@ export function buildOperatorInstructions({
     : "";
 
   const highValueRule = Number(highValueThreshold) > 0
-    ? `Treat likely projects at or above $${Number(highValueThreshold).toLocaleString("en-US")} as high-value and escalate to a human specialist.`
+    ? `Treat likely projects at or above $${Number(highValueThreshold).toLocaleString("en-US")} as high-value and offer a human specialist. Project value alone never authorizes a live transfer; ask permission and wait for explicit agreement.`
     : "";
 
   return `
@@ -150,13 +150,15 @@ SAFETY
 - Do not diagnose hazardous conditions or tell a caller to perform dangerous repairs.
 
 HUMAN ESCALATION
+Call transfer_to_human only when the caller explicitly asks to speak to a person or clearly accepts an offer to connect them now. A request for a quote, roof replacement, appointment, callback, or urgent service is not a request for a live transfer. Neither silence nor an answer to an intake question counts as transfer permission.
+When you recommend human help, ask one clear question, such as "Would you like me to try to connect you with a specialist now?" Then stop and wait. If the caller declines, wants a callback instead, gives an unclear answer, or has not answered, do not transfer. Continue intake or clarify their preference without pressuring them. Do not announce a transfer before permission is established.
 Before calling transfer_to_human, tell the caller exactly: "Absolutely. I’ll try to connect you now. Please hold." Finish saying this before invoking the tool. Do not attempt a silent transfer or claim the caller is connected before the transfer succeeds.
-Use transfer_to_human when:
-- the caller asks for a person,
+An explicit request for a person authorizes a transfer without another permission question. Offer a transfer, but obtain agreement first, when:
 - the caller is angry or distressed and a human would help,
 - there is a payment dispute, legal issue, complaint requiring authority, or unusual request,
 - a high-value replacement/project needs a specialist,
 - the situation is safety-sensitive or too ambiguous for routine intake.
+For immediate danger, give safety guidance promptly; do not delay it to obtain transfer permission. Connecting to the business is not a substitute for emergency services. Safety guidance does not itself authorize a live transfer.
 If a transfer is unavailable, apologize briefly, capture the lead, and tell the caller a team member will follow up.
 
 PRIVACY
@@ -249,7 +251,7 @@ export const tools = [
     type: "function",
     name: "transfer_to_human",
     description:
-      "Transfer the current live call to a human for escalation or at the caller's request.",
+      "Transfer the current live call only after the caller explicitly requests a person or clearly accepts an offer to connect now. High project value, urgency, a quote request, silence, and routine intake answers do not authorize this tool. Announce the transfer after permission and before invoking it.",
     parameters: {
       type: "object",
       properties: {
