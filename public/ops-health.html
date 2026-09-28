@@ -81,8 +81,10 @@ tokenInput.value=sessionStorage.getItem("br_admin_token")||"";
 tenantInput.value=new URLSearchParams(location.search).get("tenant")||"";
 hoursInput.value=new URLSearchParams(location.search).get("hours")||"24";
 const ms=v=>v==null?"—":Math.round(Number(v)).toLocaleString();
+const el=id=>document.getElementById(id);
+const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
 function severityClass(status){return["healthy","attention","critical"].includes(status)?status:"";}
-function valueClass(el,value,badWhenPositive=false){el.classList.remove("accent","warn","bad");if(badWhenPositive&&Number(value)>0)el.classList.add("bad");}
+function valueClass(node,value,badWhenPositive=false){node.classList.remove("accent","warn","bad");if(badWhenPositive&&Number(value)>0)node.classList.add("bad");}
 async function load(){
   const status=document.getElementById("status");
   status.textContent="Loading…";status.className="status";
@@ -99,29 +101,29 @@ async function load(){
     const data=await r.json();
     const s=data.summary||{};
     for(const id of ids){document.getElementById(id).textContent=s[id]??0;}
-    acceptP50.textContent=ms(s.latencyMs?.acceptP50);
-    acceptP95.textContent=ms(s.latencyMs?.acceptP95);
-    firstAudioP50.textContent=ms(s.latencyMs?.firstAudioP50);
-    firstAudioP95.textContent=ms(s.latencyMs?.firstAudioP95);
-    activeVoiceCalls.textContent=data.runtime?.activeVoiceCalls??0;
-    draining.textContent=data.runtime?.draining?"YES":"NO";
-    valueClass(callsEndedWithoutFirstAudio,s.callsEndedWithoutFirstAudio,true);
-    valueClass(transferFailures,s.transferFailures,true);
-    valueClass(realtimeErrors,s.realtimeErrors,true);
-    valueClass(sidebandErrors,s.sidebandErrors,true);
-    valueClass(crmSyncFailures,s.crmSyncFailures,true);
-    valueClass(leadPersistFailures,s.leadPersistFailures,true);
-    valueClass(greetingFailures,s.greetingFailures,true);
-    valueClass(unroutedCalls,s.unroutedCalls,true);
+    el("acceptP50").textContent=ms(s.latencyMs?.acceptP50);
+    el("acceptP95").textContent=ms(s.latencyMs?.acceptP95);
+    el("firstAudioP50").textContent=ms(s.latencyMs?.firstAudioP50);
+    el("firstAudioP95").textContent=ms(s.latencyMs?.firstAudioP95);
+    el("activeVoiceCalls").textContent=data.runtime?.activeVoiceCalls??0;
+    el("draining").textContent=data.runtime?.draining?"YES":"NO";
+    valueClass(el("callsEndedWithoutFirstAudio"),s.callsEndedWithoutFirstAudio,true);
+    valueClass(el("transferFailures"),s.transferFailures,true);
+    valueClass(el("realtimeErrors"),s.realtimeErrors,true);
+    valueClass(el("sidebandErrors"),s.sidebandErrors,true);
+    valueClass(el("crmSyncFailures"),s.crmSyncFailures,true);
+    valueClass(el("leadPersistFailures"),s.leadPersistFailures,true);
+    valueClass(el("greetingFailures"),s.greetingFailures,true);
+    valueClass(el("unroutedCalls"),s.unroutedCalls,true);
     const assessment=data.assessment||{status:"unknown",signals:[]};
     status.textContent=assessment.status.replaceAll("_"," ").toUpperCase();
     status.className="status "+severityClass(assessment.status);
     const signalRows=(assessment.signals||[]);
     signals.className=signalRows.length?"":"empty";
-    signals.innerHTML=signalRows.length?signalRows.map(x=>`<div class="signal"><span class="badge">${x.code}</span><span>${x.message}</span><strong>${x.count}</strong></div>`).join(""):"No defect signals detected in this window.";
+    signals.innerHTML=signalRows.length?signalRows.map(x=>`<div class="signal"><span class="badge">${escapeHtml(x.code)}</span><span>${escapeHtml(x.message)}</span><strong>${Number(x.count||0)}</strong></div>`).join(""):"No defect signals detected in this window.";
     const tenantRows=Object.entries(s.byTenant||{});
     byTenant.className=tenantRows.length?"":"empty";
-    byTenant.innerHTML=tenantRows.length?tenantRows.sort((a,b)=>b[1]-a[1]).map(([name,count])=>`<div class="signal"><span>${name}</span><span></span><strong>${count}</strong></div>`).join(""):"No calls in this window.";
+    byTenant.innerHTML=tenantRows.length?tenantRows.sort((a,b)=>b[1]-a[1]).map(([name,count])=>`<div class="signal"><span>${escapeHtml(name)}</span><span></span><strong>${Number(count||0)}</strong></div>`).join(""):"No calls in this window.";
   }catch(e){
     status.textContent="UNAVAILABLE";status.className="status critical";
     signals.className="empty";
