@@ -1,0 +1,24 @@
+name: Generate pg lockfile
+
+on:
+  push:
+    branches:
+      - postgres-runtime-adapter-2026-09-28
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm install pg@8.23.0 --save-exact --package-lock-only --ignore-scripts
+      - name: Emit lockfile
+        run: |
+          echo "BOOKEDRADAR_LOCKFILE_BEGIN"
+          base64 -w0 package-lock.json
+          echo
+          echo "BOOKEDRADAR_LOCKFILE_END"
