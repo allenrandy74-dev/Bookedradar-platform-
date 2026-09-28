@@ -105,3 +105,30 @@ implementation before use with a substantially larger lead history.
 No runtime route selects this adapter yet. Activation must preserve the existing
 capture failure handling and coordinate successful lead storage with recovery
 opportunity creation, including retries after one succeeds and the other fails.
+
+## Call history component
+
+`PostgresCallHistoryStore(pool, tenantId)` reuses CallHistoryStore's business
+rules in a fresh in-memory view under a database row lock. The view never reads
+or writes a file. There is no long-lived process cache. Tenant-scoped reads,
+milestones, knowledge gaps, transcript redaction, summary calculations and the
+200-turn cap retain the existing behavior. `finish` cannot modify structural
+fields such as tenant ownership, transcript or milestone dictionaries.
+
+Transcript payload and normalized `call_turns` are updated in one transaction.
+Concurrent turns are ordered by lock acquisition, not provider event timestamp.
+Repeated transcript events retain the existing append semantics; this component
+does not claim provider-level transcript event deduplication. Each append
+rewrites the bounded normalized turn list. Optimize with bulk SQL and benchmark
+before large-scale activation; the current implementation favors consistency.
+
+Reports currently load one tenant's history into memory, then use the existing
+tested report functions. There is no unscoped all-tenant reporting method. The
+server's operator reporting and retention lifecycle still need explicit wiring.
+The adapter does not automatically delete historical records.
+
+The integration suite verifies concurrent starts/turns/milestones, tenant
+boundaries, redaction in both representations, atomic rollback after a forced
+normalized-row failure, the transcript bound, and identical restored JSON
+reports. `exportPostgresCallHistory` is an operator-only component export under
+the required writer freeze, not a full rollback or an independent backup.
