@@ -62,6 +62,12 @@ main{max-width:1180px;margin:auto;padding:28px 18px 60px}header{display:flex;jus
 <div id="signals" class="empty">Load the private report to evaluate current signals.</div>
 </div>
 <div class="card full">
+<div class="label">Customer health — selected tenant</div>
+<div class="value" id="customerHealthStatus">—</div>
+<div class="small" id="customerHealthEvidence">Enter a tenant ID to load explainable customer health.</div>
+<div id="customerHealthSignals" class="empty">No tenant selected.</div>
+</div>
+<div class="card full">
 <div class="label">Call volume by tenant</div>
 <div id="byTenant" class="empty">No data loaded.</div>
 </div>
@@ -84,7 +90,49 @@ const ms=v=>v==null?"—":Math.round(Number(v)).toLocaleString();
 const el=id=>document.getElementById(id);
 const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
 function severityClass(status){return["healthy","attention","critical"].includes(status)?status:"";}
+function customerStatusClass(status){return status==="healthy"?"accent":status==="watch"?"warn":status==="at_risk"?"bad":"";}
 function valueClass(node,value,badWhenPositive=false){node.classList.remove("accent","warn","bad");if(badWhenPositive&&Number(value)>0)node.classList.add("bad");}
+const money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
+async function loadCustomerHealth(adminToken){
+  const tenant=tenantInput.value.trim();
+  const healthStatus=el("customerHealthStatus");
+  const healthEvidence=el("customerHealthEvidence");
+  const healthSignals=el("customerHealthSignals");
+  healthStatus.classList.remove("accent","warn","bad");
+  if(!tenant){
+    healthStatus.textContent="—";
+    healthEvidence.textContent="Enter a tenant ID to load explainable customer health.";
+    healthSignals.className="empty";
+    healthSignals.textContent="No tenant selected.";
+    return;
+  }
+  try{
+    const params=new URLSearchParams({tenant,hours:hoursInput.value});
+    const r=await fetch("/api/v1/ops/customer-health?"+params.toString(),{
+      cache:"no-store",
+      headers:adminToken?{Authorization:`Bearer ${adminToken}`}:{},
+    });
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const data=await r.json();
+    const h=data.health||{status:"no_data",signals:[],evidenceLevel:"insufficient"};
+    healthStatus.textContent=String(h.status||"no_data").replaceAll("_"," ").toUpperCase();
+    const cls=customerStatusClass(h.status);
+    if(cls)healthStatus.classList.add(cls);
+    const readiness=data.evidence?.readiness||{};
+    const recovery=data.evidence?.recovery||{};
+    const value=data.evidence?.value||{};
+    healthEvidence.textContent=`Evidence: ${h.evidenceLevel||"unknown"} • readiness ${readiness.status||"unknown"} • ${Number(recovery.failedActions||0)} failed actions • ${Number(value.opportunitiesCaptured||0)} opportunities • ${Number(value.recoveredOpportunities||0)} recovered • ${money(value.confirmedRevenue)} confirmed revenue`;
+    const rows=h.signals||[];
+    healthSignals.className=rows.length?"":"empty";
+    healthSignals.innerHTML=rows.length?rows.map(x=>`<div class="signal"><span class="badge">${escapeHtml(x.code)}</span><span>${escapeHtml(x.message)}</span><strong>${Number(x.count||0)}</strong></div>`).join(""):"No customer-health risk signals detected from available evidence.";
+  }catch{
+    healthStatus.textContent="UNAVAILABLE";
+    healthStatus.classList.add("bad");
+    healthEvidence.textContent="Customer health could not be loaded.";
+    healthSignals.className="empty";
+    healthSignals.textContent="Verify the tenant ID, admin token, and backend availability.";
+  }
+}
 async function load(){
   const status=document.getElementById("status");
   status.textContent="Loading…";status.className="status";
@@ -124,6 +172,7 @@ async function load(){
     const tenantRows=Object.entries(s.byTenant||{});
     byTenant.className=tenantRows.length?"":"empty";
     byTenant.innerHTML=tenantRows.length?tenantRows.sort((a,b)=>b[1]-a[1]).map(([name,count])=>`<div class="signal"><span>${escapeHtml(name)}</span><span></span><strong>${Number(count||0)}</strong></div>`).join(""):"No calls in this window.";
+    await loadCustomerHealth(adminToken);
   }catch(e){
     status.textContent="UNAVAILABLE";status.className="status critical";
     signals.className="empty";
