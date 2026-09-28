@@ -27,7 +27,7 @@ test("voice health summary aggregates sanitized operational milestones", async (
     }
     if (i < 3) await history.mark(callId, "lead.persisted");
     if (i === 0 || i === 3) await history.mark(callId, "transfer.requested");
-    if (i === 0) await history.mark(callId, "transfer.completed");
+    if (i === 0) await history.mark(callId, "transfer.initiated");
     if (i === 2) {
       await history.mark(callId, "greeting.failed");
       await history.mark(callId, "greeting.fallback", { reason: "legacy_human_transfer_requested" });
@@ -45,7 +45,7 @@ test("voice health summary aggregates sanitized operational milestones", async (
   assert.equal(all.callsEndedWithoutFirstAudio, 1);
   assert.equal(all.usefulLeadCalls, 3);
   assert.equal(all.transferRequests, 2);
-  assert.equal(all.transfersCompleted, 1);
+  assert.equal(all.transfersInitiated, 1);
   assert.equal(all.greetingFailures, 1);
   assert.equal(all.greetingFallbacks, 1);
   assert.equal(all.realtimeErrors, 2);
