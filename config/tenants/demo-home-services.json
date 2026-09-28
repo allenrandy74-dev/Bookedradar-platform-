@@ -47,7 +47,8 @@
     "recordCalls": false,
     "quotePrices": false,
     "transcriptRetentionApproved": true,
-    "assistantDisclosure": true
+    "assistantDisclosure": true,
+    "operatorInstructions": "For mixed home-service requests, identify the requested trade only if unclear; do not ask the caller to choose again after they have explained it. If several issues are reported, capture all of them in the lead and ask which needs attention first unless immediate danger already takes priority. Apply relevant safety guidance to the reported condition without diagnosing. Do not promise one technician can perform every trade, generator availability, or a crew arrival time."
   },
   "economics": {
     "defaultAverageJobValue": 500,

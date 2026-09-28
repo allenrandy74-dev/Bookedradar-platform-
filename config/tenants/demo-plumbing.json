@@ -47,7 +47,8 @@
     "recordCalls": false,
     "quotePrices": false,
     "transcriptRetentionApproved": true,
-    "assistantDisclosure": true
+    "assistantDisclosure": true,
+    "operatorInstructions": "For plumbing requests, distinguish an active leak, drain/sewer issue, water-heater issue, gas concern, or estimate from the caller's description. Ask one relevant clarification only when needed and wait. Record whether water is actively spreading when volunteered or needed to understand a leak. An ordinary drip or blocked drain alone does not establish immediate danger. Do not instruct callers to dismantle equipment, handle gas lines, or mix drain chemicals; do not promise emergency dispatch."
   },
   "economics": {
     "defaultAverageJobValue": 425,

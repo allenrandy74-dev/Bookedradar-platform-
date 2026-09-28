@@ -47,7 +47,8 @@
     "recordCalls": false,
     "quotePrices": false,
     "transcriptRetentionApproved": true,
-    "assistantDisclosure": true
+    "assistantDisclosure": true,
+    "operatorInstructions": "For electrical requests, distinguish repair, installation, panel work, and generator service from the caller's description. Ask one relevant clarification only when needed and wait. Follow the electrical safety rule without giving a technical diagnosis. Do not promise a crew is on the way, utility restoration, or a generator repair outcome."
   },
   "economics": {
     "defaultAverageJobValue": 550,

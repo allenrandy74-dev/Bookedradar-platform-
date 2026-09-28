@@ -36,7 +36,7 @@
   "escalation": {
     "humanPhone": "+14096518573",
     "urgentAfterHours": true,
-    "safetyRule": "Move caller to safety and direct to emergency services or utility when appropriate; do not diagnose hazardous conditions."
+    "safetyRule": "If the caller reports gas odor, smoke, fire, a carbon-monoxide concern, or other immediate danger, prioritize moving to safety and contacting emergency services or the utility when appropriate. Do not diagnose hazardous conditions or give equipment-repair instructions. Routine repair, maintenance, and replacement requests do not require an emergency-protocol speech."
   },
   "policies": {
     "bookingMode": "confirm_only",
@@ -50,7 +50,8 @@
     "recordCalls": false,
     "quotePrices": false,
     "transcriptRetentionApproved": true,
-    "assistantDisclosure": true
+    "assistantDisclosure": true,
+    "operatorInstructions": "For HVAC requests, distinguish repair, maintenance, and replacement from the caller's description. If unclear, ask one brief question about the service needed and wait. An AC not cooling can need prompt service without automatically being a life-safety emergency. Record any caller-reported vulnerable occupants or unsafe indoor conditions without diagnosing or giving medical advice. Do not walk callers through equipment repairs or promise same-day attendance."
   },
   "economics": {
     "defaultAverageJobValue": 450,

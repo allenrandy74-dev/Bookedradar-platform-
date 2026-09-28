@@ -47,7 +47,8 @@
     "recordCalls": false,
     "quotePrices": false,
     "transcriptRetentionApproved": true,
-    "assistantDisclosure": true
+    "assistantDisclosure": true,
+    "operatorInstructions": "For roofing requests, distinguish a routine estimate or replacement from active leaking or storm damage. Ask one relevant clarification only when needed and wait. A replacement estimate is a normal intake request, not transfer permission. If active damage is described, record what the caller can report from a safe location; never ask them to climb onto the roof or inspect an unsafe area. Do not promise tarp availability, insurance coverage, claim approval, or a crew arrival time."
   },
   "economics": {
     "defaultAverageJobValue": 1800,
