@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operations Health — BookedRadar</title>
+<style>
+:root{color-scheme:dark;--bg:#070b08;--panel:#101611;--line:#243226;--text:#f4f7f4;--muted:#9baa9d;--accent:#afff40;--warn:#ffd166;--bad:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 70% 0,#112417 0,transparent 38%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:auto;padding:28px 18px 60px}header{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:24px}.eyebrow{font-size:12px;letter-spacing:.18em;color:var(--accent);font-weight:800}.title{font-size:clamp(30px,5vw,52px);font-weight:850;line-height:.98;margin:9px 0}.muted{color:var(--muted)}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.toolbar input,.toolbar select{background:#0d120e;border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:10px}.toolbar button,.link{background:var(--accent);color:#071007;border:0;padding:9px 12px;border-radius:10px;font-weight:800;cursor:pointer;text-decoration:none}.link.secondary{background:#0d120e;color:var(--text);border:1px solid var(--line)}.status{font-size:12px;border:1px solid var(--line);padding:7px 10px;border-radius:999px}.status.healthy{color:var(--accent)}.status.attention{color:var(--warn)}.status.critical{color:var(--bad)}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:linear-gradient(180deg,#121914,#0d120e);border:1px solid var(--line);border-radius:18px;padding:17px;min-height:118px}.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.value{font-size:32px;font-weight:800;margin-top:11px}.accent{color:var(--accent)}.warn{color:var(--warn)}.bad{color:var(--bad)}.wide{grid-column:span 2}.full{grid-column:1/-1}.signal{display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}.signal:last-child{border-bottom:0}.badge{font-size:11px;padding:3px 7px;border-radius:999px;border:1px solid var(--line)}.empty{color:var(--muted);padding:14px 0}.small{font-size:12px;margin-top:8px;color:var(--muted)}
+@media(max-width:850px){header{align-items:start;flex-direction:column}.grid{grid-template-columns:1fr 1fr}.wide{grid-column:span 2}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}.wide,.full{grid-column:1}.value{font-size:29px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div>
+<div class="eyebrow">BOOKEDRADAR OPERATIONS</div>
+<div class="title">Know before<br><span class="accent">the customer does.</span></div>
+<div class="muted">Private voice reliability view. No customer PII is displayed.</div>
+</div>
+<div class="toolbar">
+<a class="link secondary" href="/dashboard/radarproof-dashboard.html">RadarProof</a>
+<a class="link secondary" href="/dashboard/call-history.html">Call History</a>
+<select id="hours"><option value="1">1 hour</option><option value="6">6 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option><option value="168">7 days</option></select>
+<input id="tenant" placeholder="Tenant ID (optional)">
+<input id="token" placeholder="Admin token" type="password" autocomplete="off">
+<button id="loadButton">Load</button>
+<div class="status" id="status">Not loaded</div>
+</div>
+</header>
+
+<section class="grid">
+<div class="card"><div class="label">Calls started</div><div class="value" id="callsStarted">—</div></div>
+<div class="card"><div class="label">Accepted</div><div class="value" id="callsAccepted">—</div></div>
+<div class="card"><div class="label">First audio</div><div class="value accent" id="callsWithFirstAudio">—</div></div>
+<div class="card"><div class="label">Ended without first audio</div><div class="value" id="callsEndedWithoutFirstAudio">—</div></div>
+
+<div class="card"><div class="label">Useful lead calls</div><div class="value" id="usefulLeadCalls">—</div></div>
+<div class="card"><div class="label">Transfer requests</div><div class="value" id="transferRequests">—</div></div>
+<div class="card"><div class="label">Transfers initiated</div><div class="value" id="transfersInitiated">—</div></div>
+<div class="card"><div class="label">Transfer failures</div><div class="value" id="transferFailures">—</div></div>
+
+<div class="card"><div class="label">Accept p50</div><div class="value" id="acceptP50">—</div><div class="small">milliseconds</div></div>
+<div class="card"><div class="label">Accept p95</div><div class="value" id="acceptP95">—</div><div class="small">milliseconds</div></div>
+<div class="card"><div class="label">First audio p50</div><div class="value" id="firstAudioP50">—</div><div class="small">milliseconds</div></div>
+<div class="card"><div class="label">First audio p95</div><div class="value" id="firstAudioP95">—</div><div class="small">milliseconds</div></div>
+
+<div class="card"><div class="label">Realtime errors</div><div class="value" id="realtimeErrors">—</div></div>
+<div class="card"><div class="label">Sideband errors</div><div class="value" id="sidebandErrors">—</div></div>
+<div class="card"><div class="label">CRM sync failures</div><div class="value" id="crmSyncFailures">—</div></div>
+<div class="card"><div class="label">Lead persistence failures</div><div class="value" id="leadPersistFailures">—</div></div>
+
+<div class="card"><div class="label">Greeting failures</div><div class="value" id="greetingFailures">—</div></div>
+<div class="card"><div class="label">Unrouted calls</div><div class="value" id="unroutedCalls">—</div></div>
+<div class="card"><div class="label">Active calls now</div><div class="value" id="activeVoiceCalls">—</div></div>
+<div class="card"><div class="label">Server draining</div><div class="value" id="draining">—</div></div>
+
+<div class="card full">
+<div class="label">Operational signals</div>
+<div id="signals" class="empty">Load the private report to evaluate current signals.</div>
+</div>
+<div class="card full">
+<div class="label">Call volume by tenant</div>
+<div id="byTenant" class="empty">No data loaded.</div>
+</div>
+</section>
+</main>
+<script>
+const ids=[
+"callsStarted","callsAccepted","callsWithFirstAudio","callsEndedWithoutFirstAudio",
+"usefulLeadCalls","transferRequests","transfersInitiated","transferFailures",
+"realtimeErrors","sidebandErrors","crmSyncFailures","leadPersistFailures",
+"greetingFailures","unroutedCalls"
+];
+const tokenInput=document.getElementById("token");
+const tenantInput=document.getElementById("tenant");
+const hoursInput=document.getElementById("hours");
+tokenInput.value=sessionStorage.getItem("br_admin_token")||"";
+tenantInput.value=new URLSearchParams(location.search).get("tenant")||"";
+hoursInput.value=new URLSearchParams(location.search).get("hours")||"24";
+const ms=v=>v==null?"—":Math.round(Number(v)).toLocaleString();
+function severityClass(status){return["healthy","attention","critical"].includes(status)?status:"";}
+function valueClass(el,value,badWhenPositive=false){el.classList.remove("accent","warn","bad");if(badWhenPositive&&Number(value)>0)el.classList.add("bad");}
+async function load(){
+  const status=document.getElementById("status");
+  status.textContent="Loading…";status.className="status";
+  const adminToken=tokenInput.value.trim();
+  if(adminToken)sessionStorage.setItem("br_admin_token",adminToken);
+  const params=new URLSearchParams({hours:hoursInput.value});
+  if(tenantInput.value.trim())params.set("tenant",tenantInput.value.trim());
+  try{
+    const r=await fetch("/api/v1/ops/voice-health?"+params.toString(),{
+      cache:"no-store",
+      headers:adminToken?{Authorization:`Bearer ${adminToken}`}:{},
+    });
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const data=await r.json();
+    const s=data.summary||{};
+    for(const id of ids){document.getElementById(id).textContent=s[id]??0;}
+    acceptP50.textContent=ms(s.latencyMs?.acceptP50);
+    acceptP95.textContent=ms(s.latencyMs?.acceptP95);
+    firstAudioP50.textContent=ms(s.latencyMs?.firstAudioP50);
+    firstAudioP95.textContent=ms(s.latencyMs?.firstAudioP95);
+    activeVoiceCalls.textContent=data.runtime?.activeVoiceCalls??0;
+    draining.textContent=data.runtime?.draining?"YES":"NO";
+    valueClass(callsEndedWithoutFirstAudio,s.callsEndedWithoutFirstAudio,true);
+    valueClass(transferFailures,s.transferFailures,true);
+    valueClass(realtimeErrors,s.realtimeErrors,true);
+    valueClass(sidebandErrors,s.sidebandErrors,true);
+    valueClass(crmSyncFailures,s.crmSyncFailures,true);
+    valueClass(leadPersistFailures,s.leadPersistFailures,true);
+    valueClass(greetingFailures,s.greetingFailures,true);
+    valueClass(unroutedCalls,s.unroutedCalls,true);
+    const assessment=data.assessment||{status:"unknown",signals:[]};
+    status.textContent=assessment.status.replaceAll("_"," ").toUpperCase();
+    status.className="status "+severityClass(assessment.status);
+    const signalRows=(assessment.signals||[]);
+    signals.className=signalRows.length?"":"empty";
+    signals.innerHTML=signalRows.length?signalRows.map(x=>`<div class="signal"><span class="badge">${x.code}</span><span>${x.message}</span><strong>${x.count}</strong></div>`).join(""):"No defect signals detected in this window.";
+    const tenantRows=Object.entries(s.byTenant||{});
+    byTenant.className=tenantRows.length?"":"empty";
+    byTenant.innerHTML=tenantRows.length?tenantRows.sort((a,b)=>b[1]-a[1]).map(([name,count])=>`<div class="signal"><span>${name}</span><span></span><strong>${count}</strong></div>`).join(""):"No calls in this window.";
+  }catch(e){
+    status.textContent="UNAVAILABLE";status.className="status critical";
+    signals.className="empty";
+    signals.textContent="Unable to load private operations data. Verify the admin token and backend availability.";
+  }
+}
+document.getElementById("loadButton").onclick=load;
+load();
+setInterval(load,30000);
+</script>
+</body>
+</html>
