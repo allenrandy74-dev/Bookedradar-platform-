@@ -2072,6 +2072,12 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
     ).length;
     const proof = await radarProof(recoveryStore, tenantId);
     const callActivity = await callHistory.stats(tenantId);
+    const recoverySnapshot = await recoveryStore.snapshot();
+    const recentOpportunities = Object.values(recoverySnapshot.opportunities || {}).filter(item => {
+      if (item.tenantId !== tenantId) return false;
+      const timestamp = Date.parse(item.createdAt || item.updatedAt || "");
+      return Number.isFinite(timestamp) && timestamp >= sinceMs;
+    }).length;
 
     const health = assessCustomerHealth({
       voiceAssessment,
@@ -2080,7 +2086,7 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
       totalFailedActions: failedActions.length,
       crmSyncFailures: voiceSummary.crmSyncFailures,
       recentCalls: voiceSummary.callsStarted,
-      opportunitiesCaptured: proof.opportunitiesCaptured,
+      opportunitiesCaptured: recentOpportunities,
     });
 
     return res.json({
@@ -2102,6 +2108,9 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
         recovery: {
           failedActions: failedActions.length,
           criticalFailedActions,
+        },
+        activity: {
+          recentOpportunities,
         },
         value: {
           opportunitiesCaptured: proof.opportunitiesCaptured,
