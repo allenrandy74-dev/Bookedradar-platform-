@@ -2,8 +2,6 @@
 -- This schema is not yet wired to production. It is designed for a staged,
 -- reversible migration from the current single-instance JSON/JSONL stores.
 
-BEGIN;
-
 CREATE SCHEMA IF NOT EXISTS bookedradar;
 
 CREATE TABLE IF NOT EXISTS bookedradar.webhook_receipts (
@@ -54,6 +52,7 @@ CREATE INDEX IF NOT EXISTS call_turns_call_time_idx
 
 CREATE TABLE IF NOT EXISTS bookedradar.lead_captures (
   lead_id bigserial PRIMARY KEY,
+  source_key text NOT NULL UNIQUE,
   tenant_id text NOT NULL,
   call_id text,
   captured_at timestamptz,
@@ -186,5 +185,3 @@ CREATE TABLE IF NOT EXISTS bookedradar.migration_runs (
   counts jsonb NOT NULL,
   validation jsonb NOT NULL
 );
-
-COMMIT;
