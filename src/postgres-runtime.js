@@ -36,8 +36,11 @@ export async function postgresHealth(pool) {
 export async function applyPostgresSchema(pool, schemaSql) {
   if (!String(schemaSql || "").trim()) throw new Error("postgres_schema_required");
   const client = await pool.connect();
+  let inTransaction = false;
   try {
     await client.query("SELECT pg_advisory_lock(hashtext('bookedradar_schema_migration'))");
+    await client.query("BEGIN");
+    inTransaction = true;
     await client.query(String(schemaSql));
     const verify = await client.query(
       "SELECT to_regclass('bookedradar.voice_calls') AS voice_calls, to_regclass('bookedradar.recovery_opportunities') AS opportunities"
@@ -45,7 +48,14 @@ export async function applyPostgresSchema(pool, schemaSql) {
     if (!verify.rows?.[0]?.voice_calls || !verify.rows?.[0]?.opportunities) {
       throw new Error("postgres_schema_verification_failed");
     }
+    await client.query("COMMIT");
+    inTransaction = false;
     return { ok: true };
+  } catch (error) {
+    if (inTransaction) {
+      try { await client.query("ROLLBACK"); } catch {}
+    }
+    throw error;
   } finally {
     try {
       await client.query("SELECT pg_advisory_unlock(hashtext('bookedradar_schema_migration'))");
