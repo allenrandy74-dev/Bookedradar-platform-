@@ -25,7 +25,10 @@ export async function readPostgresSnapshot(client) {
     leads:(await read('SELECT payload FROM bookedradar.lead_captures ORDER BY lead_id')).map(r=>r.payload),
     recovery:await readRecovery(client),
     webChat:{ sessions:map(await read('SELECT session_id,payload FROM bookedradar.web_chat_sessions'),'session_id') },
-    transfers:{ processedWebhooks:{},calls:map(await read('SELECT transfer_id,payload FROM bookedradar.transfer_records'),'transfer_id') },
+    transfers:{
+      processedWebhooks:Object.fromEntries((await read('SELECT webhook_id,received_at FROM bookedradar.transfer_webhook_receipts ORDER BY webhook_id')).map(r=>[r.webhook_id,new Date(r.received_at).getTime()])),
+      calls:map(await read('SELECT transfer_id,payload FROM bookedradar.transfer_records'),'transfer_id')
+    },
     growthMetrics:{ counts,updatedAt },
     billingTest:billing.find(r=>r.mode==='test')?.payload || null,
     billingLive:billing.find(r=>r.mode==='live')?.payload || null,
