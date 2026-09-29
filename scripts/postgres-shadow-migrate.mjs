@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   auditPostgresMigrationSnapshot,
   buildPostgresMigrationManifest,
+  normalizeMigrationSnapshotForContent,
   stableHash,
 } from "../src/postgres-migration-audit.js";
 import { loadMigrationSnapshot } from "./postgres-migration-audit.mjs";
@@ -150,12 +151,20 @@ export async function runPostgresShadowMigration(env = process.env) {
       verificationClient.release();
     }
 
-    const sourceContentHash = stableHash(snapshot);
-    const postgresContentHash = stableHash(postgresSnapshot);
+    const rawSourceContentHash = stableHash(snapshot);
+    const rawPostgresContentHash = stableHash(postgresSnapshot);
+    const sourceNormalized = normalizeMigrationSnapshotForContent(snapshot);
+    const postgresNormalized = normalizeMigrationSnapshotForContent(postgresSnapshot);
+    const sourceContentHash = stableHash(sourceNormalized.snapshot);
+    const postgresContentHash = stableHash(postgresNormalized.snapshot);
     const contentReconciliation = {
       ok: sourceContentHash === postgresContentHash,
       sourceContentHash,
       postgresContentHash,
+      rawSourceContentHash,
+      rawPostgresContentHash,
+      sourceNormalizations: sourceNormalized.normalizations,
+      postgresNormalizations: postgresNormalized.normalizations,
     };
 
     if (!contentReconciliation.ok) {
