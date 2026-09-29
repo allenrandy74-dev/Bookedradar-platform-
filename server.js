@@ -84,6 +84,7 @@ import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js"
 import { runStartupMigrationDiff } from "./src/postgres-startup-migration-diff.js";
 import { runStartupPostgresSchemaInspection } from "./src/postgres-schema-inspection.js";
 import { runStartupPostgresRestoreDrill } from "./src/postgres-startup-restore-drill.js";
+import { runStartupPostgresJsonRollback } from "./src/postgres-json-rollback.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -145,6 +146,9 @@ const {
   POSTGRES_SCHEMA_INSPECTION_ON_STARTUP = "false",
   POSTGRES_RESTORE_DRILL_ON_STARTUP = "false",
   POSTGRES_RESTORE_DRILL_ID = "",
+  POSTGRES_JSON_ROLLBACK_ON_STARTUP = "false",
+  POSTGRES_JSON_ROLLBACK_ARMED = "false",
+  POSTGRES_JSON_ROLLBACK_ID = "",
 } = process.env;
 
 const storageBackendConfig = postgresBackendConfig(process.env);
@@ -165,6 +169,22 @@ const postgresStartupHealth = await runStartupPostgresHealth({
   timeoutMs: Number(POSTGRES_HEALTH_TIMEOUT_MS),
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
+
+const postgresStartupJsonRollback = await runStartupPostgresJsonRollback({
+  enabled: POSTGRES_JSON_ROLLBACK_ON_STARTUP.toLowerCase() === "true",
+  env: {
+    ...process.env,
+    POSTGRES_JSON_ROLLBACK_ARMED,
+    POSTGRES_JSON_ROLLBACK_ID,
+  },
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+if (
+  POSTGRES_JSON_ROLLBACK_ON_STARTUP.toLowerCase() === "true" &&
+  !postgresStartupJsonRollback?.ok
+) {
+  throw new Error("postgres_json_rollback_startup_failed");
+}
 
 const postgresStartupMigrationAudit = await runStartupMigrationAudit({
   enabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
@@ -2330,6 +2350,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       schemaInspection: postgresStartupSchemaInspection,
       restoreDrillEnabled: POSTGRES_RESTORE_DRILL_ON_STARTUP.toLowerCase() === "true",
       restoreDrill: postgresStartupRestoreDrill,
+      jsonRollbackEnabled: POSTGRES_JSON_ROLLBACK_ON_STARTUP.toLowerCase() === "true",
+      jsonRollback: postgresStartupJsonRollback,
       backendMode: postgresStores?.mode || "json",
       authoritative: Boolean(postgresStores),
       productionValidation: postgresStores?.productionValidation || null,
