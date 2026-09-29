@@ -59,7 +59,10 @@ function validSnapshot() {
         occurredAt: new Date(now - 700).toISOString(),
         type: "phone_lead",
       }],
-      eventKeys: { "phone-lead:demo-hvac:call_1": "evt_1" },
+      eventKeys: {
+        "phone-lead:demo-hvac:call_1": "evt_1",
+        "legacy-alias": "evt_1",
+      },
       actions: {
         "act_1": {
           id: "act_1",
@@ -94,6 +97,7 @@ function validSnapshot() {
       },
     },
     transfers: {
+      processedWebhooks: { "transfer-wh-1": now - 50 },
       calls: {
         "tr_1": {
           id: "tr_1",
@@ -138,10 +142,18 @@ test("migration manifest preserves all store categories and normalizes event ten
   assert.equal(manifest.rows.recoveryEvents.length, 1);
   assert.equal(manifest.rows.recoveryEvents[0].tenantId, "demo-hvac");
   assert.equal(manifest.rows.recoveryEvents[0].sourceSequence, 0);
+  assert.equal(manifest.rows.recoveryEventKeys.length, 2);
+  assert.ok(manifest.rows.recoveryEventKeys.some(row =>
+    row.eventKey === "legacy-alias" &&
+    row.eventId === "evt_1" &&
+    row.tenantId === "demo-hvac"
+  ));
   assert.equal(manifest.rows.recoveryActions.length, 1);
   assert.equal(manifest.rows.attribution.length, 1);
   assert.equal(manifest.rows.webChatSessions.length, 1);
   assert.equal(manifest.rows.transferRecords.length, 1);
+  assert.equal(manifest.rows.transferWebhookReceipts.length, 1);
+  assert.equal(manifest.rows.transferWebhookReceipts[0].webhookId, "transfer-wh-1");
   assert.equal(manifest.rows.growthMetrics.length, 1);
   assert.deepEqual(manifest.rows.billingState.map(x => x.mode).sort(), ["live", "test"]);
 });
@@ -238,4 +250,16 @@ test("migration audit rejects duplicate recovery idempotency keys and key-map mi
   assert.ok(audit.errors.some(x => x.code === "event_key_map_mismatch"));
   const serialized = JSON.stringify(audit.errors);
   assert.equal(serialized.includes("phone-lead:demo-hvac:call_1"), false);
+});
+
+test("migration audit rejects event-key entries that point to missing events", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.eventKeys["orphan-key"] = "evt_missing";
+  const audit = auditPostgresMigrationSnapshot(snapshot);
+  assert.equal(audit.ok, false);
+  const finding = audit.errors.find(x => x.code === "event_key_unknown_event");
+  assert.ok(finding);
+  assert.equal(finding.mappedEventId, "evt_missing");
+  assert.match(finding.keyRef, /^[a-f0-9]{12}$/);
+  assert.equal(JSON.stringify(finding).includes("orphan-key"), false);
 });
