@@ -445,9 +445,9 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         updatedAt: payload?.updatedAt || null,
         payload,
       })),
-      recoveryEvents: array(recovery.events).map((payload, sequenceNo) => ({
+      recoveryEvents: array(recovery.events).map((payload, sourceSequence) => ({
         eventId: String(payload?.id || ""),
-        sequenceNo,
+        sourceSequence,
         tenantId: eventTenant(payload),
         idempotencyKey: payload?.idempotencyKey || null,
         opportunityId: payload?.opportunityId || null,
