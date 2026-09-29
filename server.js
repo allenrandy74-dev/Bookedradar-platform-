@@ -233,90 +233,6 @@ const postgresStartupRestoreDrill = await runStartupPostgresRestoreDrill({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 
-const opsIncidentStore = postgresStores
-  ? new PostgresOpsIncidentStore(postgresStores.pool)
-  : null;
-let opsAlertCheckRunning = false;
-
-async function runOpsAlertCheck() {
-  if (
-    OPS_ALERTS_ENABLED.toLowerCase() !== "true" ||
-    !opsIncidentStore ||
-    opsAlertCheckRunning
-  ) return;
-
-  opsAlertCheckRunning = true;
-  try {
-    const windowMinutes = Math.min(Math.max(Number(OPS_ALERT_WINDOW_MINUTES) || 10, 2), 60);
-    const cooldownMinutes = Math.min(Math.max(Number(OPS_ALERT_COOLDOWN_MINUTES) || 30, 5), 240);
-    const sinceMs = Date.now() - windowMinutes * 60 * 1000;
-
-    for (const tenant of registry.list()) {
-      const scopeKey = `tenant:${tenant.tenantId}`;
-      const summary = await callHistory.operationalSummary({
-        tenantId: tenant.tenantId,
-        sinceMs,
-      });
-      const assessment = assessVoiceHealth(summary);
-      const candidate = buildOpsAlertCandidate({ scopeKey, assessment, summary });
-
-      if (!candidate) {
-        if (assessment.status === "healthy") await opsIncidentStore.resolveScope(scopeKey);
-        continue;
-      }
-
-      const observed = await opsIncidentStore.observe(candidate, { cooldownMinutes });
-      if (!observed.shouldNotify) continue;
-
-      if (!OPS_ALERT_EMAIL || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
-        console.error(JSON.stringify({
-          event:"ops.alert_delivery_unconfigured",
-          scope_key:scopeKey,
-          severity:candidate.severity,
-          incident_key:candidate.incidentKey,
-        }));
-        continue;
-      }
-
-      try {
-        const delivered = await sendOpsAlertEmail({
-          apiKey:process.env.RESEND_API_KEY,
-          from:process.env.RESEND_FROM_EMAIL,
-          to:OPS_ALERT_EMAIL,
-          candidate,
-          incidentId:candidate.incidentKey,
-        });
-        console.log(JSON.stringify({
-          event:"ops.alert_delivered",
-          scope_key:scopeKey,
-          severity:candidate.severity,
-          incident_key:candidate.incidentKey,
-          provider:"resend",
-          provider_id:delivered.id || null,
-        }));
-      } catch (error) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
-        console.error(JSON.stringify({
-          event:"ops.alert_delivery_failed",
-          scope_key:scopeKey,
-          severity:candidate.severity,
-          incident_key:candidate.incidentKey,
-          error:String(error?.message || "ops_alert_delivery_failed").slice(0,160),
-        }));
-      }
-    }
-  } finally {
-    opsAlertCheckRunning = false;
-  }
-}
-
-if (OPS_ALERTS_ENABLED.toLowerCase() === "true") {
-  const intervalMs = Math.min(Math.max(Number(OPS_ALERT_INTERVAL_MS) || 60000, 30000), 300000);
-  setTimeout(() => runOpsAlertCheck().catch(() => {}), 5000).unref();
-  setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs).unref();
-}
-
 const app = express();
 app.disable("x-powered-by");
 
@@ -457,6 +373,90 @@ for (const tenant of registry.list()) {
     booking_adapter: readiness.bookingAdapter,
   }));
 }
+const opsIncidentStore = postgresStores
+  ? new PostgresOpsIncidentStore(postgresStores.pool)
+  : null;
+let opsAlertCheckRunning = false;
+
+async function runOpsAlertCheck() {
+  if (
+    OPS_ALERTS_ENABLED.toLowerCase() !== "true" ||
+    !opsIncidentStore ||
+    opsAlertCheckRunning
+  ) return;
+
+  opsAlertCheckRunning = true;
+  try {
+    const windowMinutes = Math.min(Math.max(Number(OPS_ALERT_WINDOW_MINUTES) || 10, 2), 60);
+    const cooldownMinutes = Math.min(Math.max(Number(OPS_ALERT_COOLDOWN_MINUTES) || 30, 5), 240);
+    const sinceMs = Date.now() - windowMinutes * 60 * 1000;
+
+    for (const tenant of registry.list()) {
+      const scopeKey = `tenant:${tenant.tenantId}`;
+      const summary = await callHistory.operationalSummary({
+        tenantId: tenant.tenantId,
+        sinceMs,
+      });
+      const assessment = assessVoiceHealth(summary);
+      const candidate = buildOpsAlertCandidate({ scopeKey, assessment, summary });
+
+      if (!candidate) {
+        if (assessment.status === "healthy") await opsIncidentStore.resolveScope(scopeKey);
+        continue;
+      }
+
+      const observed = await opsIncidentStore.observe(candidate, { cooldownMinutes });
+      if (!observed.shouldNotify) continue;
+
+      if (!OPS_ALERT_EMAIL || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        console.error(JSON.stringify({
+          event:"ops.alert_delivery_unconfigured",
+          scope_key:scopeKey,
+          severity:candidate.severity,
+          incident_key:candidate.incidentKey,
+        }));
+        continue;
+      }
+
+      try {
+        const delivered = await sendOpsAlertEmail({
+          apiKey:process.env.RESEND_API_KEY,
+          from:process.env.RESEND_FROM_EMAIL,
+          to:OPS_ALERT_EMAIL,
+          candidate,
+          incidentId:candidate.incidentKey,
+        });
+        console.log(JSON.stringify({
+          event:"ops.alert_delivered",
+          scope_key:scopeKey,
+          severity:candidate.severity,
+          incident_key:candidate.incidentKey,
+          provider:"resend",
+          provider_id:delivered.id || null,
+        }));
+      } catch (error) {
+        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        console.error(JSON.stringify({
+          event:"ops.alert_delivery_failed",
+          scope_key:scopeKey,
+          severity:candidate.severity,
+          incident_key:candidate.incidentKey,
+          error:String(error?.message || "ops_alert_delivery_failed").slice(0,160),
+        }));
+      }
+    }
+  } finally {
+    opsAlertCheckRunning = false;
+  }
+}
+
+if (OPS_ALERTS_ENABLED.toLowerCase() === "true") {
+  const intervalMs = Math.min(Math.max(Number(OPS_ALERT_INTERVAL_MS) || 60000, 30000), 300000);
+  setTimeout(() => runOpsAlertCheck().catch(() => {}), 5000).unref();
+  setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs).unref();
+}
+
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
 let billing = null;
 try {
