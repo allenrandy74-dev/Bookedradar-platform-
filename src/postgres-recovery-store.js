@@ -13,12 +13,18 @@ export const RECOVERY_TABLES = [
 export async function readRecovery(client, tenantId = null) {
   const data = { contacts:{}, opportunities:{}, events:[], eventKeys:{}, actions:{}, attribution:{} };
   for (const [key,table,pk] of RECOVERY_TABLES) {
-    const { rows } = await client.query(`SELECT ${pk} AS id,payload FROM bookedradar.${table}${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY ${pk}`, tenantId === null ? [] : [tenantId]);
+    const order = key === 'events' ? 'sequence_no,event_id' : pk;
+    const { rows } = await client.query(`SELECT ${pk} AS id,payload FROM bookedradar.${table}${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY ${order}`, tenantId === null ? [] : [tenantId]);
     for (const row of rows) {
-      if (key === 'events') { data.events.push(row.payload); const eventKey = row.payload.idempotencyKey || row.payload.id; if (eventKey) data.eventKeys[eventKey] = row.id; }
+      if (key === 'events') data.events.push(row.payload);
       else Object.defineProperty(data[key], row.id, { value:row.payload, enumerable:true, writable:true, configurable:true });
     }
   }
+  const keyRows = await client.query(
+    `SELECT event_key,event_id FROM bookedradar.recovery_event_keys${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY event_key`,
+    tenantId === null ? [] : [tenantId]
+  );
+  for (const row of keyRows.rows) data.eventKeys[row.event_key] = row.event_id;
   return data;
 }
 
@@ -61,6 +67,17 @@ export class PostgresRecoveryStore {
             WHERE existing.tenant_id=EXCLUDED.tenant_id RETURNING ${pk}`;
           const changed = await client.query(query, values);
           if (!changed.rows.length) throw new Error('recovery_tenant_conflict');
+        }
+      }
+      if (write) {
+        await client.query('DELETE FROM bookedradar.recovery_event_keys WHERE tenant_id=$1', [this.tenantId]);
+        const eventIds = new Set(store.data.events.filter(e => e.tenantId === this.tenantId).map(e => e.id));
+        for (const [eventKey,eventId] of Object.entries(store.data.eventKeys || {})) {
+          if (!eventIds.has(eventId)) continue;
+          await client.query(
+            'INSERT INTO bookedradar.recovery_event_keys(tenant_id,event_key,event_id) VALUES($1,$2,$3) ON CONFLICT(tenant_id,event_key) DO UPDATE SET event_id=EXCLUDED.event_id',
+            [this.tenantId,eventKey,eventId]
+          );
         }
       }
       await client.query('COMMIT'); return result;
