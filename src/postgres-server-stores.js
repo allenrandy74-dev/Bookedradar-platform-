@@ -8,21 +8,90 @@ import { PostgresBillingStore } from './billing/postgres-store.js';
 import { persistPostgresVoiceLead,persistPostgresChatTurn } from './postgres-intake-workflows.js';
 import { CallHistoryStore } from './call-history.js';
 
-// Only the isolated application lab is selectable in this release. Production
-// activation is deliberately rejected until load/drain/backup gates are proven.
+const LOCALHOSTS = new Set(['localhost','127.0.0.1','[::1]']);
+
 export function postgresLabConfig(env) {
   const backend=env.BOOKEDRADAR_STORAGE_BACKEND || 'json';
   if (backend==='json') return null;
-  if (backend!=='postgres_lab') throw new Error('storage_backend_not_released');
+  if (backend!=='postgres_lab') throw new Error('storage_backend_not_lab');
   const url=new URL(env.DATABASE_URL || '');
-  if (!['localhost','127.0.0.1','[::1]'].includes(url.hostname) || url.pathname!=='/bookedradar_test' || !['postgres:','postgresql:'].includes(url.protocol)) throw new Error('postgres_lab_requires_disposable_database');
+  if (!LOCALHOSTS.has(url.hostname) || url.pathname!=='/bookedradar_test' || !['postgres:','postgresql:'].includes(url.protocol)) throw new Error('postgres_lab_requires_disposable_database');
   if (['CRM_SMOKE_TEST_ON_STARTUP','EMAIL_SMOKE_TEST_ON_STARTUP','E2E_SMOKE_TEST_ON_STARTUP','TWILIO_A2P_DIAGNOSTIC_ON_STARTUP'].some(key=>env[key]==='true') || env.VOICE_ENABLED==='true' || env.DISPATCH_ENABLED==='true' || env.BOOKEDRADAR_BILLING_ENABLED==='true' || env.DEMO_NUMBER_PROVISION_MODE && env.DEMO_NUMBER_PROVISION_MODE!=='off' || ['OPENAI_API_KEY','TWILIO_AUTH_TOKEN','STRIPE_SECRET_KEY','RESEND_API_KEY','WIX_API_KEY'].some(key=>env[key])) throw new Error('postgres_lab_requires_providers_disabled');
-  return {connectionString:env.DATABASE_URL};
+  return {connectionString:env.DATABASE_URL,mode:'lab'};
+}
+
+export function postgresBackendConfig(env) {
+  const backend=String(env.BOOKEDRADAR_STORAGE_BACKEND || 'json').trim();
+  if (backend==='json') return null;
+  if (backend==='postgres_lab') return postgresLabConfig(env);
+  if (backend!=='postgres') throw new Error('storage_backend_not_released');
+  if (String(env.POSTGRES_PRODUCTION_ARMED || 'false').toLowerCase()!=='true') {
+    throw new Error('postgres_production_not_armed');
+  }
+
+  const connectionString=String(env.DATABASE_URL || '').trim();
+  const url=new URL(connectionString);
+  if (!['postgres:','postgresql:'].includes(url.protocol) || LOCALHOSTS.has(url.hostname) || url.pathname==='/bookedradar_test') {
+    throw new Error('postgres_production_requires_managed_database');
+  }
+
+  const migrationId=String(env.POSTGRES_VALIDATED_MIGRATION_ID || '').trim();
+  const snapshotFingerprint=String(env.POSTGRES_VALIDATED_SNAPSHOT_FINGERPRINT || '').trim().toLowerCase();
+  if (!/^[a-zA-Z0-9_-]{8,160}$/.test(migrationId)) throw new Error('postgres_validated_migration_id_required');
+  if (!/^[a-f0-9]{64}$/.test(snapshotFingerprint)) throw new Error('postgres_validated_snapshot_fingerprint_required');
+
+  return {
+    connectionString,
+    mode:'production',
+    migrationId,
+    snapshotFingerprint,
+  };
+}
+
+export function providerAdaptersEnabledForStorage(stores) {
+  return !stores || stores.mode !== 'lab';
+}
+
+export async function verifyValidatedProductionMigration(pool,{migrationId,snapshotFingerprint}={}) {
+  const {rows}=await pool.query(
+    `SELECT migration_id,source_snapshot_sha256,status,validation
+       FROM bookedradar.migration_runs
+      WHERE migration_id=$1`,
+    [migrationId]
+  );
+  const row=rows[0];
+  if (!row) throw new Error('postgres_validated_migration_missing');
+  if (row.status!=='validated') throw new Error('postgres_validated_migration_status_invalid');
+  if (String(row.source_snapshot_sha256 || '').toLowerCase()!==String(snapshotFingerprint || '').toLowerCase()) {
+    throw new Error('postgres_validated_migration_fingerprint_mismatch');
+  }
+  const validation=row.validation || {};
+  if (validation?.tableCounts?.ok!==true || validation?.content?.ok!==true) {
+    throw new Error('postgres_validated_migration_reconciliation_invalid');
+  }
+  if (
+    validation?.content?.sourceContentHash &&
+    validation?.content?.postgresContentHash &&
+    validation.content.sourceContentHash!==validation.content.postgresContentHash
+  ) {
+    throw new Error('postgres_validated_migration_content_hash_mismatch');
+  }
+  return {
+    migrationId:row.migration_id,
+    snapshotFingerprint:String(row.source_snapshot_sha256).toLowerCase(),
+    validated:true,
+  };
 }
 
 export async function createPostgresServerStores(config) {
   const pool=createPostgresPool(config);
-  try {await postgresHealth(pool);} catch(error) {await pool.end();throw error;}
+  let productionValidation=null;
+  try {
+    await postgresHealth(pool);
+    if (config?.mode==='production') {
+      productionValidation=await verifyValidatedProductionMigration(pool,config);
+    }
+  } catch(error) {await pool.end();throw error;}
   const noop=async()=>{};
   // Lookup is for already-authenticated internal provider callbacks whose IDs
   // are globally unique. Tenant-facing APIs still pass explicit tenant IDs.
@@ -71,7 +140,7 @@ export async function createPostgresServerStores(config) {
     update:async(id,patch,options)=>{const tenant=await owner('web_chat_sessions','session_id',id);return new PostgresWebChatStore(pool,tenant).update(id,patch,options);}};
   const transfers={load:noop,getCall:async id=>{const tenant=await owner('transfer_records','transfer_id',id);return tenant ? new PostgresTransferStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await owner('transfer_records','transfer_id',id);return new PostgresTransferStore(pool,tenant).patchCall(id,patch);}};
-  return {pool,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
+  return {pool,mode:config?.mode || 'lab',productionValidation,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
     persistVoiceLead:args=>persistPostgresVoiceLead(pool,args),persistChatTurn:args=>persistPostgresChatTurn(pool,args),
     appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
     billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};
