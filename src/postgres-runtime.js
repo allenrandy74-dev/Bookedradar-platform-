@@ -70,15 +70,18 @@ async function upsert(client, sql, values) {
 
 export async function importMigrationManifest(pool, manifest, {
   migrationId = `migration_${Date.now()}`,
+  client: providedClient = null,
+  manageTransaction = true,
 } = {}) {
   if (!manifest?.rows || !manifest?.snapshotFingerprint) {
     throw new Error("postgres_migration_manifest_required");
   }
 
-  const client = await pool.connect();
+  const client = providedClient || await pool.connect();
+  const ownsClient = !providedClient;
   const counts = {};
   try {
-    await client.query("BEGIN");
+    if (manageTransaction) await client.query("BEGIN");
 
     await upsert(client,
       `INSERT INTO bookedradar.migration_runs
@@ -311,13 +314,15 @@ export async function importMigrationManifest(pool, manifest, {
       [migrationId, JSON.stringify(counts)]
     );
 
-    await client.query("COMMIT");
+    if (manageTransaction) await client.query("COMMIT");
     return { ok: true, migrationId, counts };
   } catch (error) {
-    try { await client.query("ROLLBACK"); } catch {}
+    if (manageTransaction) {
+      try { await client.query("ROLLBACK"); } catch {}
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsClient) client.release();
   }
 }
 
