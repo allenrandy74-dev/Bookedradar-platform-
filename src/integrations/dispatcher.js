@@ -33,6 +33,10 @@ export class ActionDispatcher {
     const results = [];
 
     for (const action of claimed) {
+      if (typeof this.store.beginDispatch === "function" && typeof this.store.finishClaim === "function") {
+        results.push(await this.runFencedAction(action, now));
+        continue;
+      }
       if (action.tenantId !== this.tenant.tenantId) {
         await this.store.patchAction(action.id, {
           status: "pending",
@@ -117,5 +121,39 @@ export class ActionDispatcher {
     }
 
     return results;
+  }
+
+  async runFencedAction(action, now) {
+    if (action.tenantId !== this.tenant.tenantId) throw new Error("Dispatch tenant mismatch");
+    const finish = patch => this.store.finishClaim(action.id, action, patch);
+    const opportunity = await this.store.getOpportunity(action.opportunityId);
+    let contact = await this.store.getContact(action.contactKey);
+    const decision = actionAllowed({ action, opportunity, contact, tenant:this.tenant, now });
+    if (!decision.allowed) {
+      const blocked = await finish({ status:"blocked",blockedReason:decision.reason,completedAt:new Date().toISOString() });
+      return { action:blocked,dispatched:false };
+    }
+    const adapter = this.adapters[action.channel];
+    if (!adapter) {
+      const deferred = await finish({ status:"pending",lastError:`No adapter configured for channel: ${action.channel}` });
+      return { action:deferred,dispatched:false,deferred:true };
+    }
+    if (this.resolveContact) contact = await this.resolveContact({ action,contact,opportunity });
+    const content = ["sms","email"].includes(action.channel)
+      ? renderTemplate(action.template,{contact,tenant:this.tenant,opportunity}) : null;
+    // Persist send intent before any provider request. Never automatically send
+    // again after an ambiguous outcome or a failed completion write.
+    await this.store.beginDispatch(action.id,action);
+    let result;
+    try {
+      result = await adapter.send({ action,contact,opportunity,tenant:this.tenant,content });
+    } catch (error) {
+      const uncertain = await finish({ status:"reconciliation_required",lastError:String(error?.message || error).slice(0,500) });
+      return { action:uncertain,dispatched:false,reconciliationRequired:true,error:uncertain.lastError };
+    }
+    // A database failure here must propagate. It must not turn a successful
+    // provider send into the legacy automatic retry path.
+    const completed = await finish({ status:"completed",completedAt:new Date().toISOString(),providerResult:result || null });
+    return { action:completed,dispatched:true,result };
   }
 }

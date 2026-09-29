@@ -77,10 +77,23 @@ export class PostgresRecoveryStore {
   finishClaim(actionId, claim, patch, now = new Date()) {
     return this.#transaction(async store => {
       const current = store.data.actions[actionId];
-      if (!current || current.status !== 'processing' || current.claimedBy !== claim?.claimedBy || current.claimedAt !== claim?.claimedAt || current.claimExpiresAt !== claim?.claimExpiresAt || !(new Date(current.claimExpiresAt) > now)) throw new Error('stale_recovery_claim');
-      if (!['completed','failed','blocked','pending'].includes(patch?.status) || ['id','tenantId','claimedBy','claimedAt','claimExpiresAt','opportunityId','contactKey'].some(k => k in patch)) throw new Error('action_patch_invalid');
+      if (!current || !['processing','dispatching'].includes(current.status) || current.claimedBy !== claim?.claimedBy || current.claimedAt !== claim?.claimedAt || current.claimExpiresAt !== claim?.claimExpiresAt || !(new Date(current.claimExpiresAt) > now)) throw new Error('stale_recovery_claim');
+      if (!['completed','failed','blocked','pending','reconciliation_required'].includes(patch?.status) || ['id','tenantId','claimedBy','claimedAt','claimExpiresAt','opportunityId','contactKey'].some(k => k in patch)) throw new Error('action_patch_invalid');
+      if (current.status === 'dispatching' && patch.status === 'pending') throw new Error('dispatch_reconciliation_required');
       return store.patchAction(actionId, { ...patch,claimedBy:null,claimedAt:null,claimExpiresAt:null });
     });
+  }
+  beginDispatch(actionId, claim, now = new Date()) {
+    return this.#transaction(async store => {
+      const current = store.data.actions[actionId];
+      if (!current || current.status !== 'processing' || current.claimedBy !== claim?.claimedBy || current.claimedAt !== claim?.claimedAt || current.claimExpiresAt !== claim?.claimExpiresAt || !(new Date(current.claimExpiresAt) > now)) throw new Error('stale_recovery_claim');
+      // Expired processing claims are reclaimable. A dispatching action is not:
+      // a provider may already have accepted it even if the process disappears.
+      return store.patchAction(actionId, { status:'dispatching',dispatchStartedAt:now.toISOString() });
+    });
+  }
+  reconciliationActions() {
+    return this.#transaction(store => Object.values(store.data.actions).filter(action => ['dispatching','reconciliation_required'].includes(action.status)), false);
   }
   cancelPendingActions(id, options) { return this.#transaction(store => store.cancelPendingActions(id, options)); }
 }

@@ -187,3 +187,22 @@ handle chat revision conflicts, bound and reconcile provider operations, prove
 load targets, enforce a writer drain, take an independent verified backup,
 perform final synchronization/reconciliation, then select a controlled cutover.
 Passing the synthetic rehearsal does not authorize skipping these gates.
+
+## Dispatcher integration
+
+ActionDispatcher now detects the Postgres claim API and uses fenced completion.
+Before calling a provider it persists `dispatching`. Lease expiry does not make
+that state eligible again. Provider errors become `reconciliation_required`;
+a failure to persist completion propagates and leaves `dispatching` durable.
+Both states appear in `reconciliationActions()` for operator review. This avoids
+automatic duplicate sends after timeouts, process crashes or acknowledgment
+write failures. It deliberately sacrifices automatic retry when acceptance is
+uncertain; provider-specific lookup is required to resolve the action safely.
+
+The real-Postgres integration suite exercises the actual dispatcher with local
+provider stubs: parallel sends, timeout after possible acceptance, completion
+write failure, crash after send intent, and expired ownership before send.
+No provider request is made in tests. Legacy JSON dispatcher behavior remains
+unchanged. Server selection and the operator reconciliation route are still
+pending. Internal retries inside each provider adapter must also be reviewed
+before enabling the Postgres dispatcher in production.
