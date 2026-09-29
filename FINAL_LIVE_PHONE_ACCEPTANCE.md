@@ -136,3 +136,28 @@ If one optional feature fails, gate only that optional feature and preserve the 
 
 Do not re-enable screened/warm spoken transfer solely to pass parity testing. The proven SMS-context + hold + REFER fallback remains the accepted transfer method until a replacement path is separately proven.
 
+## Current-build revalidation — September 29, 2026
+
+Historical September 25 acceptance remains valid evidence for the previously tested build, but it is not automatically treated as acceptance of every later production image.
+
+- Render production is live on commit `cffd72019be7447e56692b70a2fb8cabae03de17`.
+- GitHub `main` is ahead of that production image by two commits that change only concurrency/private-test code and documentation; they do not change the customer-facing production voice path. Production was intentionally not redeployed merely to match `main`.
+- A September 29 call to `demo-plumbing` from a masked caller ending in `8573` was confirmed by Randy to be his own test call, not prospect/client activity.
+- That call reached first greeting audio about 1.8 seconds after acceptance, completed greeting playback, and ended roughly 10 seconds after call control began. It did not complete intake or transfer and therefore does **not** close the current-build acceptance gate.
+- No additional production call activity was observed after that owner test through the September 29 re-check.
+- The separate private voice lab is isolated from production data. At the re-check it reported `voiceEnabled: false`; CRM, email, SMS, dispatch and billing were disabled, and the synthetic tenants were intentionally blocked from normal production readiness.
+
+### Remaining current-build gate
+
+Before treating the current production image as freshly accepted, complete one controlled owner call on the current production build covering:
+
+1. normal intake;
+2. exact address confirmation and spelling clarification when needed;
+3. urgency and preferred timing;
+4. natural closing;
+5. transfer companion SMS;
+6. approximately 10-second delay/hold;
+7. SIP REFER ring-through; and
+8. usable two-way audio after transfer.
+
+Until that call is observed and verified, report the September 25 acceptance as historical acceptance and the September 29 greeting-only call as owner QA evidence, not external customer activity and not full current-build acceptance.
