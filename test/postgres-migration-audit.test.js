@@ -238,3 +238,34 @@ test("migration audit rejects duplicate recovery idempotency keys and key-map mi
   const serialized = JSON.stringify(audit.errors);
   assert.equal(serialized.includes("phone-lead:demo-hvac:call_1"), false);
 });
+
+test("migration manifest preserves recovery event sequence, eventKeys, and transfer webhook receipts", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.events.unshift({
+    id: "evt-z",
+    tenantId: "demo-hvac",
+    type: "manual_note",
+    occurredAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  snapshot.recovery.eventKeys["manual-key"] = "evt-z";
+  snapshot.transfers.processedWebhooks = { "twilio-hook-1": Date.now() - 500 };
+
+  const manifest = buildPostgresMigrationManifest(snapshot);
+  assert.equal(manifest.rows.recoveryEvents[0].eventId, "evt-z");
+  assert.equal(manifest.rows.recoveryEvents[0].sequenceNo, 0);
+  assert.ok(manifest.rows.recoveryEventKeys.some(row =>
+    row.eventKey === "manual-key" && row.eventId === "evt-z"
+  ));
+  assert.equal(manifest.rows.transferWebhookReceipts.length, 1);
+  assert.equal(manifest.rows.transferWebhookReceipts[0].webhookId, "twilio-hook-1");
+});
+
+test("migration audit rejects eventKeys pointing to missing events and invalid transfer webhook timestamps", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.eventKeys["bad-key"] = "missing-event";
+  snapshot.transfers.processedWebhooks = { "bad-transfer-hook": 0 };
+  const audit = auditPostgresMigrationSnapshot(snapshot);
+  assert.equal(audit.ok, false);
+  assert.ok(audit.errors.some(x => x.code === "event_key_unknown_event"));
+  assert.ok(audit.errors.some(x => x.code === "transfer_webhook_invalid_timestamp"));
+});
