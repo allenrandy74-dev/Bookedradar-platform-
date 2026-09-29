@@ -51,6 +51,8 @@ export async function runStartupMigrationDiff({
       status:diagnosis.equal ? "equal" : "differences_found",
       ok:true,
       equal:diagnosis.equal,
+      logicalComponentsEqual:diagnosis.logicalComponentsEqual,
+      topLevelShape:diagnosis.topLevelShape,
       sourceHash:diagnosis.sourceHash,
       postgresHash:diagnosis.postgresHash,
       mismatchCount:diagnosis.mismatchCount,

@@ -30,10 +30,12 @@ test("migration diff identifies ordering-only array drift without exposing paylo
   postgres.recovery.events=[postgres.recovery.events[1],postgres.recovery.events[0]];
   const result=diagnoseMigrationDifference(source,postgres);
   assert.equal(result.equal,false);
-  assert.equal(result.mismatchCount,1);
-  assert.equal(result.mismatches[0].component,"recoveryEvents");
-  assert.equal(result.mismatches[0].sameMultiset,true);
-  assert.equal(result.mismatches[0].positionalMismatchCount,2);
+  assert.equal(result.mismatchCount,2);
+  const events = result.mismatches.find(x=>x.component==="recoveryEvents");
+  assert.ok(events);
+  assert.equal(events.sameMultiset,true);
+  assert.equal(events.positionalMismatchCount,2);
+  assert.ok(result.mismatches.some(x=>x.component==="recoveryWhole"));
   const serialized=JSON.stringify(result);
   assert.equal(serialized.includes("z-event"),false);
   assert.equal(serialized.includes("a-event"),false);
