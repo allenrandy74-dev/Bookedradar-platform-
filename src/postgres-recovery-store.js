@@ -13,7 +13,8 @@ export const RECOVERY_TABLES = [
 export async function readRecovery(client, tenantId = null) {
   const data = { contacts:{}, opportunities:{}, events:[], eventKeys:{}, actions:{}, attribution:{} };
   for (const [key,table,pk] of RECOVERY_TABLES) {
-    const { rows } = await client.query(`SELECT ${pk} AS id,payload FROM bookedradar.${table}${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY ${pk}`, tenantId === null ? [] : [tenantId]);
+    const orderBy = key === 'events' ? 'source_sequence NULLS LAST, event_id' : pk;
+    const { rows } = await client.query(`SELECT ${pk} AS id,payload FROM bookedradar.${table}${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY ${orderBy}`, tenantId === null ? [] : [tenantId]);
     for (const row of rows) {
       if (key === 'events') { data.events.push(row.payload); const eventKey = row.payload.idempotencyKey || row.payload.id; if (eventKey) data.eventKeys[eventKey] = row.id; }
       else Object.defineProperty(data[key], row.id, { value:row.payload, enumerable:true, writable:true, configurable:true });
