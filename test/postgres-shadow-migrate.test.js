@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runPostgresShadowMigration } from "../scripts/postgres-shadow-migrate.mjs";
+import { loadMigrationSnapshot } from "../scripts/postgres-migration-audit.mjs";
 
 async function fixture(t, { badLead = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "br-postgres-shadow-"));
@@ -103,4 +104,11 @@ test("shadow migration refuses a changed production snapshot before touching Pos
   assert.equal(result.databaseTouched, false);
   assert.equal(result.cutoverPerformed, false);
   assert.match(result.actualFingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("migration snapshot normalizes a missing web-chat file to the runtime empty store", async (t) => {
+  const env = await fixture(t);
+  await fs.rm(env.WEB_CHAT_STATE_FILE, { force: true });
+  const snapshot = await loadMigrationSnapshot(env);
+  assert.deepEqual(snapshot.webChat, { sessions: {} });
 });
