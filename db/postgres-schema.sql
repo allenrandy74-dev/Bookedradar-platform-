@@ -91,6 +91,7 @@ CREATE INDEX IF NOT EXISTS recovery_opportunities_contact_idx
 
 CREATE TABLE IF NOT EXISTS bookedradar.recovery_events (
   event_id text PRIMARY KEY,
+  source_sequence bigserial,
   tenant_id text,
   idempotency_key text,
   opportunity_id text,
@@ -100,10 +101,15 @@ CREATE TABLE IF NOT EXISTS bookedradar.recovery_events (
   UNIQUE (idempotency_key)
 );
 
+ALTER TABLE bookedradar.recovery_events
+  ADD COLUMN IF NOT EXISTS source_sequence bigserial;
+
 CREATE INDEX IF NOT EXISTS recovery_events_tenant_time_idx
   ON bookedradar.recovery_events (tenant_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS recovery_events_opportunity_idx
   ON bookedradar.recovery_events (opportunity_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS recovery_events_sequence_idx
+  ON bookedradar.recovery_events (source_sequence);
 
 CREATE TABLE IF NOT EXISTS bookedradar.recovery_actions (
   action_id text PRIMARY KEY,
