@@ -71,7 +71,7 @@ export class PostgresRecoveryStore {
       }
       if (write) {
         await client.query('DELETE FROM bookedradar.recovery_event_keys WHERE tenant_id=$1', [this.tenantId]);
-        const eventIds = new Set(store.data.events.filter(e => e.tenantId === this.tenantId).map(e => e.id));
+        const eventIds = new Set(store.data.events.map(e => e.id));
         for (const [eventKey,eventId] of Object.entries(store.data.eventKeys || {})) {
           if (!eventIds.has(eventId)) continue;
           await client.query(
