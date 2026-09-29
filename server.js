@@ -34,7 +34,11 @@ import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.j
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { mountReconciliationRoutes } from "./src/recovery/reconciliation-http.js";
-import { postgresLabConfig, createPostgresServerStores } from "./src/postgres-server-stores.js";
+import {
+  postgresBackendConfig,
+  createPostgresServerStores,
+  providerAdaptersEnabledForStorage,
+} from "./src/postgres-server-stores.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import {
   cancellationBackfillCandidates,
@@ -142,7 +146,7 @@ const {
   POSTGRES_RESTORE_DRILL_ID = "",
 } = process.env;
 
-const storageLabConfig = postgresLabConfig(process.env);
+const storageBackendConfig = postgresBackendConfig(process.env);
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
 if (voiceEnabled && !OPENAI_API_KEY) {
@@ -240,7 +244,30 @@ app.use("/openai/webhook", express.text({ type: "application/json", limit: "256k
 app.use('/stripe/webhook', express.raw({ type: 'application/json', limit: '256kb' }));
 app.use(express.json({ limit: "256kb" }));
 
-const postgresStores = storageLabConfig ? await createPostgresServerStores(storageLabConfig) : null;
+let postgresProductionCutoverAudit = null;
+if (storageBackendConfig?.mode === "production") {
+  postgresProductionCutoverAudit = await runStartupMigrationAudit({
+    enabled: true,
+    env: process.env,
+    log: (event, fields) => console.log(JSON.stringify({
+      event: event === "postgres_migration.startup_audit"
+        ? "postgres_cutover.source_audit"
+        : event,
+      ...fields,
+    })),
+  });
+  if (!postgresProductionCutoverAudit?.ok) {
+    throw new Error("postgres_cutover_source_audit_failed");
+  }
+  if (
+    String(postgresProductionCutoverAudit.snapshotFingerprint || "").toLowerCase() !==
+    String(storageBackendConfig.snapshotFingerprint || "").toLowerCase()
+  ) {
+    throw new Error("postgres_cutover_source_fingerprint_mismatch");
+  }
+}
+
+const postgresStores = storageBackendConfig ? await createPostgresServerStores(storageBackendConfig) : null;
 const state = postgresStores?.state || new JsonStateStore(STATE_FILE);
 await state.load();
 
@@ -481,7 +508,9 @@ async function latestOpenOpportunityForContact(tenantId, contactKey) {
 
 function dispatcherFor(tenant) {
   if (!dispatchers.has(tenant.tenantId)) {
-    const adapters = postgresStores ? {} : buildTenantAdapters(tenant, { timeoutMs, retries });
+    const adapters = providerAdaptersEnabledForStorage(postgresStores)
+      ? buildTenantAdapters(tenant, { timeoutMs, retries })
+      : {};
     dispatchers.set(
       tenant.tenantId,
       {
@@ -991,7 +1020,12 @@ async function executeTool({
 
 const callLifecycle = createCallLifecycle({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
-  exit: code => process.exit(code),
+  exit: code => {
+    if (!postgresStores) return process.exit(code);
+    postgresStores.close()
+      .then(() => process.exit(code))
+      .catch(() => process.exit(code || 1));
+  },
 });
 
 async function attachSideband({
@@ -2251,7 +2285,9 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "bookedradar-platform",
-    storageBackend: postgresStores ? "postgres_lab" : "json",
+    storageBackend: postgresStores?.mode === "production"
+      ? "postgres"
+      : postgresStores ? "postgres_lab" : "json",
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
@@ -2298,7 +2334,17 @@ app.get("/ready", requireAdmin, (_req, res) => {
       schemaInspection: postgresStartupSchemaInspection,
       restoreDrillEnabled: POSTGRES_RESTORE_DRILL_ON_STARTUP.toLowerCase() === "true",
       restoreDrill: postgresStartupRestoreDrill,
+      backendMode: postgresStores?.mode || "json",
       authoritative: Boolean(postgresStores),
+      productionValidation: postgresStores?.productionValidation || null,
+      cutoverSourceAudit: postgresProductionCutoverAudit
+        ? {
+            ok: Boolean(postgresProductionCutoverAudit.ok),
+            snapshotFingerprint: postgresProductionCutoverAudit.snapshotFingerprint || null,
+            errorCount: Number(postgresProductionCutoverAudit.errorCount || 0),
+            warningCount: Number(postgresProductionCutoverAudit.warningCount || 0),
+          }
+        : null,
     },
   });
 });
