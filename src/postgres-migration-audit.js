@@ -207,6 +207,16 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     }
   }
 
+  const eventIds = new Set(events.map(event => String(event?.id || "")).filter(Boolean));
+  for (const [eventKey,eventId] of Object.entries(eventKeyMap)) {
+    if (!eventIds.has(String(eventId))) {
+      issue(errors, "event_key_unknown_event", {
+        keyRef: safeRef(eventKey),
+        eventId: String(eventId),
+      });
+    }
+  }
+
   for (const [callId, call] of Object.entries(historyCalls)) {
     const tenantId = String(call?.tenantId || "");
     if (!tenantId) issue(errors, "call_history_missing_tenant", { callId });
@@ -282,6 +292,11 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   for (const [id, ts] of Object.entries(processedWebhooks)) {
     if (!Number.isFinite(Number(ts)) || Number(ts) <= 0) {
       issue(errors, "webhook_invalid_timestamp", { webhookId: id });
+    }
+  }
+  for (const [id, ts] of Object.entries(transferProcessedWebhooks)) {
+    if (!Number.isFinite(Number(ts)) || Number(ts) <= 0) {
+      issue(errors, "transfer_webhook_invalid_timestamp", { webhookId: id });
     }
   }
 
