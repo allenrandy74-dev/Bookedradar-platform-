@@ -74,6 +74,7 @@ import { CallHistoryStore } from "./src/call-history.js";
 import { assessVoiceHealth } from "./src/ops-health.js";
 import { assessCustomerHealth } from "./src/customer-health.js";
 import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
+import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -129,6 +130,7 @@ const {
   DATABASE_URL = "",
   POSTGRES_HEALTH_ON_STARTUP = "false",
   POSTGRES_HEALTH_TIMEOUT_MS = "5000",
+  POSTGRES_MIGRATION_AUDIT_ON_STARTUP = "false",
 } = process.env;
 
 const storageLabConfig = postgresLabConfig(process.env);
@@ -147,6 +149,12 @@ const postgresStartupHealth = await runStartupPostgresHealth({
   enabled: POSTGRES_HEALTH_ON_STARTUP.toLowerCase() === "true",
   connectionString: DATABASE_URL,
   timeoutMs: Number(POSTGRES_HEALTH_TIMEOUT_MS),
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
+const postgresStartupMigrationAudit = await runStartupMigrationAudit({
+  enabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
+  env: process.env,
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 
@@ -2244,6 +2252,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       configured: Boolean(DATABASE_URL),
       healthCheckEnabled: POSTGRES_HEALTH_ON_STARTUP.toLowerCase() === "true",
       startup: postgresStartupHealth,
+      migrationAuditEnabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
+      migrationAudit: postgresStartupMigrationAudit,
       authoritative: Boolean(postgresStores),
     },
   });
