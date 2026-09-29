@@ -89,6 +89,15 @@ export class PostgresOpsIncidentStore {
     } finally {client.release();}
   }
 
+  async releaseNotification(incidentKey) {
+    await this.pool.query(
+      `UPDATE bookedradar.ops_incidents
+          SET last_notified_at=NULL
+        WHERE incident_key=$1 AND status='active'`,
+      [incidentKey]
+    );
+  }
+
   async resolveScope(scopeKey) {
     const result=await this.pool.query(
       `UPDATE bookedradar.ops_incidents
