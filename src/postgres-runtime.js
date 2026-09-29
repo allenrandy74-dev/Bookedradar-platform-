@@ -182,17 +182,24 @@ export async function importMigrationManifest(pool, manifest, {
     for (const row of manifest.rows.recoveryEvents || []) {
       await upsert(client,
         `INSERT INTO bookedradar.recovery_events
-          (event_id, sequence_no, tenant_id, idempotency_key, opportunity_id, contact_key, occurred_at, payload)
+          (event_id, source_sequence, tenant_id, idempotency_key, opportunity_id, contact_key, occurred_at, payload)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
          ON CONFLICT (event_id) DO UPDATE SET
-          sequence_no=EXCLUDED.sequence_no,
+          source_sequence=EXCLUDED.source_sequence,
           tenant_id=EXCLUDED.tenant_id, idempotency_key=EXCLUDED.idempotency_key,
           opportunity_id=EXCLUDED.opportunity_id, contact_key=EXCLUDED.contact_key,
           occurred_at=EXCLUDED.occurred_at, payload=EXCLUDED.payload`,
-        [row.eventId, row.sequenceNo, row.tenantId, row.idempotencyKey, row.opportunityId, row.contactKey, row.occurredAt, JSON.stringify(row.payload || {})]
+        [row.eventId, row.sourceSequence, row.tenantId, row.idempotencyKey, row.opportunityId, row.contactKey, row.occurredAt, JSON.stringify(row.payload || {})]
       );
     }
     counts.recoveryEvents = (manifest.rows.recoveryEvents || []).length;
+    await client.query(
+      `SELECT setval(
+         'bookedradar.recovery_event_sequence',
+         GREATEST(COALESCE((SELECT MAX(source_sequence) FROM bookedradar.recovery_events), -1) + 1, 1),
+         false
+       )`
+    );
 
     await client.query("DELETE FROM bookedradar.recovery_event_keys");
     for (const row of manifest.rows.recoveryEventKeys || []) {
