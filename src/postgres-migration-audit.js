@@ -29,6 +29,20 @@ export function stableHash(value) {
   return crypto.createHash("sha256").update(json).digest("hex");
 }
 
+export function normalizeMigrationSnapshotForContent(snapshot = {}) {
+  const normalized = { ...snapshot };
+  const normalizations = [];
+
+  // WebChatStore treats a missing file as the canonical empty store. A
+  // Postgres reverse-export necessarily materializes that empty store.
+  if (snapshot.webChat == null) {
+    normalized.webChat = { sessions: {} };
+    normalizations.push("webChat:null_to_empty_store");
+  }
+
+  return { snapshot: normalized, normalizations };
+}
+
 function safeRef(value = "") {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
 }
