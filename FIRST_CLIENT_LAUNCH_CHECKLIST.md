@@ -46,7 +46,7 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 - [x] Customer-specific secret isolation required.
 - [x] CRM/email/SMS/live-booking adapters cannot be treated as ready without tenant-specific configuration.
 - [x] Full-time scheduling discovery requirements documented.
-- [x] Final customer-facing Quick Start form verified in Wix (BookedRadar Quick Start, revision 3).
+- [x] Public Customer Quick Start is live and verified on September 29, 2026; it collects business/routing details, states that submission does not activate services or take payment, and preserves the previously verified synthetic field/contact path.
 - [x] Customer-facing welcome/onboarding email finalized.
 - [ ] Provider-specific phone-forwarding instructions prepared for the first customer's carrier.
 - [ ] First customer tenant passes `tenantReadiness()`.
@@ -54,7 +54,8 @@ This checklist defines the minimum gates for accepting a paying customer. A cust
 
 ## E. Legal / policy / customer expectations
 
-- [ ] Terms of service reflect actual BookedRadar LLC legal/business details. LLC-aligned publication source is prepared in `PUBLIC_TERMS_LLC_REVIEW_DRAFT.md`; live static Terms publication and counsel review remain open.
+- [x] Live Terms page identifies BookedRadar LLC and reflects the current pilot, human-transfer, confirm-only scheduling, activation and third-party-provider boundaries.
+- [ ] Obtain qualified legal review of the customer-facing service order/terms/privacy before broad commercial rollout or relying on the operational drafts as legal approval.
 - [x] Privacy policy accurately describes collected call/contact data and the categories of connected service providers.
 - [x] Customer agreement identifies that BookedRadar does not replace emergency services, licensed tradespeople, or the customer's field judgment.
 - [x] Agreement states that confirm-only mode does not guarantee or write a live appointment.
@@ -210,3 +211,31 @@ Randy accepted the completed call testing in conversation at approximately 12:31
 The accepted path remains companion SMS, approximately 10-second hold, then SIP REFER. If the recipient does not answer or declines, their carrier/voicemail may answer. The platform cannot guarantee a human answer or reclaim the call after REFER. Screened/warm transfer stays disabled. Each customer must accept this behavior and verify their own routing and voicemail greeting before go-live.
 
 See `docs/LAUNCH_CLOSEOUT_2026-09-25.md` for the consolidated current outstanding list. Historical dated evidence above is retained for traceability.
+
+
+## L. Verified production and public-launch evidence — September 29, 2026
+
+- [x] Core production voice path freshly accepted on Render production commit `cffd72019be7447e56692b70a2fb8cabae03de17`.
+- [x] Controlled owner call verified name/address persistence, clogged-drain service context, urgency `urgent`, preferred timing `This afternoon`, CRM/recovery continuity, transfer request, companion SMS provider acceptance, hold audio, exact 10,000 ms delay, SIP REFER and clean call-control end.
+- [x] One non-blocking `response_cancel_not_active` notice occurred during transfer transition; it did not interrupt any downstream handoff step and is retained as an observation rather than treated as a failed acceptance.
+- [x] Production remains on the tested commit with auto-deploy disabled; later `main` commits affect private/concurrency test tooling and documentation, not the customer-facing production voice path.
+- [x] Public homepage is live with the current package ladder: RadarAnswer $149, RadarRecover $497/$397 Founding, RadarGrow $697/$597 Founding, RadarSchedule $897/$797 Founding, and RadarDispatch custom.
+- [x] Public Customer Quick Start is live and states that it takes no payment and activates no forwarding, marketing SMS or live calendar booking merely by submission.
+- [x] Public Privacy and Terms pages are live and identify the current data/automation/human-transfer boundaries; Terms identifies BookedRadar LLC.
+- [x] Public Revenue Leak Audit is live and labels its recovery estimate as illustrative rather than guaranteed revenue.
+- [x] Billing, customer-facing recovery SMS, live dispatch, screened/warm transfer and optional live booking remain separately gated and are not implied by this core acceptance.
+
+### Remaining first-customer activation gates
+
+These are customer- or owner-specific rather than unresolved core-platform defects:
+
+- [ ] Select the first customer's purchased scope and obtain the reviewed/signed service order.
+- [ ] Collect that customer's carrier/forwarding details and business rules.
+- [ ] Configure an isolated tenant and required tenant-specific integrations/secrets.
+- [ ] Verify that customer's `tenantReadiness()`.
+- [ ] Run the customer's own forwarding/rollback and acceptance call before routing real callers.
+- [ ] Separately authorize billing activation and use the first approved payment to verify settlement/paid-event handling.
+- [ ] Complete any optional SMS, live-calendar, web-chat or dispatch acceptance only if that customer purchases/enables those capabilities.
+- [ ] Complete qualified legal review before broad commercial rollout.
+
+See `docs/LAUNCH_CLOSEOUT_2026-09-29.md` for the current consolidated launch state.
