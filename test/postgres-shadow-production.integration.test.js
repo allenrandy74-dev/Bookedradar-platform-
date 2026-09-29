@@ -86,7 +86,6 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     events: [
       {
         id:"z-event",
-        idempotencyKey:"evt-key-z",
         tenantId:tenant,
         type:"missed_call",
         occurredAt:new Date(now-700).toISOString(),
@@ -101,7 +100,7 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
         contactKey,
       },
     ],
-    eventKeys: { "evt-key-z":"z-event", "evt-key-a":"a-event" },
+    eventKeys: { "manual-explicit-key":"z-event", "evt-key-a":"a-event" },
     actions: {
       "act-1": {
         id:"act-1",
@@ -137,7 +136,7 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     },
   };
   const transfers = {
-    processedWebhooks:{},
+    processedWebhooks:{ "transfer-hook-1":now-250 },
     calls:{
       "transfer-1":{
         id:"transfer-1",
