@@ -76,6 +76,7 @@ import { assessCustomerHealth } from "./src/customer-health.js";
 import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
 import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit.js";
 import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js";
+import { runStartupMigrationDiff } from "./src/postgres-startup-migration-diff.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -133,6 +134,7 @@ const {
   POSTGRES_HEALTH_TIMEOUT_MS = "5000",
   POSTGRES_MIGRATION_AUDIT_ON_STARTUP = "false",
   POSTGRES_SHADOW_IMPORT_ON_STARTUP = "false",
+  POSTGRES_MIGRATION_DIFF_ON_STARTUP = "false",
 } = process.env;
 
 const storageLabConfig = postgresLabConfig(process.env);
@@ -162,6 +164,12 @@ const postgresStartupMigrationAudit = await runStartupMigrationAudit({
 
 const postgresStartupShadowImport = await runStartupShadowImport({
   enabled: POSTGRES_SHADOW_IMPORT_ON_STARTUP.toLowerCase() === "true",
+  env: process.env,
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
+const postgresStartupMigrationDiff = await runStartupMigrationDiff({
+  enabled: POSTGRES_MIGRATION_DIFF_ON_STARTUP.toLowerCase() === "true",
   env: process.env,
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
@@ -2264,6 +2272,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       migrationAudit: postgresStartupMigrationAudit,
       shadowImportEnabled: POSTGRES_SHADOW_IMPORT_ON_STARTUP.toLowerCase() === "true",
       shadowImport: postgresStartupShadowImport,
+      migrationDiffEnabled: POSTGRES_MIGRATION_DIFF_ON_STARTUP.toLowerCase() === "true",
+      migrationDiff: postgresStartupMigrationDiff,
       authoritative: Boolean(postgresStores),
     },
   });
