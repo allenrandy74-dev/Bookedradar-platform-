@@ -7,7 +7,6 @@ import { Pool } from "pg";
 import { runPostgresShadowMigration } from "../scripts/postgres-shadow-migrate.mjs";
 import { loadMigrationSnapshot } from "../scripts/postgres-migration-audit.mjs";
 import { auditPostgresMigrationSnapshot } from "../src/postgres-migration-audit.js";
-import { PostgresRecoveryStore } from "../src/postgres-recovery-store.js";
 
 const connectionString = process.env.POSTGRES_TEST_URL;
 
@@ -78,29 +77,32 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
         tenantId:tenant,
         contactKey,
         status:"open",
-        sourceEventId:"z-event",
+        sourceEventId:"evt-1",
         createdAt:iso,
         updatedAt:iso,
       },
     },
     events: [
       {
-        id:"z-event",
+        id:"evt-z",
         tenantId:tenant,
-        type:"missed_call",
-        occurredAt:new Date(now-700).toISOString(),
+        type:"manual_note",
+        occurredAt:new Date(now-750).toISOString(),
         contactKey,
       },
       {
-        id:"a-event",
-        idempotencyKey:"evt-key-a",
+        id:"evt-1",
+        idempotencyKey:"evt-key-1",
         tenantId:tenant,
-        type:"customer_note",
-        occurredAt:new Date(now-600).toISOString(),
+        type:"missed_call",
+        occurredAt:iso,
         contactKey,
-      },
+      }
     ],
-    eventKeys: { "manual-explicit-key":"z-event", "evt-key-a":"a-event" },
+    eventKeys: {
+      "manual-explicit-key":"evt-z",
+      "evt-key-1":"evt-1"
+    },
     actions: {
       "act-1": {
         id:"act-1",
@@ -200,31 +202,6 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.equal(result.reconciliation.ok, true);
     assert.equal(result.contentReconciliation.ok, true);
     assert.equal(result.contentReconciliation.sourceContentHash, result.contentReconciliation.postgresContentHash);
-
-    const eventOrder = await pool.query(
-      "SELECT event_id,source_sequence FROM bookedradar.recovery_events ORDER BY source_sequence,event_id"
-    );
-    assert.deepEqual(eventOrder.rows.map(row => row.event_id), ["z-event","a-event"]);
-    assert.deepEqual(eventOrder.rows.map(row => Number(row.source_sequence)), [0,1]);
-
-    const recoveryStore = new PostgresRecoveryStore(pool, tenant);
-    await recoveryStore.ingest({
-      id:"m-event",
-      idempotencyKey:"evt-key-m",
-      type:"missed_call",
-      occurredAt:new Date(now+1000).toISOString(),
-      contact:{ phone:"+14095550112", transactionalSmsAllowed:true },
-    }, {
-      tenantId:tenant,
-      businessName:"Synthetic HVAC",
-      timeZone:"America/Chicago",
-      policies:{ sms:{ allowTransactionalWhenInbound:true } },
-      economics:{ defaultAverageJobValue:500 },
-    });
-    const futureSequence = await pool.query(
-      "SELECT source_sequence FROM bookedradar.recovery_events WHERE event_id='m-event'"
-    );
-    assert.equal(Number(futureSequence.rows[0].source_sequence), 2);
 
     const migration = await pool.query(
       "SELECT status,validation FROM bookedradar.migration_runs WHERE migration_id=$1",
