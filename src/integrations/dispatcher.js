@@ -146,7 +146,7 @@ export class ActionDispatcher {
     await this.store.beginDispatch(action.id,action);
     let result;
     try {
-      result = await adapter.send({ action,contact,opportunity,tenant:this.tenant,content });
+      result = await adapter.send({ action,contact,opportunity,tenant:this.tenant,content,deliveryPolicy:"single_attempt" });
     } catch (error) {
       const uncertain = await finish({ status:"reconciliation_required",lastError:String(error?.message || error).slice(0,500) });
       return { action:uncertain,dispatched:false,reconciliationRequired:true,error:uncertain.lastError };

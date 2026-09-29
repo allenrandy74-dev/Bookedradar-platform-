@@ -1,10 +1,12 @@
 export class ResendEmailAdapter {
   constructor({
     apiKey,
+    timeoutMs = 8000,
     from,
     replyTo = "",
     apiUrl = "https://api.resend.com/emails",
   }) {
+    this.timeoutMs = Math.min(60000, Math.max(1, Number(timeoutMs) || 8000));
     this.apiKey = apiKey;
     this.from = from;
     this.replyTo = replyTo;
@@ -26,6 +28,7 @@ export class ResendEmailAdapter {
 
     const response = await fetch(this.apiUrl, {
       method: "POST",
+      signal: AbortSignal.timeout(this.timeoutMs),
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",

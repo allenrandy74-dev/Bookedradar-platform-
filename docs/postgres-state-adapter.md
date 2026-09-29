@@ -269,3 +269,10 @@ Tests force a final call-state write failure and a stale chat revision, proving
 that preceding lead/contact/opportunity work is rolled back. The HTTP suite
 also records a 20-request concurrent storage-ingestion check; this is not a
 real voice-call concurrency test or a production performance guarantee.
+
+Fenced dispatch now passes a single-attempt delivery policy through to Wix;
+its internal retry loop is disabled for that operation. SMS, webhook email,
+Resend and Wix requests carry bounded abort signals, including response-body
+consumption. A timeout still cannot establish provider acceptance; uncertain
+Postgres dispatch remains held for review. Tests stub providers locally and
+verify no internal retry for the fenced Wix failure path.
