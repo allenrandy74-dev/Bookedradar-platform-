@@ -5,6 +5,8 @@ import { PostgresRecoveryStore,readRecovery } from './postgres-recovery-store.js
 import { PostgresWebChatStore,PostgresTransferStore,PostgresGrowthMetricsStore } from './postgres-aux-stores.js';
 import { PostgresLeadStore } from './postgres-lead-store.js';
 import { PostgresBillingStore } from './billing/postgres-store.js';
+import { persistPostgresVoiceLead,persistPostgresChatTurn } from './postgres-intake-workflows.js';
+import { CallHistoryStore } from './call-history.js';
 
 // Only the isolated application lab is selectable in this release. Production
 // activation is deliberately rejected until load/drain/backup gates are proven.
@@ -39,7 +41,11 @@ export async function createPostgresServerStores(config) {
   };
   for (const method of ['list','stats','statsSince'])callHistory[method]=(tenant,...args)=>new PostgresCallHistoryStore(pool,tenant)[method](...args);
   callHistory.operationalSummary=async options=>{
-    if (!options?.tenantId) throw new Error('tenant_id_required');
+    if (!options?.tenantId) {
+      const {rows}=await pool.query('SELECT call_id,payload FROM bookedradar.voice_calls');
+      const view=new CallHistoryStore('/unused/report.json');view.loaded=true;view.data={calls:Object.fromEntries(rows.map(r=>[r.call_id,r.payload]))};
+      return view.operationalSummary(options);
+    }
     return new PostgresCallHistoryStore(pool,options.tenantId).operationalSummary(options);
   };
   const forTenant=tenant=>new PostgresRecoveryStore(pool,tenant);
@@ -51,7 +57,12 @@ export async function createPostgresServerStores(config) {
     },
     upsertContact:(key,patch)=>forTenant(key.split(':')[0]).upsertContact(key,patch),
     scheduleAction:action=>forTenant(action.tenantId).scheduleAction(action),
-    prune:async()=>{throw new Error('postgres_retention_not_released');},
+    prune:async options=>{
+      const {rows}=await pool.query('SELECT DISTINCT tenant_id FROM bookedradar.recovery_events WHERE tenant_id IS NOT NULL UNION SELECT DISTINCT tenant_id FROM bookedradar.recovery_actions');
+      const total={deletedEvents:0,deletedActions:0};
+      for(const row of rows){const r=await forTenant(row.tenant_id).prune(options);total.deletedEvents+=r.deletedEvents;total.deletedActions+=r.deletedActions;}
+      return total;
+    },
   };
   for(const [method,table,key] of [['getContact','recovery_contacts','contact_key'],['getOpportunity','recovery_opportunities','opportunity_id'],['patchOpportunity','recovery_opportunities','opportunity_id'],['patchAction','recovery_actions','action_id']])recovery[method]=async(id,...args)=>{
     const tenant=await owner(table,key,id);if(!tenant){if(method.startsWith('get'))return null;throw new Error('record_not_found');}return forTenant(tenant)[method](id,...args);
@@ -61,6 +72,7 @@ export async function createPostgresServerStores(config) {
   const transfers={load:noop,getCall:async id=>{const tenant=await owner('transfer_records','transfer_id',id);return tenant ? new PostgresTransferStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await owner('transfer_records','transfer_id',id);return new PostgresTransferStore(pool,tenant).patchCall(id,patch);}};
   return {pool,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
+    persistVoiceLead:args=>persistPostgresVoiceLead(pool,args),persistChatTurn:args=>persistPostgresChatTurn(pool,args),
     appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
     billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};
 }

@@ -43,6 +43,12 @@ test('real application HTTP routes use disposable Postgres with providers disabl
     assert.equal((await fetch(base+'/api/v1/public/growth-event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event:'page_view',trade:'hvac',source:'http-lab'})})).status,202);
     assert.equal((await stores.growth.summary()).counts['page_view|hvac|http-lab|default'],1);
     assert.equal((await stores.recovery.forTenant('demo-hvac').snapshot()).events.length,1);
+    const loadStarted=Date.now();
+    const loadResults=await Promise.all(Array.from({length:20},(_,i)=>fetch(base+'/api/v1/events',{method:'POST',headers:ingestHeaders,body:JSON.stringify({...event,id:`load-${i}`,idempotencyKey:`load-${i}`})})));
+    for(const response of loadResults)assert.equal(response.status,201,await response.clone().text());
+    assert.equal((await stores.recovery.forTenant('demo-hvac').snapshot()).events.length,21);
+    assert.equal((await fetch(base+'/health')).status,200);
+    console.log(JSON.stringify({event:'synthetic.storage_load',concurrentRequests:20,elapsedMs:Date.now()-loadStarted,allCommitted:true}));
     for(const key of ['STATE_FILE','RECOVERY_STATE_FILE','CALL_HISTORY_FILE','GROWTH_METRICS_FILE'])await assert.rejects(fs.stat(env[key]),{code:'ENOENT'});
   } finally {
     if(child && child.exitCode===null){const exited=once(child,'exit');child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),3000);await exited;clearTimeout(timer);}

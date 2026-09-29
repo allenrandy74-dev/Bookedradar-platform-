@@ -250,3 +250,22 @@ atomic coordination of chat/lead capture with opportunity creation, provider
 retry/reconciliation behavior, billing provider failure cases, load targets,
 independent backup and enforced drain/final synchronization. The lab selector
 is not a released production backend.
+
+## Cross-store persistence and maintenance
+
+Voice lead persistence commits the lead capture, contact/opportunity changes
+and call-state pointer together. Chat commits recovery work and the revision-
+checked session together. Provider/AI requests stay outside the database unit
+of work. Nested adapter transactions use savepoints; a late error rolls back
+all stores. The Postgres branches of server capture/chat use these workflows.
+
+Admin aggregate call summaries use a fresh database view. Recovery retention
+now deletes expired events and terminal actions in tenant-locked transactions,
+preserves unresolved sends, and retains reconciliation audit events for at
+least the action-retention period. Invalid retention periods are rejected.
+Orphaned records without a tenant are preserved for explicit review.
+
+Tests force a final call-state write failure and a stale chat revision, proving
+that preceding lead/contact/opportunity work is rolled back. The HTTP suite
+also records a 20-request concurrent storage-ingestion check; this is not a
+real voice-call concurrency test or a production performance guarantee.

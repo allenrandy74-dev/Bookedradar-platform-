@@ -41,6 +41,12 @@ export class PostgresRecoveryStore {
       const result = structuredClone(await fn(store));
       if (write) for (const [key,table,pk,fields] of RECOVERY_TABLES) {
         const entries = key === 'events' ? store.data.events.map(item => [item.id,item]) : Object.entries(store.data[key]);
+        if (['events','actions'].includes(key)) {
+          const currentIds=new Set(entries.map(([id])=>id));
+          const priorIds=key==='events' ? before.events.map(e=>e.id) : Object.keys(before[key]);
+          const removed=priorIds.filter(id=>!currentIds.has(id));
+          if(removed.length)await client.query(`DELETE FROM bookedradar.${table} WHERE tenant_id=$1 AND ${pk}=ANY($2::text[])`,[this.tenantId,removed]);
+        }
         for (const [id,item] of entries) {
           const previous = key === 'events' ? before.events.find(e => e.id === id) : before[key][id];
           if (JSON.stringify(previous) === JSON.stringify(item)) continue;
@@ -97,6 +103,16 @@ export class PostgresRecoveryStore {
     });
   }
   failedActions() { return this.#transaction(store=>store.failedActions(this.tenantId),false); }
+  prune(options={}) {
+    const {now=new Date(),eventRetentionDays=90,actionRetentionDays=180}=options;
+    if (![eventRetentionDays,actionRetentionDays].every(n=>Number.isFinite(n) && n>=1 && n<=3650) || !Number.isFinite(now.getTime())) throw new Error('retention_options_invalid');
+    return this.#transaction(async store=>{
+      const audit=store.data.events.filter(e=>e.type==='action_reconciled' && new Date(e.occurredAt).getTime()>=now.getTime()-actionRetentionDays*86400000);
+      const result=await store.prune({now,eventRetentionDays,actionRetentionDays});
+      for(const event of audit)if(!store.data.events.some(e=>e.id===event.id)){store.data.events.push(event);store.data.eventKeys[event.idempotencyKey || event.id]=event.id;result.deletedEvents--;}
+      return result;
+    });
+  }
   getOpportunity(id) { return this.#transaction(store => store.getOpportunity(id), false); }
   getContact(id) { return this.#transaction(store => store.getContact(id), false); }
   claimDueActions(options = {}) {
