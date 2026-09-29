@@ -239,3 +239,34 @@ test("migration audit rejects duplicate recovery idempotency keys and key-map mi
   const serialized = JSON.stringify(audit.errors);
   assert.equal(serialized.includes("phone-lead:demo-hvac:call_1"), false);
 });
+
+test("migration manifest preserves exact recovery eventKeys and transfer webhook receipts", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.events.unshift({
+    id: "legacy-event",
+    tenantId: "demo-hvac",
+    type: "manual_note",
+    occurredAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  snapshot.recovery.eventKeys["legacy-manual-key"] = "legacy-event";
+  snapshot.transfers.processedWebhooks = { "transfer-hook-1": Date.now() - 500 };
+
+  const manifest = buildPostgresMigrationManifest(snapshot);
+  assert.ok(manifest.rows.recoveryEventKeys.some(row =>
+    row.eventKey === "legacy-manual-key" &&
+    row.eventId === "legacy-event" &&
+    row.tenantId === "demo-hvac"
+  ));
+  assert.equal(manifest.rows.transferWebhookReceipts.length, 1);
+  assert.equal(manifest.rows.transferWebhookReceipts[0].webhookId, "transfer-hook-1");
+});
+
+test("migration audit rejects dangling recovery eventKeys and invalid transfer webhook timestamps", () => {
+  const snapshot = validSnapshot();
+  snapshot.recovery.eventKeys["dangling-key"] = "missing-event";
+  snapshot.transfers.processedWebhooks = { "bad-hook": 0 };
+  const audit = auditPostgresMigrationSnapshot(snapshot);
+  assert.equal(audit.ok, false);
+  assert.ok(audit.errors.some(x => x.code === "event_key_unknown_event"));
+  assert.ok(audit.errors.some(x => x.code === "transfer_webhook_invalid_timestamp"));
+});
