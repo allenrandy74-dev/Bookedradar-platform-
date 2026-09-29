@@ -172,7 +172,8 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
   await fs.writeFile(files.STATE_FILE, JSON.stringify(state));
   await fs.writeFile(files.RECOVERY_STATE_FILE, JSON.stringify(recovery));
   await fs.writeFile(files.CALL_HISTORY_FILE, JSON.stringify(callHistory));
-  await fs.writeFile(files.WEB_CHAT_STATE_FILE, JSON.stringify(webChat));
+  // Intentionally do not create web-chat.json: production has no WebChat
+  // sessions and WebChatStore defines a missing file as the canonical empty store.
   await fs.writeFile(files.GROWTH_METRICS_FILE, JSON.stringify(growth));
   await fs.writeFile(path.join(dataDir,"voice-transfers.json"), JSON.stringify(transfers));
   await fs.writeFile(path.join(dataDir,"billing-test-state.json"), JSON.stringify(billingTest));
@@ -203,6 +204,9 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.equal(result.reconciliation.ok, true);
     assert.equal(result.contentReconciliation.ok, true);
     assert.equal(result.contentReconciliation.sourceContentHash, result.contentReconciliation.postgresContentHash);
+    assert.notEqual(result.contentReconciliation.rawSourceContentHash, result.contentReconciliation.rawPostgresContentHash);
+    assert.deepEqual(result.contentReconciliation.sourceNormalizations, ["webChat:null_to_empty_store"]);
+    assert.deepEqual(result.contentReconciliation.postgresNormalizations, []);
 
     const eventOrder = await pool.query(
       "SELECT event_id,source_sequence FROM bookedradar.recovery_events ORDER BY source_sequence,event_id"
