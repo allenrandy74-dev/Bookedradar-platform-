@@ -77,6 +77,7 @@ import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
 import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit.js";
 import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js";
 import { runStartupMigrationDiff } from "./src/postgres-startup-migration-diff.js";
+import { runStartupPostgresSchemaInspection } from "./src/postgres-schema-inspection.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -135,6 +136,7 @@ const {
   POSTGRES_MIGRATION_AUDIT_ON_STARTUP = "false",
   POSTGRES_SHADOW_IMPORT_ON_STARTUP = "false",
   POSTGRES_MIGRATION_DIFF_ON_STARTUP = "false",
+  POSTGRES_SCHEMA_INSPECTION_ON_STARTUP = "false",
 } = process.env;
 
 const storageLabConfig = postgresLabConfig(process.env);
@@ -170,6 +172,12 @@ const postgresStartupShadowImport = await runStartupShadowImport({
 
 const postgresStartupMigrationDiff = await runStartupMigrationDiff({
   enabled: POSTGRES_MIGRATION_DIFF_ON_STARTUP.toLowerCase() === "true",
+  env: process.env,
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
+const postgresStartupSchemaInspection = await runStartupPostgresSchemaInspection({
+  enabled: POSTGRES_SCHEMA_INSPECTION_ON_STARTUP.toLowerCase() === "true",
   env: process.env,
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
@@ -2274,6 +2282,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       shadowImport: postgresStartupShadowImport,
       migrationDiffEnabled: POSTGRES_MIGRATION_DIFF_ON_STARTUP.toLowerCase() === "true",
       migrationDiff: postgresStartupMigrationDiff,
+      schemaInspectionEnabled: POSTGRES_SCHEMA_INSPECTION_ON_STARTUP.toLowerCase() === "true",
+      schemaInspection: postgresStartupSchemaInspection,
       authoritative: Boolean(postgresStores),
     },
   });
