@@ -1,5 +1,6 @@
 import { RecoveryStore } from './recovery/store.js';
 import { RecoveryEngine } from './recovery/engine.js';
+import { stableHash } from './postgres-migration-audit.js';
 
 export const RECOVERY_TABLES = [
   ['contacts','recovery_contacts','contact_key',{ updated_at:'updatedAt' }],
@@ -101,7 +102,34 @@ export class PostgresRecoveryStore {
     });
   }
   reconciliationActions() {
-    return this.#transaction(store => Object.values(store.data.actions).filter(action => ['dispatching','reconciliation_required'].includes(action.status)), false);
+    return this.#transaction(store => Object.values(store.data.actions).filter(action => ['dispatching','reconciliation_required'].includes(action.status)).map(action => ({...action,reconciliationRevision:stableHash(action)})), false);
+  }
+  reconcileAction(actionId, { decision,expectedRevision,resolutionId,evidence,actor } = {}, now = new Date()) {
+    if (!['confirmed_sent','cancelled'].includes(decision)) throw new Error('reconciliation_decision_invalid');
+    if (!/^[a-zA-Z0-9_-]{8,100}$/.test(resolutionId || '')) throw new Error('reconciliation_id_invalid');
+    if (!/^[a-f0-9]{64}$/.test(expectedRevision || '')) throw new Error('reconciliation_revision_required');
+    if (typeof actor !== 'string' || !actor.trim() || actor.length > 120) throw new Error('reconciliation_actor_required');
+    if (typeof evidence !== 'string' || !evidence.trim() || evidence.length > 1000) throw new Error('reconciliation_evidence_required');
+    return this.#transaction(async store => {
+      const current=store.data.actions[actionId];
+      if (!current) throw new Error('action_not_found');
+      const key=`reconcile:${this.tenantId}:${resolutionId}`;
+      const previous=store.data.events.find(event=>event.idempotencyKey===key);
+      if (previous) {
+        if (previous.actionId!==actionId || previous.decision!==decision || previous.evidence!==evidence || previous.actor!==actor) throw new Error('reconciliation_id_conflict');
+        return {action:current,duplicate:true};
+      }
+      if (!['dispatching','reconciliation_required'].includes(current.status) || stableHash(current)!==expectedRevision) throw new Error('stale_reconciliation_revision');
+      if (current.status==='dispatching' && current.claimExpiresAt && new Date(current.claimExpiresAt)>now) throw new Error('dispatch_still_active');
+      const resolvedAt=now.toISOString();
+      const action=await store.patchAction(actionId,{
+        status:decision==='confirmed_sent' ? 'completed' : 'cancelled',
+        completedAt:resolvedAt,claimedBy:null,claimedAt:null,claimExpiresAt:null,
+        reconciliation:{decision,evidence,actor,resolutionId,resolvedAt},
+      });
+      await store.addEvent({tenantId:this.tenantId,idempotencyKey:key,type:'action_reconciled',actionId,opportunityId:current.opportunityId,decision,evidence,actor,resolutionId,occurredAt:resolvedAt});
+      return {action,duplicate:false};
+    });
   }
   cancelPendingActions(id, options) { return this.#transaction(store => store.cancelPendingActions(id, options)); }
 }

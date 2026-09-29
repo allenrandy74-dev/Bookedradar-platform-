@@ -206,3 +206,20 @@ No provider request is made in tests. Legacy JSON dispatcher behavior remains
 unchanged. Server selection and the operator reconciliation route are still
 pending. Internal retries inside each provider adapter must also be reviewed
 before enabling the Postgres dispatcher in production.
+
+## Operator reconciliation API
+
+The server mounts admin-authenticated, tenant-scoped list and resolution routes
+at `GET /api/v1/actions/reconciliation` and
+`POST /api/v1/actions/:id/reconcile`. JSON mode returns 503 because it does not
+provide the Postgres reconciliation store. No database is silently selected.
+The generic completion endpoint rejects uncertain-send statuses.
+
+Resolution accepts only `confirmed_sent` or `cancelled`, a current revision,
+unique resolution ID and evidence note. It cannot requeue or send an action.
+Active worker leases and stale revisions are rejected. Resolution and its audit
+event commit together; identical request retries return the original decision.
+Conflicting reuse of a resolution ID is rejected. The audit actor identifies
+the authenticated admin API credential, not an individually verified human.
+The evidence is an operator attestation; the endpoint does not perform a
+provider lookup or independently verify the note.

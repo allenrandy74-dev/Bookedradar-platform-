@@ -65,5 +65,28 @@ test('real Postgres: application dispatcher fences sends and ambiguous outcomes'
       assert.deepEqual(await store.snapshot(),before);
       await pool.query('ALTER TABLE bookedradar.recovery_attribution DROP CONSTRAINT reject_booking');
     });
+    await t.test('operator resolution is tenant-scoped, revision-checked, audited and idempotent',async()=>{
+      const pending=(await store.reconciliationActions()).find(a=>a.status==='reconciliation_required');
+      const input={decision:'confirmed_sent',resolutionId:'resolve_timeout_1',expectedRevision:pending.reconciliationRevision,evidence:'Synthetic provider lookup confirms acceptance',actor:'synthetic_admin'};
+      await assert.rejects(new PostgresRecoveryStore(pool,'t2').reconcileAction(pending.id,input),/action_not_found/);
+      await assert.rejects(store.reconcileAction(pending.id,{...input,expectedRevision:'0'.repeat(64)}),/stale_reconciliation_revision/);
+      assert.throws(()=>store.reconcileAction(pending.id,{...input,decision:'retry'}),/reconciliation_decision_invalid/);
+      const competing={...input,decision:'cancelled',resolutionId:'resolve_timeout_2'};
+      const results=await Promise.allSettled([store.reconcileAction(pending.id,input),store.reconcileAction(pending.id,competing)]);
+      assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+      const index=results.findIndex(r=>r.status==='fulfilled');const winning=index===0 ? input : competing;
+      assert.equal((await store.reconcileAction(pending.id,winning)).duplicate,true);
+      await assert.rejects(store.reconcileAction(pending.id,{...winning,evidence:'Changed evidence'}),/reconciliation_id_conflict/);
+      const state=await store.snapshot();assert.equal(state.events.filter(e=>e.type==='action_reconciled').length,1);
+      assert.notEqual(state.actions[pending.id].status,'pending');
+      assert.ok(!(await store.reconciliationActions()).some(a=>a.id===pending.id));
+    });
+    await t.test('operator cannot resolve a send with an active worker lease',async()=>{
+      const action=await seed('active-resolution');
+      const claims=await store.claimDueActions({workerId:'active-review',leaseMs:60000});const claim=claims.find(a=>a.id===action.id);
+      await store.beginDispatch(action.id,claim);
+      const current=(await store.reconciliationActions()).find(a=>a.id===action.id);
+      await assert.rejects(store.reconcileAction(action.id,{decision:'cancelled',resolutionId:'active_resolution',expectedRevision:current.reconciliationRevision,evidence:'Synthetic review',actor:'synthetic_admin'}),/dispatch_still_active/);
+    });
   } finally {await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await pool.end();}
 });
