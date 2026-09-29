@@ -29,11 +29,13 @@ export function validateLabEnvironment(env) {
   if (env.OPENAI_PROJECT_ID !== 'proj_O0Mk7nAzTfe0AIys8Ukwd1cn') throw new Error('private_lab_openai_project_required');
   const numbers = JSON.parse(env.PRIVATE_VOICE_LAB_NUMBERS || '{}');
   if (env.VOICE_ENABLED === 'true') {
-    if (Object.keys(numbers).sort().join(',') !== [...CRAFTS].sort().join(',')) throw new Error('private_lab_five_routes_required');
-    const validation = validateSyntheticVoicePlan({callerId: env.PRIVATE_SYNTHETIC_CALLER_ID,
-      forbiddenNumbers: PUBLIC_NUMBERS,
-      targets: CRAFTS.map(craft => ({tenantId:`synthetic-${craft}`, to:numbers[craft], scenario:'Private route validation'}))});
-    if (!validation.ok) throw new Error(validation.error);
+    const entries = Object.entries(numbers);
+    if (!entries.length) throw new Error('private_lab_route_required');
+    if (entries.some(([craft]) => !CRAFTS.includes(craft))) throw new Error('private_lab_unknown_route');
+    const privateNumbers = entries.map(([, number]) => String(number || ''));
+    if (privateNumbers.some(number => !/^\\+[1-9]\\d{7,14}$/.test(number))) throw new Error('private_lab_route_invalid');
+    if (privateNumbers.some(number => PUBLIC_NUMBERS.includes(number))) throw new Error('public_demo_target_forbidden');
+    if (new Set(privateNumbers).size !== privateNumbers.length) throw new Error('duplicate_synthetic_target');
     if (!env.OPENAI_API_KEY || !env.OPENAI_WEBHOOK_SECRET) throw new Error('private_lab_voice_credentials_required');
   } else if (env.VOICE_ENABLED !== 'false') throw new Error('private_lab_voice_flag_required');
   return numbers;
