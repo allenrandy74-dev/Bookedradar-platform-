@@ -77,20 +77,30 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
         tenantId:tenant,
         contactKey,
         status:"open",
-        sourceEventId:"evt-1",
+        sourceEventId:"z-event",
         createdAt:iso,
         updatedAt:iso,
       },
     },
-    events: [{
-      id:"evt-1",
-      idempotencyKey:"evt-key-1",
-      tenantId:tenant,
-      type:"missed_call",
-      occurredAt:iso,
-      contactKey,
-    }],
-    eventKeys: { "evt-key-1":"evt-1" },
+    events: [
+      {
+        id:"z-event",
+        idempotencyKey:"evt-key-z",
+        tenantId:tenant,
+        type:"missed_call",
+        occurredAt:new Date(now-700).toISOString(),
+        contactKey,
+      },
+      {
+        id:"a-event",
+        idempotencyKey:"evt-key-a",
+        tenantId:tenant,
+        type:"customer_note",
+        occurredAt:new Date(now-600).toISOString(),
+        contactKey,
+      },
+    ],
+    eventKeys: { "evt-key-z":"z-event", "evt-key-a":"a-event" },
     actions: {
       "act-1": {
         id:"act-1",
@@ -190,6 +200,12 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.equal(result.reconciliation.ok, true);
     assert.equal(result.contentReconciliation.ok, true);
     assert.equal(result.contentReconciliation.sourceContentHash, result.contentReconciliation.postgresContentHash);
+
+    const eventOrder = await pool.query(
+      "SELECT event_id,source_sequence FROM bookedradar.recovery_events ORDER BY source_sequence,event_id"
+    );
+    assert.deepEqual(eventOrder.rows.map(row => row.event_id), ["z-event","a-event"]);
+    assert.deepEqual(eventOrder.rows.map(row => Number(row.source_sequence)), [0,1]);
 
     const migration = await pool.query(
       "SELECT status,validation FROM bookedradar.migration_runs WHERE migration_id=$1",
