@@ -59,10 +59,34 @@ function valueStats(source, postgres) {
   };
 }
 
+function storeStats(sourceValue, postgresValue) {
+  const source = object(sourceValue);
+  const postgres = object(postgresValue);
+  const sourceKeys = Object.keys(source);
+  const postgresKeys = Object.keys(postgres);
+  const sourceSet = new Set(sourceKeys);
+  const postgresSet = new Set(postgresKeys);
+  return {
+    equal: stableHash(sourceValue ?? null) === stableHash(postgresValue ?? null),
+    sourceKeyCount: sourceKeys.length,
+    postgresKeyCount: postgresKeys.length,
+    missingKeyCount: sourceKeys.filter(key => !postgresSet.has(key)).length,
+    extraKeyCount: postgresKeys.filter(key => !sourceSet.has(key)).length,
+    sourceHash: stableHash(sourceValue ?? null),
+    postgresHash: stableHash(postgresValue ?? null),
+  };
+}
+
 export function diagnoseMigrationDifference(sourceSnapshot = {}, postgresSnapshot = {}) {
   const source = sourceSnapshot || {};
   const postgres = postgresSnapshot || {};
   const components = {
+    stateWhole: storeStats(source.state, postgres.state),
+    callHistoryWhole: storeStats(source.callHistory, postgres.callHistory),
+    recoveryWhole: storeStats(source.recovery, postgres.recovery),
+    webChatWhole: storeStats(source.webChat, postgres.webChat),
+    transfersWhole: storeStats(source.transfers, postgres.transfers),
+    growthMetricsWhole: storeStats(source.growthMetrics, postgres.growthMetrics),
     stateProcessedWebhooks: mapStats(source.state?.processedWebhooks, postgres.state?.processedWebhooks),
     stateCalls: mapStats(source.state?.calls, postgres.state?.calls),
     callHistoryCalls: mapStats(source.callHistory?.calls, postgres.callHistory?.calls),
@@ -84,10 +108,21 @@ export function diagnoseMigrationDifference(sourceSnapshot = {}, postgresSnapsho
   const mismatches = Object.entries(components)
     .filter(([,stats]) => !stats.equal)
     .map(([component,stats]) => ({ component, ...stats }));
+  const sourceTopKeys = Object.keys(object(source));
+  const postgresTopKeys = Object.keys(object(postgres));
+  const sourceTopSet = new Set(sourceTopKeys);
+  const postgresTopSet = new Set(postgresTopKeys);
   return {
-    equal: mismatches.length === 0,
+    equal: stableHash(source) === stableHash(postgres),
+    logicalComponentsEqual: mismatches.length === 0,
     sourceHash: stableHash(source),
     postgresHash: stableHash(postgres),
+    topLevelShape: {
+      sourceKeyCount: sourceTopKeys.length,
+      postgresKeyCount: postgresTopKeys.length,
+      missingKeyCount: sourceTopKeys.filter(key => !postgresTopSet.has(key)).length,
+      extraKeyCount: postgresTopKeys.filter(key => !sourceTopSet.has(key)).length,
+    },
     mismatchCount: mismatches.length,
     mismatches,
   };
