@@ -85,6 +85,7 @@ import { runStartupMigrationDiff } from "./src/postgres-startup-migration-diff.j
 import { runStartupPostgresSchemaInspection } from "./src/postgres-schema-inspection.js";
 import { runStartupPostgresRestoreDrill } from "./src/postgres-startup-restore-drill.js";
 import { runStartupPostgresJsonRollback } from "./src/postgres-json-rollback.js";
+import { validateStatelessPostgresProduction } from "./src/stateless-production.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -149,9 +150,14 @@ const {
   POSTGRES_JSON_ROLLBACK_ON_STARTUP = "false",
   POSTGRES_JSON_ROLLBACK_ARMED = "false",
   POSTGRES_JSON_ROLLBACK_ID = "",
+  POSTGRES_STATELESS_MODE = "false",
 } = process.env;
 
 const storageBackendConfig = postgresBackendConfig(process.env);
+const statelessProduction = validateStatelessPostgresProduction({
+  ...process.env,
+  POSTGRES_STATELESS_MODE,
+});
 
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
 if (voiceEnabled && !OPENAI_API_KEY) {
@@ -187,7 +193,9 @@ if (
 }
 
 const postgresStartupMigrationAudit = await runStartupMigrationAudit({
-  enabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
+  enabled:
+    !statelessProduction.enabled &&
+    POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
   env: process.env,
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
@@ -266,7 +274,7 @@ app.use('/stripe/webhook', express.raw({ type: 'application/json', limit: '256kb
 app.use(express.json({ limit: "256kb" }));
 
 let postgresProductionCutoverAudit = null;
-if (storageBackendConfig?.mode === "production") {
+if (storageBackendConfig?.mode === "production" && !statelessProduction.enabled) {
   postgresProductionCutoverAudit = await runStartupMigrationAudit({
     enabled: true,
     env: process.env,
@@ -2354,6 +2362,7 @@ app.get("/ready", requireAdmin, (_req, res) => {
       jsonRollback: postgresStartupJsonRollback,
       backendMode: postgresStores?.mode || "json",
       authoritative: Boolean(postgresStores),
+      stateless: statelessProduction,
       productionValidation: postgresStores?.productionValidation || null,
       cutoverSourceAudit: postgresProductionCutoverAudit
         ? {
