@@ -78,6 +78,7 @@ import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit
 import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js";
 import { runStartupMigrationDiff } from "./src/postgres-startup-migration-diff.js";
 import { runStartupPostgresSchemaInspection } from "./src/postgres-schema-inspection.js";
+import { runStartupPostgresRestoreDrill } from "./src/postgres-startup-restore-drill.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -137,6 +138,8 @@ const {
   POSTGRES_SHADOW_IMPORT_ON_STARTUP = "false",
   POSTGRES_MIGRATION_DIFF_ON_STARTUP = "false",
   POSTGRES_SCHEMA_INSPECTION_ON_STARTUP = "false",
+  POSTGRES_RESTORE_DRILL_ON_STARTUP = "false",
+  POSTGRES_RESTORE_DRILL_ID = "",
 } = process.env;
 
 const storageLabConfig = postgresLabConfig(process.env);
@@ -179,6 +182,15 @@ const postgresStartupMigrationDiff = await runStartupMigrationDiff({
 const postgresStartupSchemaInspection = await runStartupPostgresSchemaInspection({
   enabled: POSTGRES_SCHEMA_INSPECTION_ON_STARTUP.toLowerCase() === "true",
   env: process.env,
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
+const postgresStartupRestoreDrill = await runStartupPostgresRestoreDrill({
+  enabled: POSTGRES_RESTORE_DRILL_ON_STARTUP.toLowerCase() === "true",
+  env: {
+    ...process.env,
+    POSTGRES_RESTORE_DRILL_ID,
+  },
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 
@@ -2284,6 +2296,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       migrationDiff: postgresStartupMigrationDiff,
       schemaInspectionEnabled: POSTGRES_SCHEMA_INSPECTION_ON_STARTUP.toLowerCase() === "true",
       schemaInspection: postgresStartupSchemaInspection,
+      restoreDrillEnabled: POSTGRES_RESTORE_DRILL_ON_STARTUP.toLowerCase() === "true",
+      restoreDrill: postgresStartupRestoreDrill,
       authoritative: Boolean(postgresStores),
     },
   });
