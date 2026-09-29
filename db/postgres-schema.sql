@@ -115,6 +115,16 @@ CREATE INDEX IF NOT EXISTS recovery_events_opportunity_idx
 CREATE INDEX IF NOT EXISTS recovery_events_sequence_idx
   ON bookedradar.recovery_events (source_sequence);
 
+CREATE TABLE IF NOT EXISTS bookedradar.recovery_event_keys (
+  tenant_id text NOT NULL,
+  event_key text NOT NULL,
+  event_id text NOT NULL,
+  PRIMARY KEY (tenant_id, event_key)
+);
+
+CREATE INDEX IF NOT EXISTS recovery_event_keys_event_idx
+  ON bookedradar.recovery_event_keys (event_id);
+
 CREATE TABLE IF NOT EXISTS bookedradar.recovery_actions (
   action_id text PRIMARY KEY,
   tenant_id text NOT NULL,
@@ -170,6 +180,11 @@ CREATE TABLE IF NOT EXISTS bookedradar.transfer_records (
 
 CREATE INDEX IF NOT EXISTS transfer_records_call_idx
   ON bookedradar.transfer_records (call_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS bookedradar.transfer_webhook_receipts (
+  webhook_id text PRIMARY KEY,
+  received_at timestamptz NOT NULL
+);
 
 -- Stripe remains authoritative for Stripe objects. This table preserves only
 -- BookedRadar's local orchestration state during the first cutover.
