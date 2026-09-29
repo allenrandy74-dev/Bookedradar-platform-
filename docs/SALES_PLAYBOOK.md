@@ -39,7 +39,7 @@ If the business is interested:
 8. Activate only the agreed routing scope.
 
 ## Founding-customer pilot
-Recommended scope: after-hours and/or unanswered/overflow calls first.
+Proof Pilot scope: after-hours OR overflow calls.
 
 Before offering a commercial price, use the approved BookedRadar pricing sheet. Do not improvise discounts or contractual terms.
 
@@ -63,17 +63,12 @@ Use only the booking mode verified for that tenant. Confirm-only and live-bookin
 Each tenant must have an escalation/rollback path and pass readiness testing before customer traffic is enabled.
 
 ## Sales rule
-The sales process must never outrun the production readiness matrix. A feature can be demonstrated or sold only when its applicable configuration and acceptance tests have passed.
+Use the Package Matrix to distinguish purchased scope from activated capabilities. Demonstrate only the verified configuration. Describe included but gated capabilities with their remaining setup and acceptance requirements; never represent them as active.
 
-## Approved pilot boundary — September 24, 2026
-The $497/month Founding Partner Pilot covers the agreed call-answering, lead-capture,
-routing, follow-up and appointment-request workflow. The setup fee is waived for the
-first five qualified founding partners. It is not an unlimited-call or unlimited-usage
-plan. Volume, coverage hours, integrations and any separate usage costs must be stated
-in the customer order before signing or payment.
+## Current evaluation and paid-continuation boundary — September 29, 2026
 
-An appointment request is not a confirmed booking. Capture the preferred time and tell
-the caller the business will confirm availability. Full-time scheduling, direct calendar
-booking, technician assignment, travel-aware routing, dispatch and schedule optimization
-require a separate scope, setup quote, recurring price and customer-specific acceptance.
-No advanced-scheduling price or setup-fee waiver has been approved.
+The Proof Pilot is an evaluation for qualified businesses: after-hours OR overflow, up to 14 days or 25 real calls, whichever comes first. Customer scope, acceptance, human escalation and rollback come first. There is no automatic paid conversion or scope expansion.
+
+Paid continuation is a separate decision and order. RadarRecover is $497/month standard or $397/month for an approved Founding Partner, with founding setup waived where approved. Use `../SERVICE_SCOPE_AND_PRICING.md` for the full current ladder and setup fees. State coverage, usage, integrations and separate costs in the order; do not promise unlimited usage or surprise overage charges.
+
+Appointment requests remain confirm-only. RadarSchedule live calendar booking requires separate approval and acceptance. Technician assignment, travel-aware routing and full dispatch are custom RadarDispatch scope. Entitled features remain gated until their customer-specific setup, consent and acceptance checks pass.

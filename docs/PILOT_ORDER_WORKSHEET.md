@@ -2,19 +2,23 @@
 Preparation document, not an executed service agreement. Resolve every open field
 and complete the agreement/privacy review before offering it for signature or payment.
 
-## Confirmed offer
-Provider: BookedRadar LLC. Product: Founding Partner Pilot. Recurring fee: $497/month.
-Setup fee: waived only for the first five qualified founding partners.
-Included capability boundary: agreed answering, lead capture, routing, follow-up and
-appointment requests. Direct scheduling, dispatch and travel optimization excluded
-unless separately scoped, priced, implemented and accepted.
+## Select evaluation or paid continuation
+
+Provider: BookedRadar LLC.
+
+- [ ] Proof Pilot evaluation: after-hours OR overflow; maximum 14 days or 25 real calls, whichever comes first. No automatic paid conversion or expansion. Record any expressly agreed evaluation charges or provider costs.
+- [ ] Separate paid continuation: select RadarAnswer, RadarRecover, RadarGrow, RadarSchedule or custom RadarDispatch from `../SERVICE_SCOPE_AND_PRICING.md`. RadarRecover is $497/month standard or $397/month for an approved Founding Partner. Founding setup is waived where approved; custom dispatch is separately scoped.
+
+Record the selected package, approved price and current scope/version. Confirm live Stripe mappings before charging. Confirm-only appointment requests remain the default; live booking and dispatch require their own approval, integration and acceptance.
 
 ## Complete for each customer
 - Customer legal name, approver, billing contact and operational contact: OPEN.
 - Coverage hours, locations, inbound number/routing, supported integrations: OPEN.
 - Included call/minute/message usage and measurement source: OPEN.
 - Separate usage charges, rate basis, approval/cap and invoice presentation: OPEN.
-- Qualification and founder slot recorded by an operator: OPEN.
+- Founding qualification and availability confirmed by an operator, if applicable: OPEN.
+- Evaluation start time, call/time caps, review date, stop conditions and rollback owner: OPEN.
+- Separate paid continuation decision and authorization after evaluation: OPEN.
 - Activation/acceptance date and subscription billing start: OPEN.
 - Initial commitment, renewal, cancellation notice and effective date: OPEN.
 - Refund/credit policy and treatment of cancelled unused time: OPEN.
@@ -29,8 +33,7 @@ No unlimited-use language, guaranteed revenue, guaranteed booking or unsupported
 features. No unapproved automatic overage charges. No phone-service suspension on a
 first failed payment. Customer accepts the actual configured workflow before traffic
 activation. Confirm cancellation affects both subscription billing and operational
-routing according to the final agreement; the current test integration changes neither
-live routing nor live customer access.
+routing according to the final agreement; billing state alone does not authorize a change to customer routing.
 
 ## Review responsibilities
 Randy approves commercial limits, pricing and operational commitments. Counsel reviews
