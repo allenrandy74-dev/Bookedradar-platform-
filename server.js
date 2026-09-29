@@ -38,6 +38,7 @@ import {
   postgresBackendConfig,
   createPostgresServerStores,
   providerAdaptersEnabledForStorage,
+  validateProductionCutoverSourceAudit,
 } from "./src/postgres-server-stores.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import {
@@ -256,15 +257,10 @@ if (storageBackendConfig?.mode === "production") {
       ...fields,
     })),
   });
-  if (!postgresProductionCutoverAudit?.ok) {
-    throw new Error("postgres_cutover_source_audit_failed");
-  }
-  if (
-    String(postgresProductionCutoverAudit.snapshotFingerprint || "").toLowerCase() !==
-    String(storageBackendConfig.snapshotFingerprint || "").toLowerCase()
-  ) {
-    throw new Error("postgres_cutover_source_fingerprint_mismatch");
-  }
+  validateProductionCutoverSourceAudit(
+    postgresProductionCutoverAudit,
+    storageBackendConfig.snapshotFingerprint
+  );
 }
 
 const postgresStores = storageBackendConfig ? await createPostgresServerStores(storageBackendConfig) : null;
