@@ -65,6 +65,14 @@ export class PostgresRecoveryStore {
     if (tenant?.tenantId !== this.tenantId || (event.tenantId && event.tenantId !== this.tenantId)) throw new Error('recovery_tenant_conflict');
     return this.#transaction(store => new RecoveryEngine({ store, tenant }).ingest({ ...event,tenantId:this.tenantId }));
   }
+  markRecovered(id, options, tenant) {
+    if (tenant?.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
+    return this.#transaction(store => new RecoveryEngine({store,tenant}).markRecovered(id,options));
+  }
+  evaluateDueActions(now, tenant) {
+    if (tenant?.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
+    return this.#transaction(store => new RecoveryEngine({store,tenant}).dueActions(now));
+  }
   snapshot() { return this.#transaction(store => store.snapshot(), false); }
   getOpportunity(id) { return this.#transaction(store => store.getOpportunity(id), false); }
   getContact(id) { return this.#transaction(store => store.getContact(id), false); }
