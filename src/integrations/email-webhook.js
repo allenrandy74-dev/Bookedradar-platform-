@@ -1,5 +1,6 @@
 export class EmailWebhookAdapter {
-  constructor({ url, token = "" }) {
+  constructor({ url, token = "", timeoutMs = 8000 }) {
+    this.timeoutMs = Math.min(60000, Math.max(1, Number(timeoutMs) || 8000));
     this.url = url;
     this.token = token;
   }
@@ -10,6 +11,7 @@ export class EmailWebhookAdapter {
 
     const response = await fetch(this.url, {
       method: "POST",
+      signal: AbortSignal.timeout(this.timeoutMs),
       headers: {
         "Content-Type": "application/json",
         ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),

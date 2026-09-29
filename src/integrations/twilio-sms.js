@@ -3,7 +3,8 @@ function basicAuth(username, password) {
 }
 
 export class TwilioSmsAdapter {
-  constructor({ accountSid, authToken, fromNumber }) {
+  constructor({ accountSid, authToken, fromNumber, timeoutMs = 8000 }) {
+    this.timeoutMs = Math.min(60000, Math.max(1, Number(timeoutMs) || 8000));
     this.accountSid = accountSid;
     this.authToken = authToken;
     this.fromNumber = fromNumber;
@@ -26,6 +27,7 @@ export class TwilioSmsAdapter {
       `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(this.accountSid)}/Messages.json`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(this.timeoutMs),
         headers: {
           Authorization: `Basic ${basicAuth(this.accountSid, this.authToken)}`,
           "Content-Type": "application/x-www-form-urlencoded",

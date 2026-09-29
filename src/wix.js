@@ -10,7 +10,7 @@ function wixHeaders(apiKey, siteId) { return { Authorization: apiKey, "wix-site-
 async function readJson(response) { const text = await response.text(); if (!text) return null; try { return JSON.parse(text); } catch { return { raw: text }; } }
 async function wixFetch(url, options, { timeoutMs = 8000, retries = 3 } = {}) {
   return withRetry(async () => {
-    const response = await fetchWithTimeout(url, options, timeoutMs);
+    const response = await fetch(url, { ...options, signal: AbortSignal.timeout(Math.min(60000, Math.max(1, Number(timeoutMs) || 8000))) });
     const data = await readJson(response);
     if (!response.ok) throw new HttpError(`Wix request failed (${response.status})`, { status: response.status, body: data });
     return data;

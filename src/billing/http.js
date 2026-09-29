@@ -59,6 +59,7 @@ export async function createBilling({
   tenantProfile = null,
   defaultStateFile,
   stripeClient = null,
+  storeFactory = null,
 }) {
   if (env.BOOKEDRADAR_BILLING_ENABLED !== 'true') return null;
 
@@ -88,7 +89,7 @@ export async function createBilling({
     maxNetworkRetries: 1,
     timeout: 10000,
   });
-  const store = await new BillingStore(
+  const store = storeFactory ? await storeFactory(mode).load() : await new BillingStore(
     env.BILLING_STATE_FILE || defaultStateFile,
     { mode }
   ).load();

@@ -41,6 +41,7 @@ export class RecoveryEngine {
   }
 
   async ingest(event) {
+    if (typeof this.store.ingest === "function") return this.store.ingest(event, this.tenant);
     const storedEvent = await this.store.addEvent(event);
 
     if (storedEvent.duplicate) {
@@ -237,6 +238,9 @@ export class RecoveryEngine {
     bookingId = null,
     estimatedRecoveredValue = null,
   } = {}) {
+    if (typeof this.store.markRecovered === "function") {
+      return this.store.markRecovered(opportunityId, { bookingId, estimatedRecoveredValue }, this.tenant);
+    }
     const existing = await this.store.getOpportunity(opportunityId);
     if (!existing) throw new Error("Unknown opportunity");
     if (existing.tenantId !== this.tenant.tenantId) {
@@ -262,6 +266,7 @@ export class RecoveryEngine {
   }
 
   async dueActions(now = new Date()) {
+    if (typeof this.store.evaluateDueActions === "function") return this.store.evaluateDueActions(now, this.tenant);
     const due = await this.store.dueActions(now);
     const output = [];
 

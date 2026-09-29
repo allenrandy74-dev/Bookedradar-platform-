@@ -13,7 +13,8 @@ export class WixHumanTaskAdapter {
     this.retries = retries;
   }
 
-  async send({ action, contact, opportunity }) {
+  async send({ action, contact, opportunity, deliveryPolicy }) {
+    const sendRetries = deliveryPolicy === "single_attempt" ? 0 : this.retries;
     if (!this.apiKey || !this.siteId) {
       throw new Error("Wix human-task adapter is not configured");
     }
@@ -39,7 +40,7 @@ export class WixHumanTaskAdapter {
       siteId: this.siteId,
       lead,
       timeoutMs: this.timeoutMs,
-      retries: this.retries,
+      retries: sendRetries,
     });
 
     if (!contactResult.ok || !contactResult.contactId) {
@@ -53,7 +54,7 @@ export class WixHumanTaskAdapter {
       lead,
       dueInMinutes: 0,
       timeoutMs: this.timeoutMs,
-      retries: this.retries,
+      retries: sendRetries,
     });
 
     if (!taskResult.ok) {
