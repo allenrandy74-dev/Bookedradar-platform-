@@ -4,7 +4,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPostgresPool } from '../src/postgres-runtime.js';
 import { runPostgresShadowMigration } from './postgres-shadow-migrate.mjs';
-import { validateSyntheticVoicePlan } from '../src/private-synthetic-voice.js';
 
 export const LAB_NAME = 'bookedradar-private-voice-lab-20260929';
 export const LAB_DATABASE = 'bookedradar_private_voice_lab_20260929';
