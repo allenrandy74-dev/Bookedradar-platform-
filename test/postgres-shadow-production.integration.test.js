@@ -82,15 +82,27 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
         updatedAt:iso,
       },
     },
-    events: [{
-      id:"evt-1",
-      idempotencyKey:"evt-key-1",
-      tenantId:tenant,
-      type:"missed_call",
-      occurredAt:iso,
-      contactKey,
-    }],
-    eventKeys: { "evt-key-1":"evt-1" },
+    events: [
+      {
+        id:"evt-z",
+        tenantId:tenant,
+        type:"manual_note",
+        occurredAt:new Date(now-750).toISOString(),
+        contactKey,
+      },
+      {
+        id:"evt-1",
+        idempotencyKey:"evt-key-1",
+        tenantId:tenant,
+        type:"missed_call",
+        occurredAt:iso,
+        contactKey,
+      }
+    ],
+    eventKeys: {
+      "manual-explicit-key":"evt-z",
+      "evt-key-1":"evt-1"
+    },
     actions: {
       "act-1": {
         id:"act-1",
@@ -126,7 +138,7 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     },
   };
   const transfers = {
-    processedWebhooks:{},
+    processedWebhooks:{ "transfer-hook-1":now-250 },
     calls:{
       "transfer-1":{
         id:"transfer-1",
