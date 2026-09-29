@@ -252,7 +252,7 @@ test("migration manifest preserves recovery event sequence, eventKeys, and trans
 
   const manifest = buildPostgresMigrationManifest(snapshot);
   assert.equal(manifest.rows.recoveryEvents[0].eventId, "evt-z");
-  assert.equal(manifest.rows.recoveryEvents[0].sequenceNo, 0);
+  assert.equal(manifest.rows.recoveryEvents[0].sourceSequence, 0);
   assert.ok(manifest.rows.recoveryEventKeys.some(row =>
     row.eventKey === "manual-key" && row.eventId === "evt-z"
   ));
