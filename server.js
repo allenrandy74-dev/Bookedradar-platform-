@@ -75,6 +75,7 @@ import { assessVoiceHealth } from "./src/ops-health.js";
 import { assessCustomerHealth } from "./src/customer-health.js";
 import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
 import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit.js";
+import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js";
 import {
   competitiveFeaturesForTenant,
   competitiveFeatureGuidance,
@@ -131,6 +132,7 @@ const {
   POSTGRES_HEALTH_ON_STARTUP = "false",
   POSTGRES_HEALTH_TIMEOUT_MS = "5000",
   POSTGRES_MIGRATION_AUDIT_ON_STARTUP = "false",
+  POSTGRES_SHADOW_IMPORT_ON_STARTUP = "false",
 } = process.env;
 
 const storageLabConfig = postgresLabConfig(process.env);
@@ -154,6 +156,12 @@ const postgresStartupHealth = await runStartupPostgresHealth({
 
 const postgresStartupMigrationAudit = await runStartupMigrationAudit({
   enabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
+  env: process.env,
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+});
+
+const postgresStartupShadowImport = await runStartupShadowImport({
+  enabled: POSTGRES_SHADOW_IMPORT_ON_STARTUP.toLowerCase() === "true",
   env: process.env,
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
@@ -2254,6 +2262,8 @@ app.get("/ready", requireAdmin, (_req, res) => {
       startup: postgresStartupHealth,
       migrationAuditEnabled: POSTGRES_MIGRATION_AUDIT_ON_STARTUP.toLowerCase() === "true",
       migrationAudit: postgresStartupMigrationAudit,
+      shadowImportEnabled: POSTGRES_SHADOW_IMPORT_ON_STARTUP.toLowerCase() === "true",
+      shadowImport: postgresStartupShadowImport,
       authoritative: Boolean(postgresStores),
     },
   });

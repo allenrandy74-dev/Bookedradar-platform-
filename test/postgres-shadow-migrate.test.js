@@ -87,3 +87,20 @@ test("armed non-dry migration requires a database URL", async (t) => {
   assert.equal(result.databaseTouched, false);
   assert.equal(result.cutoverPerformed, false);
 });
+
+test("shadow migration refuses a changed production snapshot before touching Postgres", async (t) => {
+  const env = {
+    ...(await fixture(t)),
+    POSTGRES_MIGRATION_DRY_RUN: "false",
+    POSTGRES_MIGRATION_ARMED: "true",
+    POSTGRES_MIGRATION_EXPECTED_FINGERPRINT: "f".repeat(64),
+    DATABASE_URL: "postgresql://should-not-be-used.invalid/test",
+  };
+  const result = await runPostgresShadowMigration(env);
+  assert.equal(result.ok, false);
+  assert.equal(result.stage, "fingerprint");
+  assert.equal(result.error, "migration_snapshot_fingerprint_mismatch");
+  assert.equal(result.databaseTouched, false);
+  assert.equal(result.cutoverPerformed, false);
+  assert.match(result.actualFingerprint, /^[a-f0-9]{64}$/);
+});
