@@ -1,5 +1,7 @@
 const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 const SID_RE = /^CA[0-9a-f]{32}$/i;
+const MAX_TARGETS = 10;
+const CALL_TIME_LIMIT_SECONDS = 60;
 
 function escapeXml(value = "") {
   return String(value).replace(/[<>&"']/g, ch => ({
@@ -29,6 +31,13 @@ export function validateSyntheticVoicePlan({
   forbiddenNumbers = [],
   maxTargets = 10,
 } = {}) {
+  if (!Number.isInteger(maxTargets) || maxTargets < 1 || maxTargets > MAX_TARGETS) {
+    return { ok: false, error: "synthetic_target_limit_invalid" };
+  }
+  if (!Array.isArray(forbiddenNumbers) || !forbiddenNumbers.length ||
+      forbiddenNumbers.some(number => typeof number !== "string" || !PHONE_RE.test(number))) {
+    return { ok: false, error: "public_demo_exclusion_list_required" };
+  }
   if (!PHONE_RE.test(String(callerId || ""))) {
     return { ok: false, error: "synthetic_caller_id_invalid" };
   }
@@ -40,6 +49,9 @@ export function validateSyntheticVoicePlan({
   }
 
   const forbidden = new Set((forbiddenNumbers || []).map(String));
+  if (forbidden.has(callerId)) {
+    return { ok: false, error: "public_demo_caller_id_forbidden" };
+  }
   const seen = new Set();
 
   for (const target of targets) {
@@ -85,6 +97,8 @@ async function createTwilioCall({
         body: new URLSearchParams({
           To: target.to,
           From: callerId,
+          TimeLimit: String(CALL_TIME_LIMIT_SECONDS),
+          Timeout: "15",
           Twiml: buildSyntheticTwiml({
             scenario: target.scenario,
             initialPauseSeconds: target.initialPauseSeconds,
@@ -146,13 +160,14 @@ export async function runPrivateSyntheticVoice({
     scenario: String(target.scenario).slice(0, 800),
   }));
 
-  if (dryRun || !armed) {
+  if (dryRun !== false || armed !== true) {
     return {
       ok: true,
       dryRun: true,
       armed: Boolean(armed),
       callsCreated: 0,
       plan,
+      callTimeLimitSeconds: CALL_TIME_LIMIT_SECONDS,
     };
   }
 
@@ -183,6 +198,9 @@ export async function runPrivateSyntheticVoice({
     dryRun: false,
     armed: true,
     callsCreated: results.filter(item => item.ok).length,
+    // Creation/queue acceptance is not evidence of answered or overlapping calls.
+    evidenceLevel: "provider_call_creation_only",
+    callTimeLimitSeconds: CALL_TIME_LIMIT_SECONDS,
     results,
   };
 }

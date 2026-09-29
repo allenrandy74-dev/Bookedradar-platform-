@@ -7,10 +7,13 @@ The harness is intentionally fail-closed and is **not** a substitute for a dedic
 
 ## Hard safety rules
 - Public prospect demo numbers must be supplied as forbidden numbers and the harness refuses them.
+- An empty or malformed forbidden-number list is rejected, including in dry-run.
+- Public prospect demo numbers are also forbidden as the test caller ID.
 - Every target must use a tenant ID beginning with `synthetic-`.
 - The caller ID cannot equal a target.
 - Duplicate targets are rejected.
-- Maximum simultaneous targets defaults to 10.
+- At most 10 call-creation requests per run; configurable limits must be integers from 1 to 10. This is not a measurement of simultaneous connected calls.
+- Each request has a provider-enforced 60-second connected-call limit and a 15-second answer timeout.
 - The harness defaults to dry-run.
 - Real calls require **both**:
   - `PRIVATE_SYNTHETIC_VOICE_ARMED=true`
@@ -27,6 +30,48 @@ Before any real synthetic run:
 6. Run a dry-run and inspect the plan.
 7. Arm only for the controlled test window.
 8. Disarm immediately after the run.
+
+## September 29 preflight: no-interference requirement
+
+The current infrastructure inventory contains only the two-instance production
+Render service. A new telephone number routed through that service and its
+OpenAI project would still consume shared production capacity. Do not run a load
+test there to satisfy the requirement of no interference with prospect demos.
+
+The user approved a combined $25 cap for dedicated private Twilio numbers and
+Twilio/OpenAI test charges, followed by release of temporary numbers. That approval
+does not itself provision or authorize additional paid Render services.
+
+The proposed isolated test environment is:
+
+- A disposable Render service with two instances matching production compute.
+- A separate disposable PostgreSQL 18 database; no production data or database URL.
+- A separate OpenAI project, webhook and API credential, with verified account-level
+  quota headroom. Project separation alone does not establish independent quotas.
+- A dedicated Twilio test trunk, five unpublished destination numbers for the five
+  crafts, and a separate unpublished caller number. Verify account call-creation
+  and concurrent-call limits before any burst; leave the public trunk untouched.
+- Synthetic-only tenant configuration, with SMS, email, CRM, billing, transfers,
+  and dispatch disabled; do not inherit production destination credentials.
+
+Before purchasing anything, obtain approval for temporary Render compute/database
+charges within the same aggregate $25 cap and verify current provider prices.
+Reserve number provisioning costs, both Twilio call legs, OpenAI usage, taxes and
+a contingency before determining the call allowance. A project budget notification
+is not a hard spending stop. The 60-second call limit is not a dollar budget limit.
+
+Start with one private call. Verify routing, first audio, caller transcription,
+session closure and corresponding call records. Then test stages of two and five
+overlapping calls only if the earlier stage is clean and sufficient budget remains.
+Record actual connected intervals, not API submission overlap or queued status.
+Any unknown creation result must be reconciled against provider call records before
+retrying; an HTTP timeout does not prove that a call was not created.
+
+Stop escalation on a route mismatch, absent audio, session/provider error, uncertain
+spend, unexpected external action or production degradation. Reconcile final usage,
+release temporary numbers, remove the disposable environment and revoke its
+dedicated credentials. Report the highest clean observed concurrency as a tested
+lower bound, not a ceiling, unless a higher failing stage was safely measured.
 
 ## Environment
 Example only — do not commit real phone numbers or secrets:
