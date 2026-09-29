@@ -25,7 +25,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_REALTIME_MODEL
-        value: gpt-realtime
+        value: gpt-realtime-2.1
       - key: BOOKEDRADAR_ADMIN_TOKEN
         generateValue: true
       - key: BOOKEDRADAR_INGEST_TOKEN
