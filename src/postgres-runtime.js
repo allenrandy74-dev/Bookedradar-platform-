@@ -182,23 +182,28 @@ export async function importMigrationManifest(pool, manifest, {
     for (const row of manifest.rows.recoveryEvents || []) {
       await upsert(client,
         `INSERT INTO bookedradar.recovery_events
-          (event_id, source_sequence, tenant_id, idempotency_key, opportunity_id, contact_key, occurred_at, payload)
+          (event_id, sequence_no, tenant_id, idempotency_key, opportunity_id, contact_key, occurred_at, payload)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
          ON CONFLICT (event_id) DO UPDATE SET
-          source_sequence=EXCLUDED.source_sequence, tenant_id=EXCLUDED.tenant_id,
-          idempotency_key=EXCLUDED.idempotency_key, opportunity_id=EXCLUDED.opportunity_id,
-          contact_key=EXCLUDED.contact_key, occurred_at=EXCLUDED.occurred_at, payload=EXCLUDED.payload`,
-        [row.eventId, row.sourceSequence, row.tenantId, row.idempotencyKey, row.opportunityId, row.contactKey, row.occurredAt, JSON.stringify(row.payload || {})]
+          sequence_no=EXCLUDED.sequence_no,
+          tenant_id=EXCLUDED.tenant_id, idempotency_key=EXCLUDED.idempotency_key,
+          opportunity_id=EXCLUDED.opportunity_id, contact_key=EXCLUDED.contact_key,
+          occurred_at=EXCLUDED.occurred_at, payload=EXCLUDED.payload`,
+        [row.eventId, row.sequenceNo, row.tenantId, row.idempotencyKey, row.opportunityId, row.contactKey, row.occurredAt, JSON.stringify(row.payload || {})]
       );
     }
     counts.recoveryEvents = (manifest.rows.recoveryEvents || []).length;
-    await client.query(
-      `SELECT setval(
-         'bookedradar.recovery_event_sequence',
-         GREATEST(COALESCE((SELECT MAX(source_sequence) FROM bookedradar.recovery_events), -1) + 1, 1),
-         false
-       )`
-    );
+
+    await client.query("DELETE FROM bookedradar.recovery_event_keys");
+    for (const row of manifest.rows.recoveryEventKeys || []) {
+      await upsert(client,
+        `INSERT INTO bookedradar.recovery_event_keys (tenant_id, event_key, event_id)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (tenant_id, event_key) DO UPDATE SET event_id=EXCLUDED.event_id`,
+        [row.tenantId, row.eventKey, row.eventId]
+      );
+    }
+    counts.recoveryEventKeys = (manifest.rows.recoveryEventKeys || []).length;
 
     for (const row of manifest.rows.recoveryActions || []) {
       await upsert(client,
@@ -259,6 +264,17 @@ export async function importMigrationManifest(pool, manifest, {
     }
     counts.transferRecords = (manifest.rows.transferRecords || []).length;
 
+    await client.query("DELETE FROM bookedradar.transfer_webhook_receipts");
+    for (const row of manifest.rows.transferWebhookReceipts || []) {
+      await upsert(client,
+        `INSERT INTO bookedradar.transfer_webhook_receipts (webhook_id, received_at)
+         VALUES ($1,$2)
+         ON CONFLICT (webhook_id) DO UPDATE SET received_at=EXCLUDED.received_at`,
+        [row.webhookId,row.receivedAt]
+      );
+    }
+    counts.transferWebhookReceipts = (manifest.rows.transferWebhookReceipts || []).length;
+
     for (const row of manifest.rows.growthMetrics || []) {
       await upsert(client,
         `INSERT INTO bookedradar.growth_metrics
@@ -308,10 +324,12 @@ export async function reconcileMigration(pool, manifest) {
     contacts: (manifest.rows.contacts || []).length,
     opportunities: (manifest.rows.opportunities || []).length,
     recoveryEvents: (manifest.rows.recoveryEvents || []).length,
+    recoveryEventKeys: (manifest.rows.recoveryEventKeys || []).length,
     recoveryActions: (manifest.rows.recoveryActions || []).length,
     attribution: (manifest.rows.attribution || []).length,
     webChatSessions: (manifest.rows.webChatSessions || []).length,
     transferRecords: (manifest.rows.transferRecords || []).length,
+    transferWebhookReceipts: (manifest.rows.transferWebhookReceipts || []).length,
     growthMetrics: (manifest.rows.growthMetrics || []).length,
     billingState: (manifest.rows.billingState || []).length,
   };
@@ -325,10 +343,12 @@ export async function reconcileMigration(pool, manifest) {
     contacts: "SELECT count(*)::int AS count FROM bookedradar.recovery_contacts",
     opportunities: "SELECT count(*)::int AS count FROM bookedradar.recovery_opportunities",
     recoveryEvents: "SELECT count(*)::int AS count FROM bookedradar.recovery_events",
+    recoveryEventKeys: "SELECT count(*)::int AS count FROM bookedradar.recovery_event_keys",
     recoveryActions: "SELECT count(*)::int AS count FROM bookedradar.recovery_actions",
     attribution: "SELECT count(*)::int AS count FROM bookedradar.recovery_attribution",
     webChatSessions: "SELECT count(*)::int AS count FROM bookedradar.web_chat_sessions",
     transferRecords: "SELECT count(*)::int AS count FROM bookedradar.transfer_records",
+    transferWebhookReceipts: "SELECT count(*)::int AS count FROM bookedradar.transfer_webhook_receipts",
     growthMetrics: "SELECT count(*)::int AS count FROM bookedradar.growth_metrics",
     billingState: "SELECT count(*)::int AS count FROM bookedradar.billing_state",
   };

@@ -100,7 +100,7 @@ test("manifest import runs in one transaction and upserts every row family", asy
   manifest.rows.leads.push({ sourceKey: "lead1", tenantId: "demo-hvac", callId: "c1", capturedAt: now, payload: {} });
   manifest.rows.contacts.push({ contactKey: "demo-hvac:+14095550101", tenantId: "demo-hvac", updatedAt: now, payload: {} });
   manifest.rows.opportunities.push({ opportunityId: "o1", tenantId: "demo-hvac", contactKey: "demo-hvac:+14095550101", status: "open", createdAt: now, updatedAt: now, payload: {} });
-  manifest.rows.recoveryEvents.push({ eventId: "e1", sourceSequence: 0, tenantId: "demo-hvac", idempotencyKey: "k1", opportunityId: "o1", contactKey: null, occurredAt: now, payload: {} });
+  manifest.rows.recoveryEvents.push({ eventId: "e1", sequenceNo: 0, tenantId: "demo-hvac", idempotencyKey: "k1", opportunityId: "o1", contactKey: null, occurredAt: now, payload: {} });
   manifest.rows.recoveryActions.push({ actionId: "a1", tenantId: "demo-hvac", opportunityId: "o1", contactKey: null, channel: "human_task", status: "pending", dueAt: now, claimedBy: null, claimedAt: null, claimExpiresAt: null, createdAt: now, completedAt: null, payload: {} });
   manifest.rows.attribution.push({ opportunityId: "o1", tenantId: "demo-hvac", updatedAt: now, payload: {} });
   manifest.rows.webChatSessions.push({ sessionId: "s1", tenantId: "demo-hvac", opportunityId: "o1", createdAt: now, updatedAt: now, payload: {} });
@@ -120,9 +120,8 @@ test("manifest import runs in one transaction and upserts every row family", asy
   assert.ok(client.queries.some(q => q.sql.includes("bookedradar.lead_captures")));
   assert.ok(client.queries.some(q => q.sql.includes("bookedradar.billing_state")));
   const eventInsert = client.queries.find(q => q.sql.includes("INSERT INTO bookedradar.recovery_events"));
-  assert.ok(eventInsert.sql.includes("source_sequence"));
+  assert.ok(eventInsert.sql.includes("sequence_no"));
   assert.equal(eventInsert.values[1], 0);
-  assert.ok(client.queries.some(q => q.sql.includes("bookedradar.recovery_event_sequence")));
   assert.equal(client.queries.at(-1).sql, "COMMIT");
   assert.equal(client.released, true);
 });

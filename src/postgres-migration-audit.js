@@ -61,6 +61,7 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   const sessions = object(webChat.sessions);
   const transferRecords = object(transfers.calls || transfers.records || transfers);
   const processedWebhooks = object(state.processedWebhooks);
+  const transferProcessedWebhooks = object(transfers.processedWebhooks);
   const metricCounts = object(growth.counts);
 
   const opportunityTenant = new Map();
@@ -206,6 +207,16 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     }
   }
 
+  const eventIds = new Set(events.map(event => String(event?.id || "")).filter(Boolean));
+  for (const [eventKey,eventId] of Object.entries(eventKeyMap)) {
+    if (!eventIds.has(String(eventId))) {
+      issue(errors, "event_key_unknown_event", {
+        keyRef: safeRef(eventKey),
+        eventId: String(eventId),
+      });
+    }
+  }
+
   for (const [callId, call] of Object.entries(historyCalls)) {
     const tenantId = String(call?.tenantId || "");
     if (!tenantId) issue(errors, "call_history_missing_tenant", { callId });
@@ -283,6 +294,11 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
       issue(errors, "webhook_invalid_timestamp", { webhookId: id });
     }
   }
+  for (const [id, ts] of Object.entries(transferProcessedWebhooks)) {
+    if (!Number.isFinite(Number(ts)) || Number(ts) <= 0) {
+      issue(errors, "transfer_webhook_invalid_timestamp", { webhookId: id });
+    }
+  }
 
   for (const [key, value] of Object.entries(metricCounts)) {
     if (!Number.isFinite(Number(value)) || Number(value) < 0) {
@@ -308,10 +324,12 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     contacts: Object.keys(contacts).length,
     opportunities: Object.keys(opportunities).length,
     recoveryEvents: events.length,
+    recoveryEventKeys: Object.keys(object(recovery.eventKeys)).length,
     recoveryActions: Object.keys(actions).length,
     attributionRecords: Object.keys(attribution).length,
     webChatSessions: Object.keys(sessions).length,
     transferRecords: Object.keys(transferRecords).length,
+    transferProcessedWebhooks: Object.keys(transferProcessedWebhooks).length,
     growthMetricKeys: Object.keys(metricCounts).length,
     billingTestPresent: Boolean(billingTest),
     billingLivePresent: Boolean(billingLive),
@@ -427,9 +445,9 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         updatedAt: payload?.updatedAt || null,
         payload,
       })),
-      recoveryEvents: array(recovery.events).map((payload, sourceSequence) => ({
+      recoveryEvents: array(recovery.events).map((payload, sequenceNo) => ({
         eventId: String(payload?.id || ""),
-        sourceSequence,
+        sequenceNo,
         tenantId: eventTenant(payload),
         idempotencyKey: payload?.idempotencyKey || null,
         opportunityId: payload?.opportunityId || null,
@@ -437,6 +455,14 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         occurredAt: payload?.occurredAt || null,
         payload,
       })),
+      recoveryEventKeys: Object.entries(object(recovery.eventKeys)).map(([eventKey, eventId]) => {
+        const payload = array(recovery.events).find(item => String(item?.id || "") === String(eventId)) || {};
+        return {
+          tenantId: eventTenant(payload),
+          eventKey,
+          eventId: String(eventId),
+        };
+      }),
       recoveryActions: Object.entries(object(recovery.actions)).map(([actionId, payload]) => ({
         actionId,
         tenantId: String(payload?.tenantId || ""),
@@ -476,6 +502,10 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
           updatedAt: payload?.updatedAt ? new Date(Number(payload.updatedAt)).toISOString() : null,
           payload,
         })),
+      transferWebhookReceipts: Object.entries(object(transfers.processedWebhooks)).map(([webhookId, receivedAt]) => ({
+        webhookId,
+        receivedAt: new Date(Number(receivedAt)).toISOString(),
+      })),
       growthMetrics: Object.entries(object(snapshot.growthMetrics?.counts)).map(([metricKey, count]) => ({
         metricKey,
         metricCount: Number(count),
