@@ -192,6 +192,13 @@ export async function importMigrationManifest(pool, manifest, {
       );
     }
     counts.recoveryEvents = (manifest.rows.recoveryEvents || []).length;
+    await client.query(
+      `SELECT setval(
+         'bookedradar.recovery_event_sequence',
+         GREATEST(COALESCE((SELECT MAX(source_sequence) FROM bookedradar.recovery_events), -1) + 1, 1),
+         false
+       )`
+    );
 
     for (const row of manifest.rows.recoveryActions || []) {
       await upsert(client,
