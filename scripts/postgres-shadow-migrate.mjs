@@ -4,8 +4,10 @@ import { pathToFileURL } from "node:url";
 import {
   auditPostgresMigrationSnapshot,
   buildPostgresMigrationManifest,
+  stableHash,
 } from "../src/postgres-migration-audit.js";
 import { loadMigrationSnapshot } from "./postgres-migration-audit.mjs";
+import { readPostgresSnapshot } from "../src/postgres-full-export.js";
 import {
   applyPostgresSchema,
   createPostgresPool,
@@ -135,11 +137,49 @@ export async function runPostgresShadowMigration(env = process.env) {
       };
     }
 
+    const verificationClient = await pool.connect();
+    let postgresSnapshot;
+    try {
+      await verificationClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      postgresSnapshot = await readPostgresSnapshot(verificationClient);
+      await verificationClient.query("COMMIT");
+    } catch (error) {
+      try { await verificationClient.query("ROLLBACK"); } catch {}
+      throw error;
+    } finally {
+      verificationClient.release();
+    }
+
+    const sourceContentHash = stableHash(snapshot);
+    const postgresContentHash = stableHash(postgresSnapshot);
+    const contentReconciliation = {
+      ok: sourceContentHash === postgresContentHash,
+      sourceContentHash,
+      postgresContentHash,
+    };
+
+    if (!contentReconciliation.ok) {
+      return {
+        ok: false,
+        stage: "content_reconcile",
+        dryRun: false,
+        armed: true,
+        health,
+        audit,
+        imported,
+        reconciliation,
+        contentReconciliation,
+        error: "postgres_content_reconciliation_failed",
+        databaseTouched: true,
+        cutoverPerformed: false,
+      };
+    }
+
     await pool.query(
       `UPDATE bookedradar.migration_runs
        SET status='validated', validation=$2::jsonb, completed_at=COALESCE(completed_at, now())
        WHERE migration_id=$1`,
-      [migrationId, JSON.stringify(reconciliation)]
+      [migrationId, JSON.stringify({ tableCounts: reconciliation, content: contentReconciliation })]
     );
 
     return {
@@ -155,6 +195,7 @@ export async function runPostgresShadowMigration(env = process.env) {
       },
       imported,
       reconciliation,
+      contentReconciliation,
       databaseTouched: true,
       cutoverPerformed: false,
     };
