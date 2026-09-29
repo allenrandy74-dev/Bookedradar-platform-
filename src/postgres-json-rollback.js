@@ -166,8 +166,9 @@ export async function syncPostgresSnapshotToJson({
     { encoding:"utf8", mode:0o600 }
   );
 
-  let committed = false;
+  let commitStarted = false;
   try {
+    commitStarted = true;
     for (const target of targets) {
       const value = snapshot[target.valueKey];
       if (target.nullable && value == null) {
@@ -179,8 +180,6 @@ export async function syncPostgresSnapshotToJson({
       await fs.rename(temp, target.file);
       await fs.chmod(target.file, 0o600).catch(() => {});
     }
-    committed = true;
-
     const restored = await loadJsonSnapshot(env);
     const restoredHash = stableHash(restored);
     if (restoredHash !== sourceHash) {
@@ -199,8 +198,14 @@ export async function syncPostgresSnapshotToJson({
       postgresAuthoritative:false,
     };
   } catch (error) {
-    if (committed) {
-      await restoreBackup(targets, backupDir, manifest);
+    if (commitStarted) {
+      try {
+        await restoreBackup(targets, backupDir, manifest);
+      } catch (restoreError) {
+        const combined = new Error("postgres_json_rollback_restore_failed");
+        combined.cause = { original:error, restore:restoreError };
+        throw combined;
+      }
     }
     throw error;
   } finally {
