@@ -132,3 +132,58 @@ boundaries, redaction in both representations, atomic rollback after a forced
 normalized-row failure, the transcript bound, and identical restored JSON
 reports. `exportPostgresCallHistory` is an operator-only component export under
 the required writer freeze, not a full rollback or an independent backup.
+
+## Recovery, chat, transfers and metrics
+
+`PostgresRecoveryStore.ingest(event, tenant)` runs the existing recovery engine
+against a fresh tenant snapshot under a transaction-scoped tenant advisory lock.
+The event receipt, contact, opportunity, attribution and scheduled actions all
+commit together. Changed records cannot replace another tenant's IDs. Worker
+claims serialize within that tenant; `finishClaim` requires the same owner,
+claim timestamp and unexpired lease. An expired owner cannot complete a reclaimed
+action. This fences database completion, not a provider send already in flight.
+Provider dispatch still needs idempotency keys and outbox/failure reconciliation.
+
+Recovery loads a tenant snapshot and writes changed rows. It intentionally does
+not expose the legacy mutable global `data` cache or arbitrary `patchAction`.
+Dispatcher and operator readers must be adapted before runtime activation. All
+recovery writers must use the same locking protocol; a manual/import writer
+cannot safely run beside active workers.
+
+Chat updates require an expected revision; a stale AI response cannot replace a
+newer chat turn. The HTTP route must handle a revision conflict explicitly.
+Transfer updates merge under a record lock and retain tenant ownership. Growth
+counters increment atomically; counts are returned as text and summaries reject
+values outside JavaScript's exact integer range. These are deliberate API
+differences to handle during runtime integration.
+
+## Complete JSON reverse-export rehearsal
+
+`exportPostgresPlatform` reads all 14 application table families from one
+repeatable-read, read-only transaction, verifies normalized transcript rows,
+and writes up to nine current store files plus a SHA-256 manifest into a new
+private directory. Missing billing modes remain missing. It never overwrites
+the live data directory. The caller must enforce the writer freeze; the boolean
+assertion alone is not a production drain mechanism.
+
+The disposable PostgreSQL 18 test seeds every store, exports all files, checks
+hashes, opens the restored recovery/chat/metric files with legacy readers,
+reimports into a fresh schema, and compares the complete exported application
+snapshot. Individual suites also verify restored billing, call-state, lead and
+history behavior. The synthetic fixture contains no real customer records.
+
+This preserves application JSON state, not every database implementation detail:
+lead sequence IDs, migration logs and per-metric SQL update timestamps are not
+part of the original JSON contract. Recovery events are deterministically
+ordered by event ID. A future database-to-database backup must use database
+backup/restore facilities. Export files on the same disk are not off-site backups.
+
+## Production activation remains disabled
+
+All adapters in this PR are isolated implementations. `server.js` still selects
+JSON. Remaining required release work: replace global cache readers, wire each
+tenant-scoped API, integrate atomic recovery ingestion and fenced completion,
+handle chat revision conflicts, bound and reconcile provider operations, prove
+load targets, enforce a writer drain, take an independent verified backup,
+perform final synchronization/reconciliation, then select a controlled cutover.
+Passing the synthetic rehearsal does not authorize skipping these gates.
