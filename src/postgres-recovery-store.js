@@ -75,6 +75,28 @@ export class PostgresRecoveryStore {
     return this.#transaction(store => new RecoveryEngine({store,tenant}).dueActions(now));
   }
   snapshot() { return this.#transaction(store => store.snapshot(), false); }
+  upsertContact(key, patch) {
+    if (!key.startsWith(this.tenantId+':') || (patch.tenantId && patch.tenantId!==this.tenantId)) throw new Error('recovery_tenant_conflict');
+    return this.#transaction(store=>store.upsertContact(key,{...patch,tenantId:this.tenantId}));
+  }
+  patchOpportunity(id, patch) {
+    if (['id','tenantId','contactKey'].some(k=>k in patch)) throw new Error('opportunity_structural_patch_forbidden');
+    return this.#transaction(store=>store.patchOpportunity(id,patch));
+  }
+  scheduleAction(action) {
+    if (action.tenantId!==this.tenantId) throw new Error('recovery_tenant_conflict');
+    return this.#transaction(store=>store.scheduleAction(action));
+  }
+  patchAction(id,patch) {
+    return this.#transaction(async store=>{
+      const current=store.data.actions[id];
+      if (!current) throw new Error('action_not_found');
+      if (['processing','dispatching','reconciliation_required'].includes(current.status)) throw new Error('action_requires_fenced_completion');
+      if (['id','tenantId','opportunityId','contactKey','claimedBy','claimedAt','claimExpiresAt'].some(k=>k in patch) || !['completed','failed','blocked','cancelled'].includes(patch.status)) throw new Error('action_patch_invalid');
+      return store.patchAction(id,patch);
+    });
+  }
+  failedActions() { return this.#transaction(store=>store.failedActions(this.tenantId),false); }
   getOpportunity(id) { return this.#transaction(store => store.getOpportunity(id), false); }
   getContact(id) { return this.#transaction(store => store.getContact(id), false); }
   claimDueActions(options = {}) {

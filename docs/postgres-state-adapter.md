@@ -223,3 +223,30 @@ Conflicting reuse of a resolution ID is rejected. The audit actor identifies
 the authenticated admin API credential, not an individually verified human.
 The evidence is an operator attestation; the endpoint does not perform a
 provider lookup or independently verify the note.
+
+## Full-server application lab
+
+`BOOKEDRADAR_STORAGE_BACKEND` defaults to `json`. The only alternative in this
+release is `postgres_lab`: it requires a loopback PostgreSQL URL whose database
+is `bookedradar_test`, with voice, automatic dispatch, billing, provisioning,
+provider credentials and startup provider smoke tests disabled. `postgres` is
+rejected rather than accidentally enabling an unverified production cutover.
+
+The server selects Postgres implementations for state, history, recovery, chat,
+transfers, leads and metrics. Billing accepts an injected store factory but
+remains disabled in the lab. Recovery engine/dispatcher selection is scoped to
+the tenant. All lab dispatcher adapters are empty. Chat passes its revision to
+the store and returns HTTP 409 for a stale update. JSON call signatures remain
+compatible. The admin reconciliation routes now obtain a matching tenant store.
+
+The real-Postgres HTTP test launches the actual `server.js` with a clean
+environment, isolated file paths and external providers disabled. It checks
+health/readiness, event ingestion/replay, tenant-isolated call retrieval,
+reconciliation, disarmed dispatch and metric persistence. It also verifies
+that the selected stores did not create JSON persistence files.
+
+Remaining production gaps include retention, any unscoped aggregate reports,
+atomic coordination of chat/lead capture with opportunity creation, provider
+retry/reconciliation behavior, billing provider failure cases, load targets,
+independent backup and enforced drain/final synchronization. The lab selector
+is not a released production backend.

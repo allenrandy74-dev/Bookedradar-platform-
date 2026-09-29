@@ -34,6 +34,7 @@ import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.j
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { mountReconciliationRoutes } from "./src/recovery/reconciliation-http.js";
+import { postgresLabConfig, createPostgresServerStores } from "./src/postgres-server-stores.js";
 import { radarProof } from "./src/recovery/radarproof.js";
 import {
   cancellationBackfillCandidates,
@@ -130,6 +131,8 @@ const {
   POSTGRES_HEALTH_TIMEOUT_MS = "5000",
 } = process.env;
 
+const storageLabConfig = postgresLabConfig(process.env);
+
 const voiceEnabled = VOICE_ENABLED.toLowerCase() === "true";
 if (voiceEnabled && !OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY is required when VOICE_ENABLED=true.");
@@ -193,15 +196,16 @@ app.use("/openai/webhook", express.text({ type: "application/json", limit: "256k
 app.use('/stripe/webhook', express.raw({ type: 'application/json', limit: '256kb' }));
 app.use(express.json({ limit: "256kb" }));
 
-const state = new JsonStateStore(STATE_FILE);
+const postgresStores = storageLabConfig ? await createPostgresServerStores(storageLabConfig) : null;
+const state = postgresStores?.state || new JsonStateStore(STATE_FILE);
 await state.load();
 
-const growthMetrics = new GrowthMetricsStore(GROWTH_METRICS_FILE);
+const growthMetrics = postgresStores?.growth || new GrowthMetricsStore(GROWTH_METRICS_FILE);
 
-const recoveryStore = new RecoveryStore(RECOVERY_STATE_FILE);
+const recoveryStore = postgresStores?.recovery || new RecoveryStore(RECOVERY_STATE_FILE);
 await recoveryStore.load();
 
-const callHistory = new CallHistoryStore(CALL_HISTORY_FILE, {
+const callHistory = postgresStores?.callHistory || new CallHistoryStore(CALL_HISTORY_FILE, {
   retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
 });
 await callHistory.load();
@@ -224,7 +228,7 @@ if (ACCEPTANCE_AUDIT_ON_STARTUP.toLowerCase() === "true") {
   }
 }
 
-const webChatStore = new WebChatStore(WEB_CHAT_STATE_FILE, {
+const webChatStore = postgresStores?.webChat || new WebChatStore(WEB_CHAT_STATE_FILE, {
   retentionDays: Number(CALL_HISTORY_RETENTION_DAYS),
 });
 await webChatStore.load();
@@ -272,6 +276,7 @@ const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim(
 let billing = null;
 try {
 billing = await createBilling({
+  storeFactory: postgresStores?.billingStore,
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
   tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
   defaultStateFile: path.join(
@@ -306,7 +311,7 @@ app.get('/billing/return', (req, res) => {
   res.type('html').send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BookedRadar billing</title><h1>BookedRadar billing</h1><p>${message}</p><p>Returning to this page does not change telephone service.</p></html>`);
 });
 
-const transferStore = new JsonStateStore(path.join(path.dirname(STATE_FILE), "voice-transfers.json"));
+const transferStore = postgresStores?.transfers || new JsonStateStore(path.join(path.dirname(STATE_FILE), "voice-transfers.json"));
 await transferStore.load();
 const warmTransfer = createWarmTransfer({
   store: transferStore, registry,
@@ -413,7 +418,7 @@ function engineFor(tenant) {
   if (!engines.has(tenant.tenantId)) {
     engines.set(
       tenant.tenantId,
-      new RecoveryEngine({ store: recoveryStore, tenant })
+      new RecoveryEngine({ store: recoveryStore.forTenant?.(tenant.tenantId) || recoveryStore, tenant })
     );
   }
   return engines.get(tenant.tenantId);
@@ -432,13 +437,13 @@ async function latestOpenOpportunityForContact(tenantId, contactKey) {
 
 function dispatcherFor(tenant) {
   if (!dispatchers.has(tenant.tenantId)) {
-    const adapters = buildTenantAdapters(tenant, { timeoutMs, retries });
+    const adapters = postgresStores ? {} : buildTenantAdapters(tenant, { timeoutMs, retries });
     dispatchers.set(
       tenant.tenantId,
       {
         adapters,
         dispatcher: new ActionDispatcher({
-          store: recoveryStore,
+          store: recoveryStore.forTenant?.(tenant.tenantId) || recoveryStore,
           tenant,
           adapters,
           resolveContact: voiceContactResolver(state, tenant.tenantId),
@@ -664,10 +669,12 @@ async function executeTool({
     });
 
     try {
-      await appendLead(LEADS_FILE, {
+      const capturedLead = {
         ...lead,
         tenant_id: tenant.tenantId,
-      });
+      };
+      if (postgresStores) await postgresStores.appendLead(capturedLead);
+      else await appendLead(LEADS_FILE, capturedLead);
     } catch (error) {
       recordCallMilestone(callId, "lead.persist_failed", {
         ok: false,
@@ -1505,7 +1512,7 @@ app.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res)
       fields,
       messages,
       opportunityId,
-    });
+    }, { expectedRevision: session.revision || 0 });
 
     return res.json({
       ok: true,
@@ -1515,6 +1522,7 @@ app.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res)
       needsHuman: turn.needsHuman,
     });
   } catch (error) {
+    if (error?.message === "stale_chat_revision") return res.status(409).json({ ok: false, error: "chat_updated_retry_required" });
     console.error(JSON.stringify({
       event: "web_chat.failed",
       tenant_id: tenant.tenantId,
@@ -2186,6 +2194,7 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "bookedradar-platform",
+    storageBackend: postgresStores ? "postgres_lab" : "json",
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
@@ -2222,7 +2231,7 @@ app.get("/ready", requireAdmin, (_req, res) => {
       configured: Boolean(DATABASE_URL),
       healthCheckEnabled: POSTGRES_HEALTH_ON_STARTUP.toLowerCase() === "true",
       startup: postgresStartupHealth,
-      authoritative: false,
+      authoritative: Boolean(postgresStores),
     },
   });
 });
