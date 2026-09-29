@@ -1,0 +1,54 @@
+# Disposable internal voice lab. Deploy this path only; never the production render.yaml.
+# Approved aggregate budget is $25 including Twilio, OpenAI and Render; delete after the test window.
+services:
+  - type: web
+    name: bookedradar-private-voice-lab-20260929
+    runtime: docker
+    region: oregon
+    plan: starter
+    numInstances: 2
+    branch: lab/private-voice-runtime
+    autoDeployTrigger: 'off'
+    dockerCommand: node scripts/private-voice-lab-start.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: PRIVATE_VOICE_LAB
+        value: 'true'
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '5050'
+      - key: VOICE_ENABLED
+        value: 'false'
+      - key: OPENAI_PROJECT_ID
+        value: proj_O0Mk7nAzTfe0AIys8Ukwd1cn
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime-2.1
+      - key: BOOKEDRADAR_ADMIN_TOKEN
+        generateValue: true
+      - key: BOOKEDRADAR_INGEST_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookedradar-private-voice-lab-db-20260929
+          property: connectionString
+      - key: PRIVATE_VOICE_LAB_DATABASE_HOST
+        fromDatabase:
+          name: bookedradar-private-voice-lab-db-20260929
+          property: host
+      - key: DISPATCH_ENABLED
+        value: 'false'
+      - key: BOOKEDRADAR_BILLING_ENABLED
+        value: 'false'
+      - key: OPS_ALERTS_ENABLED
+        value: 'false'
+databases:
+  - name: bookedradar-private-voice-lab-db-20260929
+    databaseName: bookedradar_private_voice_lab_20260929
+    region: oregon
+    plan: basic-256mb
+    postgresMajorVersion: '18'
+    diskSizeGB: 1
+    ipAllowList: []
