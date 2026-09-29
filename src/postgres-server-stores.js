@@ -52,6 +52,23 @@ export function providerAdaptersEnabledForStorage(stores) {
   return !stores || stores.mode !== 'lab';
 }
 
+export function validateProductionCutoverSourceAudit(audit,expectedFingerprint) {
+  if (!audit?.ok) throw new Error('postgres_cutover_source_audit_failed');
+  if (
+    String(audit.snapshotFingerprint || '').toLowerCase() !==
+    String(expectedFingerprint || '').toLowerCase()
+  ) {
+    throw new Error('postgres_cutover_source_fingerprint_mismatch');
+  }
+  if (Number(audit.errorCount || 0) > 0 || Number(audit.warningCount || 0) > 0) {
+    throw new Error('postgres_cutover_source_audit_not_clean');
+  }
+  return {
+    ok:true,
+    snapshotFingerprint:String(audit.snapshotFingerprint).toLowerCase(),
+  };
+}
+
 export async function verifyValidatedProductionMigration(pool,{migrationId,snapshotFingerprint}={}) {
   const {rows}=await pool.query(
     `SELECT migration_id,source_snapshot_sha256,status,validation
