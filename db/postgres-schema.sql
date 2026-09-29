@@ -203,6 +203,23 @@ CREATE TABLE IF NOT EXISTS bookedradar.growth_metrics (
   payload jsonb NOT NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS bookedradar.ops_incidents (
+  incident_key text PRIMARY KEY,
+  scope_key text NOT NULL,
+  severity text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_notified_at timestamptz,
+  resolved_at timestamptz,
+  occurrences bigint NOT NULL DEFAULT 1,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS ops_incidents_scope_status_idx
+  ON bookedradar.ops_incidents (scope_key, status, last_seen_at DESC);
+
 CREATE TABLE IF NOT EXISTS bookedradar.migration_runs (
   migration_id text PRIMARY KEY,
   source_snapshot_sha256 text NOT NULL,
