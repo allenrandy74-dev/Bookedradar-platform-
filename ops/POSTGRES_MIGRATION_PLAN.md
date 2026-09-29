@@ -1,5 +1,7 @@
 # BookedRadar Managed Postgres Migration Plan
 
+> Historical migration procedure. As of September 29, 2026, production uses authoritative Postgres and two stateless application instances, per the handoff and public health evidence. References below to current JSON production describe the earlier migration phase. Do not re-run migration or shadow-import steps against current production. See [launch closeout](../docs/LAUNCH_CLOSEOUT_2026-09-29.md) and [pilot operations](../docs/PILOT_OPERATIONS_RUNBOOK.md) for current gates.
+
 ## Why
 Current production uses JSON/JSONL state on a persistent Render disk. That is suitable for a controlled pilot but creates a single-instance limitation and prevents zero-downtime deployments.
 
