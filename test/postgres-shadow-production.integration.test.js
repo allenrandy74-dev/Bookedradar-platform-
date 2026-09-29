@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { runPostgresShadowMigration } from "../scripts/postgres-shadow-migrate.mjs";
 import { loadMigrationSnapshot } from "../scripts/postgres-migration-audit.mjs";
 import { auditPostgresMigrationSnapshot } from "../src/postgres-migration-audit.js";
+import { PostgresRecoveryStore } from "../src/postgres-recovery-store.js";
 
 const connectionString = process.env.POSTGRES_TEST_URL;
 
@@ -202,6 +203,31 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.equal(result.reconciliation.ok, true);
     assert.equal(result.contentReconciliation.ok, true);
     assert.equal(result.contentReconciliation.sourceContentHash, result.contentReconciliation.postgresContentHash);
+
+    const eventOrder = await pool.query(
+      "SELECT event_id,source_sequence FROM bookedradar.recovery_events ORDER BY source_sequence,event_id"
+    );
+    assert.deepEqual(eventOrder.rows.map(row => row.event_id), ["evt-z","evt-1"]);
+    assert.deepEqual(eventOrder.rows.map(row => Number(row.source_sequence)), [0,1]);
+
+    const recoveryStore = new PostgresRecoveryStore(pool, tenant);
+    await recoveryStore.ingest({
+      id:"evt-runtime",
+      idempotencyKey:"evt-runtime-key",
+      type:"missed_call",
+      occurredAt:new Date(now+1000).toISOString(),
+      contact:{ phone:"+14095550112", transactionalSmsAllowed:true },
+    }, {
+      tenantId:tenant,
+      businessName:"Synthetic HVAC",
+      timeZone:"America/Chicago",
+      policies:{ sms:{ allowTransactionalWhenInbound:true } },
+      economics:{ defaultAverageJobValue:500 },
+    });
+    const nextSequence = await pool.query(
+      "SELECT source_sequence FROM bookedradar.recovery_events WHERE event_id='evt-runtime'"
+    );
+    assert.equal(Number(nextSequence.rows[0].source_sequence), 2);
 
     const migration = await pool.query(
       "SELECT status,validation FROM bookedradar.migration_runs WHERE migration_id=$1",
