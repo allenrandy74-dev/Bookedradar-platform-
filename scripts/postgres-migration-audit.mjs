@@ -29,7 +29,7 @@ export async function loadMigrationSnapshot(env = process.env) {
     state: await readJson(stateFile),
     recovery: await readJson(path.resolve(env.RECOVERY_STATE_FILE || "./data/recovery-state.json")),
     callHistory: await readJson(path.resolve(env.CALL_HISTORY_FILE || "./data/call-history.json")),
-    webChat: await readJson(path.resolve(env.WEB_CHAT_STATE_FILE || "./data/web-chat.json")),
+    webChat: (await readJson(path.resolve(env.WEB_CHAT_STATE_FILE || "./data/web-chat.json"))) || { sessions: {} },
     transfers: await readJson(path.join(dataDir, "voice-transfers.json")),
     growthMetrics: await readJson(path.resolve(env.GROWTH_METRICS_FILE || "./data/growth-metrics.json")),
     billingTest: await readJson(path.join(dataDir, "billing-test-state.json")),
