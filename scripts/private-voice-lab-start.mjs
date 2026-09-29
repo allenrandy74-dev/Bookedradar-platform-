@@ -81,6 +81,7 @@ export async function initializeLabDatabase(pool, root, databaseUrl) {
     }
     migrationEnv.LEADS_FILE=path.join(root,'leads.jsonl');
     await fs.writeFile(migrationEnv.LEADS_FILE,'');
+    await fs.writeFile(path.join(root,'voice-transfers.json'),JSON.stringify({processedWebhooks:{},calls:{}}));
     const migration=await runPostgresShadowMigration(migrationEnv);
     if(!migration.ok || migration.stage!=='validated_shadow') throw new Error(`private_lab_bootstrap_${migration.stage}_failed`);
     return migration.audit.snapshotFingerprint;
