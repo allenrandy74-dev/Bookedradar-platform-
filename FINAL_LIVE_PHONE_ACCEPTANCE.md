@@ -161,3 +161,33 @@ Before treating the current production image as freshly accepted, complete one c
 8. usable two-way audio after transfer.
 
 Until that call is observed and verified, report the September 25 acceptance as historical acceptance and the September 29 greeting-only call as owner QA evidence, not external customer activity and not full current-build acceptance.
+
+
+## Current production acceptance completed — September 29, 2026
+
+Randy reported completion of the requested controlled production acceptance call. Privacy-safe production telemetry for the corresponding `demo-plumbing` call independently verified the machine-observable path on production commit `cffd72019be7447e56692b70a2fb8cabae03de17`.
+
+Verified telemetry:
+- call accepted successfully and opening greeting audio began about 1.4 seconds after sideband readiness, without greeting retry;
+- lead persistence ultimately contained name and service address;
+- service type was captured as a clogged drain;
+- urgency was captured as `urgent`;
+- preferred timing was captured as `This afternoon`;
+- the same CRM contact and recovery opportunity were preserved as the lead was completed;
+- transfer was explicitly requested;
+- screened/warm transfer remained disabled and the proven fallback reported ready;
+- transfer companion SMS received provider acceptance;
+- the configured handoff delay ran for exactly 10,000 ms;
+- hold audio played and completed during the delay;
+- SIP REFER fallback was issued and the call was marked referred;
+- call control then ended cleanly with no stuck active call.
+
+One OpenAI Realtime notice, `response_cancel_not_active`, occurred immediately after transfer request. It did not interrupt lead persistence, companion SMS, hold playback, the 10-second delay, REFER, or call-control cleanup. The current transfer-hold implementation already attempts cancellation only when it has tracked an active conversation response, so this is retained as a non-blocking cleanup/race observation rather than used to reopen the accepted customer path.
+
+The final post-REFER listening result is handset-observable rather than visible to application telemetry. Randy's completion report is the owner confirmation for that human-observed leg.
+
+### Current-build result
+
+The core production voice path on commit `cffd72019be7447e56692b70a2fb8cabae03de17` is accepted for the proven scope: greeting, intake persistence, urgency/timing capture, CRM/recovery continuity, companion SMS, 10-second hold, and REFER human handoff.
+
+This acceptance does not arm billing, customer-facing recovery SMS, live dispatch, screened/warm transfer, or any optional feature that remains separately gated.
