@@ -107,9 +107,15 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   checks.push({ code: "human_escalation", ok: escalationReady });
   if (!escalationReady) add(blockers, "human_escalation", "Human escalation phone must be a valid E.164 number.");
 
+  const pilot = proofPilotReadiness(tenant?.commercial?.proofPilot || {});
   const safetyReady = Boolean(String(tenant?.escalation?.safetyRule || "").trim());
   checks.push({ code: "safety_rule", ok: safetyReady });
-  if (!safetyReady) add(warnings, "safety_rule", "No tenant-specific safety/escalation rule is configured.");
+  if (!safetyReady) {
+    add(pilot.enabled ? blockers : warnings, "safety_rule",
+      pilot.enabled
+        ? "A tenant-specific safety/escalation rule is required before Proof Pilot activation."
+        : "No tenant-specific safety/escalation rule is configured.");
+  }
 
   const transcriptRequested = tenant?.features?.transcriptHistory === true;
   const transcriptApproved = tenant?.policies?.transcriptRetentionApproved === true;
@@ -121,7 +127,6 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   checks.push({ code: "secret_isolation", ok: secretPrefixReady });
   if (!secretPrefixReady) add(blockers, "secret_isolation", "A tenant-specific secretsPrefix is required for isolated customer credentials.");
 
-  const pilot = proofPilotReadiness(tenant?.commercial?.proofPilot || {});
   checks.push({ code: "proof_pilot_scope", ok: pilot.ready });
   if (pilot.enabled && !pilot.ready) {
     for (const reason of pilot.blockers) {
