@@ -32,7 +32,7 @@ export function validateLabEnvironment(env) {
     if (!entries.length) throw new Error('private_lab_route_required');
     if (entries.some(([craft]) => !CRAFTS.includes(craft))) throw new Error('private_lab_unknown_route');
     const privateNumbers = entries.map(([, number]) => String(number || ''));
-    if (privateNumbers.some(number => !/^\\+[1-9]\\d{7,14}$/.test(number))) throw new Error('private_lab_route_invalid');
+    if (privateNumbers.some(number => !/^\+[1-9]\d{7,14}$/.test(number))) throw new Error('private_lab_route_invalid');
     if (privateNumbers.some(number => PUBLIC_NUMBERS.includes(number))) throw new Error('public_demo_target_forbidden');
     if (new Set(privateNumbers).size !== privateNumbers.length) throw new Error('duplicate_synthetic_target');
     if (!env.OPENAI_API_KEY || !env.OPENAI_WEBHOOK_SECRET) throw new Error('private_lab_voice_credentials_required');
