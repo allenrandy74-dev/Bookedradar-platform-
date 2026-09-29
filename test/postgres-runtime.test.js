@@ -187,3 +187,50 @@ test("postgres health returns database identity without credentials", async () =
   assert.equal(health.serverVersion, "18.0");
   assert.ok(Number.isFinite(health.latencyMs));
 });
+
+test("manifest import can participate in a caller-owned transaction without committing or releasing", async () => {
+  const manifest = emptyManifest();
+  const client = fakeClient();
+  const pool = {
+    async connect() {
+      throw new Error("pool_connect_should_not_run");
+    },
+  };
+
+  const result = await importMigrationManifest(pool, manifest, {
+    migrationId: "restore-owned-tx",
+    client,
+    manageTransaction: false,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.migrationId, "restore-owned-tx");
+  assert.equal(client.queries.some(q => q.sql === "BEGIN"), false);
+  assert.equal(client.queries.some(q => q.sql === "COMMIT"), false);
+  assert.equal(client.queries.some(q => q.sql === "ROLLBACK"), false);
+  assert.equal(client.released, false);
+  assert.ok(client.queries.some(q => q.sql.includes("bookedradar.migration_runs")));
+});
+
+test("caller-owned manifest import propagates failure without rolling back or releasing", async () => {
+  const manifest = emptyManifest();
+  manifest.rows.contacts.push({
+    contactKey: "demo-hvac:+14095550101",
+    tenantId: "demo-hvac",
+    updatedAt: new Date().toISOString(),
+    payload: {},
+  });
+  const client = fakeClient({ failOn: "bookedradar.recovery_contacts" });
+
+  await assert.rejects(
+    importMigrationManifest({}, manifest, {
+      migrationId: "restore-owned-failure",
+      client,
+      manageTransaction: false,
+    }),
+    /synthetic_db_failure/
+  );
+
+  assert.equal(client.queries.some(q => q.sql === "ROLLBACK"), false);
+  assert.equal(client.released, false);
+});
