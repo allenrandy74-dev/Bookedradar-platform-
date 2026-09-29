@@ -206,6 +206,15 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     }
   }
 
+  for (const [eventKey, mappedEventId] of Object.entries(eventKeyMap)) {
+    if (!seenEventIds.has(String(mappedEventId))) {
+      issue(errors, "event_key_unknown_event", {
+        keyRef: safeRef(eventKey),
+        mappedEventId: String(mappedEventId),
+      });
+    }
+  }
+
   for (const [callId, call] of Object.entries(historyCalls)) {
     const tenantId = String(call?.tenantId || "");
     if (!tenantId) issue(errors, "call_history_missing_tenant", { callId });
@@ -437,6 +446,14 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         occurredAt: payload?.occurredAt || null,
         payload,
       })),
+      recoveryEventKeys: Object.entries(object(recovery.eventKeys)).map(([eventKey, eventId]) => {
+        const event = array(recovery.events).find(item => String(item?.id || "") === String(eventId));
+        return {
+          tenantId: event ? eventTenant(event) : null,
+          eventKey,
+          eventId: String(eventId),
+        };
+      }),
       recoveryActions: Object.entries(object(recovery.actions)).map(([actionId, payload]) => ({
         actionId,
         tenantId: String(payload?.tenantId || ""),
@@ -476,6 +493,10 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
           updatedAt: payload?.updatedAt ? new Date(Number(payload.updatedAt)).toISOString() : null,
           payload,
         })),
+      transferWebhookReceipts: Object.entries(object(transfers.processedWebhooks)).map(([webhookId, receivedAt]) => ({
+        webhookId,
+        receivedAt: new Date(Number(receivedAt)).toISOString(),
+      })),
       growthMetrics: Object.entries(object(snapshot.growthMetrics?.counts)).map(([metricKey, count]) => ({
         metricKey,
         metricCount: Number(count),
