@@ -101,7 +101,11 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
         contactKey,
       },
     ],
-    eventKeys: { "evt-key-z":"z-event", "evt-key-a":"a-event" },
+    eventKeys: {
+      "evt-key-z":"z-event",
+      "evt-key-a":"a-event",
+      "legacy-alias":"z-event",
+    },
     actions: {
       "act-1": {
         id:"act-1",
@@ -137,7 +141,7 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     },
   };
   const transfers = {
-    processedWebhooks:{},
+    processedWebhooks:{ "transfer-wh-1": now - 250 },
     calls:{
       "transfer-1":{
         id:"transfer-1",
@@ -208,6 +212,22 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.deepEqual(eventOrder.rows.map(row => row.event_id), ["z-event","a-event"]);
     assert.deepEqual(eventOrder.rows.map(row => Number(row.source_sequence)), [0,1]);
 
+    const eventKeys = await pool.query(
+      "SELECT event_key,event_id FROM bookedradar.recovery_event_keys WHERE tenant_id=$1 ORDER BY event_key",
+      [tenant]
+    );
+    assert.deepEqual(
+      Object.fromEntries(eventKeys.rows.map(row => [row.event_key,row.event_id])),
+      recovery.eventKeys
+    );
+
+    const transferReceipts = await pool.query(
+      "SELECT webhook_id,received_at FROM bookedradar.transfer_webhook_receipts ORDER BY webhook_id"
+    );
+    assert.equal(transferReceipts.rows.length, 1);
+    assert.equal(transferReceipts.rows[0].webhook_id, "transfer-wh-1");
+    assert.equal(new Date(transferReceipts.rows[0].received_at).getTime(), now - 250);
+
     const recoveryStore = new PostgresRecoveryStore(pool, tenant);
     await recoveryStore.ingest({
       id:"m-event",
@@ -226,6 +246,9 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
       "SELECT source_sequence FROM bookedradar.recovery_events WHERE event_id='m-event'"
     );
     assert.equal(Number(futureSequence.rows[0].source_sequence), 2);
+    const afterIngest = await recoveryStore.snapshot();
+    assert.equal(afterIngest.eventKeys["legacy-alias"], "z-event");
+    assert.equal(afterIngest.eventKeys["evt-key-m"], "m-event");
 
     const migration = await pool.query(
       "SELECT status,validation FROM bookedradar.migration_runs WHERE migration_id=$1",
