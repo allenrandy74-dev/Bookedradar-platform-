@@ -1,5 +1,7 @@
 # BookedRadar Postgres Shadow Migration Runbook
 
+> Historical migration procedure. As of September 29, 2026, production uses authoritative Postgres and two stateless application instances, per the handoff and public health evidence. References below to current JSON production describe the earlier migration phase. Do not re-run migration or shadow-import steps against current production. See [launch closeout](../docs/LAUNCH_CLOSEOUT_2026-09-29.md) and [pilot operations](../docs/PILOT_OPERATIONS_RUNBOOK.md) for current gates.
+
 ## Objective
 Move BookedRadar toward managed Postgres without making the database authoritative until a full import and reconciliation have passed.
 

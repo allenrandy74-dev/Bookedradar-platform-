@@ -9,7 +9,15 @@
 **Email / phone:** ______________________________  
 **Service start date:** ______________________________  
 
-## 2. Selected BookedRadar package
+## 2. Selected paid-continuation package
+
+This order records paid service. A preceding Proof Pilot is a separate capped evaluation of up to 14 days or 25 real calls, whichever comes first. Completing that evaluation does not automatically execute this order, start billing or expand scope. Record a separate approval before paid continuation.
+
+**Prior Proof Pilot reference and review decision, if applicable:** ______________________________
+
+**Paid continuation authorized by / date:** ______________________________
+
+### Selected BookedRadar package
 
 Select one:
 

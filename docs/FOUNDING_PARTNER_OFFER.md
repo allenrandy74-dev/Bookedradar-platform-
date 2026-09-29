@@ -1,54 +1,35 @@
 # BookedRadar Founding Partner Offer
 
-## Public offer currently displayed
-**$497/month — Founding Partner Pilot**
+Updated September 29, 2026. Use `../SERVICE_SCOPE_AND_PRICING.md` and `../PACKAGE_MATRIX.md` for current scope. Verify live Stripe mappings before quoting or charging.
 
-- Setup fee waived for the first five qualified founding partners.
-- Direct usage costs may be separate.
-- Final scope depends on integrations, message/call volume, and operating complexity.
-- No revenue guarantees.
-- Public site currently describes the offer as available to the first five qualified partner businesses.
+## Proof Pilot evaluation
 
-## Pilot objective
-Prove that BookedRadar can fit the customer's real workflow and produce measurable operational value before expanding scope.
+For qualified businesses, start with after-hours OR overflow coverage for up to 14 days or 25 real calls, whichever comes first. Agree on baseline, scope, human escalation, acceptance and rollback before real traffic. Review actual successes, incomplete outcomes and failures at the end.
 
-## Recommended starting scope
-Prefer one or both:
-- After-hours calls
-- Unanswered/overflow calls
+The Proof Pilot does not automatically convert to paid service or expand scope. Any evaluation charges or provider-cost treatment must be explicitly agreed. The prices below are paid continuation offers, not the evaluation itself.
 
-Add other recovery channels only after the applicable integrations and customer-specific tests pass.
+## Paid continuation
 
-## Included pilot process
-1. Quick Start onboarding.
-2. Business-specific configuration.
-3. Required integration setup.
-4. Synthetic acceptance testing.
-5. Customer acceptance call.
-6. Controlled activation.
-7. First-week operational review.
-8. RadarProof monthly review where attribution data is available.
+| Package | Standard monthly | Founding Partner monthly | Founding setup |
+| --- | ---: | ---: | --- |
+| RadarAnswer | $149 | $149 | Waived where approved |
+| RadarRecover | $497 | $397 | Waived where approved |
+| RadarGrow | $697 | $597 | Waived where approved |
+| RadarSchedule | $897 | $797 | Waived where approved |
+| RadarDispatch | Custom | Custom | Separately scoped |
 
-## Commercial guardrails
-- Do not promise a specific number of leads, jobs, bookings, or revenue.
-- Do not label estimated opportunity value as confirmed revenue.
-- Do not include a feature in the customer's scope until its tenant-specific configuration and acceptance test pass.
-- Do not improvise discounts or special contract terms during sales conversations.
-- Direct usage-cost treatment must be stated clearly in the signed customer agreement.
-- Any change to the public $497 offer should be approved before sales materials are updated.
+Confirm qualification and terms in a separate customer order. Do not assume a founding slot or discount is approved. Standard setup fees and usage treatment are defined in the pricing document and signed order.
 
-## Before taking payment
-Business legal name, mailing address, LLC status, EIN/banking workflow, payment method, service agreement, cancellation terms, privacy/data handling disclosures, and applicable tax/accounting treatment must be finalized.
+## Scope and activation
 
-## Approved pilot boundary — September 24, 2026
-The $497/month Founding Partner Pilot covers the agreed call-answering, lead-capture,
-routing, follow-up and appointment-request workflow. The setup fee is waived for the
-first five qualified founding partners. It is not an unlimited-call or unlimited-usage
-plan. Volume, coverage hours, integrations and any separate usage costs must be stated
-in the customer order before signing or payment.
+A package includes capabilities subject to customer-specific provider, consent and acceptance requirements. Describe gated capabilities as included once activated. Confirm-only appointment requests remain the default. RadarSchedule live calendar booking needs separate approval, connected availability and acceptance. Technician assignment, travel-aware routing and full dispatch require custom RadarDispatch scope and pricing.
 
-An appointment request is not a confirmed booking. Capture the preferred time and tell
-the caller the business will confirm availability. Full-time scheduling, direct calendar
-booking, technician assignment, travel-aware routing, dispatch and schedule optimization
-require a separate scope, setup quote, recurring price and customer-specific acceptance.
-No advanced-scheduling price or setup-fee waiver has been approved.
+## Commercial rules
+
+- No guaranteed leads, bookings, human pickup or revenue.
+- No unlimited-use promise or surprise overage charges.
+- State coverage, volume allowance, integrations and approved separate costs before signature or payment.
+- Preserve human escalation and the tested rollback path.
+- Use source evidence for confirmed revenue; keep estimates separate.
+- Do not improvise discounts, expand scope or enable a feature merely because it is listed in a package.
+- Complete the customer order and required commercial review before payment. Live billing requires separate owner authorization and remains disarmed until then.

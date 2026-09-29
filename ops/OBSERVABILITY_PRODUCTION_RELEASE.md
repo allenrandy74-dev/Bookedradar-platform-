@@ -13,7 +13,7 @@ The changes add:
 - private Ops Health dashboard
 - no intended caller-facing prompt, routing, transfer, or package changes
 
-Because production currently runs one Render instance with persistent disk, a deployment can restart that single instance. Do not deploy casually while prospects may be testing.
+Production is documented as two stateless Render application instances with authoritative Postgres as of September 29, 2026. Verify current replica count, deployment behavior and active calls before changes; two replicas do not by themselves prove zero downtime. Preserve the accepted release while prospects may be testing.
 
 ## Pre-deploy gate
 All must be true:

@@ -36,6 +36,34 @@ test("complete confirm-only tenant is pilot ready", () => {
   assert.equal(result.blockers.length, 0);
 });
 
+test("approved Proof Pilot cannot activate without its customer-specific safety rule", () => {
+  const tenant = baseTenant();
+  tenant.commercial.proofPilot = {
+    enabled: true,
+    startAt: "2026-10-01T22:00:00Z",
+    durationDays: 14,
+    maxCalls: 25,
+    coverageMode: "after_hours",
+    customerApprovedScope: true,
+    baselineDocumented: true,
+    acceptancePassed: true,
+  };
+  tenant.escalation.safetyRule = " ";
+  const blocked = tenantReadiness(tenant, { env: {} });
+  assert.equal(blocked.ready, false);
+  assert.deepEqual(blocked.blockers.map(item => item.code), ["safety_rule"]);
+
+  tenant.escalation.safetyRule = "Use the customer's approved emergency guidance and human escalation.";
+  assert.equal(tenantReadiness(tenant, { env: {} }).status, "READY");
+
+  // Non-pilot drafts retain the existing warning while setup is being prepared.
+  tenant.commercial.proofPilot.enabled = false;
+  tenant.escalation.safetyRule = "";
+  const draft = tenantReadiness(tenant, { env: {} });
+  assert.equal(draft.ready, true);
+  assert.ok(draft.warnings.some(item => item.code === "safety_rule"));
+});
+
 test("enabled phone without route blocks activation", () => {
   const tenant = baseTenant();
   tenant.integrations.phone.inboundNumbers = [];

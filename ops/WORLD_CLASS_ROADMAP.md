@@ -21,9 +21,9 @@ Status: start immediately, no public-demo load testing.
 - Support queue with severity and ownership.
 
 ## Phase 3 — Remove single-instance state
-Current limitation: file-backed state on one Render instance with persistent disk.
+September 29 status: authoritative Postgres and two stateless application instances are documented; the original file-backed single-instance migration target is complete. Preserve migration evidence and verify current provider configuration before further infrastructure changes.
 
-Migration goal:
+Original migration goals (retain as verification criteria):
 - managed Postgres for durable operational/customer state,
 - stateless application instances,
 - transactional/idempotent writes,
@@ -33,7 +33,7 @@ Migration goal:
 Do not provision paid production infrastructure without explicit approval.
 
 ## Phase 4 — High availability
-After state migration:
+Next acceptance work after the documented state migration:
 - at least two application instances,
 - zero-downtime deploy strategy,
 - capacity/load tests on private infrastructure,

@@ -1,5 +1,5 @@
 # BookedRadar first-pilot operations runbook
-Status: procedure prepared; live alert delivery and production restore drill remain open.
+Status: updated September 29, 2026. Core production acceptance is recorded in the launch closeout. Customer-specific routing, delivery, cap control and recovery acceptance must be recorded separately.
 
 ## Before activation
 Record primary/backup operational contacts and support hours in the customer order.
@@ -26,15 +26,26 @@ Billing past_due is an operator attention state, not automatic permission to sus
 voice. Follow only the final customer agreement's notice and cure procedure.
 
 ## Backups and recovery
-The backup helper now encrypts state with AES-256-GCM and covers recovery, voice,
+Production uses authoritative Postgres; file archives are not live database backups. The handoff records a transactional Postgres restore drill and Postgres-to-JSON rollback evidence. Verify the current managed database backup schedule, retention, access, recovery targets and isolated restore evidence in Render before customer activation. Do not run startup migration, restore or rollback flags against production as a diagnostic.
+
+For historical/file-backed recovery, the backup helper encrypts state with AES-256-GCM and covers recovery, voice,
 lead, transfer, separate test/live billing, call history and web-chat state. A synthetic isolated restore passed, including wrong-key
-and overwrite rejection. Production restore acceptance remains OPEN.
+and overwrite rejection. Current provider backup configuration and customer recovery acceptance require fresh verification.
 Before launch, establish a protected backup destination, retention and access policy;
 include recovery state, voice state/transfer state, lead records, billing state and
 customer configuration. Never include API credentials in a customer-facing export.
 Record recovery-point/recovery-time targets and obtain an isolated restore demonstration.
 Do not restore an old state over a running service or replay notifications/payments.
 Verify tenant isolation, event markers and pending actions before any controlled restart.
+
+## Proof Pilot cap control — mandatory before activation
+The approved evaluation ends at 14 days or 25 calls, whichever occurs first, with only after-hours or overflow coverage. The `/api/v1/proof-pilot/status` endpoint calculates status; COMPLETE or PAUSED does not disconnect calls, reverse carrier forwarding or automatically disable intake. A dashboard label is not enforcement.
+
+Before activation, record the primary and backup routing operator, start/end times, count source, observation coverage, and tested customer-specific return route. Demonstrate a control that prevents new pilot calls past the agreed cap and safely returns callers to the original destination. If manual monitoring cannot reliably uphold the call cap, keep customer routing inactive until a separately reviewed admission/fallback control is implemented and accepted. Daily review alone cannot guarantee the cap. Do not reject incoming calls without a working customer fallback.
+
+At a critical failure or limit, the authorized operator uses the accepted return-route procedure, checks the effective routing and records the stop time and final count. Review failures against the pilot start time: the endpoint currently reads the tenant failed-action list, which can include older failures. Manual pause is supported by the status calculation but is not passed into this endpoint. Do not claim an operational pause until routing is verified.
+
+Ending an evaluation does not authorize billing or broader coverage. Paid continuation needs a separate approved service order and customer-specific activation.
 
 ## First week
 Review abnormal calls, missing intake, failed transfers, notification delivery, queue
@@ -46,7 +57,7 @@ Record: tenant; UTC/local time; symptom; call/event ID; provider delivery state;
 change/rollback; acceptance result. Keep personal information and credentials out of
 shared launch reports. Randy accepted the demo call tests on September 25 with the known possibility of transfer to the recipient's voicemail. Each new customer still needs its own acceptance; this does not establish guaranteed human pickup.
 
-## Backup tooling (operator only)
+## Legacy file-backed backup tooling (operator only)
 Use `npm run backup` only against a stopped writer or an isolated consistent snapshot.
 Set `BACKUP_QUIESCED=yes` only after establishing that condition; the helper does not
 pause the service itself. Do not stop production during Randy’s call tests.

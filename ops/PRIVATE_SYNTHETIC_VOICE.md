@@ -1,5 +1,7 @@
 # BookedRadar Private Synthetic Voice Testing
 
+> Current handoff update: a separate private two-instance Render lab, separate Postgres database and one unpublished test number were subsequently provisioned. Public lab health currently reports voice disabled and billing disabled. This supersedes the pre-provisioning inventory below; it does not prove end-to-end voice acceptance or spare provider quota. Inspect the current lab, PR #60, destinations and remaining aggregate $25 budget before any paid run. Do not recreate paid resources merely to follow the historical proposal.
+
 ## Purpose
 Exercise the live carrier/voice path without using public prospect demo numbers.
 
@@ -20,7 +22,7 @@ The harness is intentionally fail-closed and is **not** a substitute for a dedic
   - `PRIVATE_SYNTHETIC_VOICE_DRY_RUN=false`
 - No test numbers should be published or used in sales materials.
 
-## Required future infrastructure
+## Required infrastructure and per-run checks
 Before any real synthetic run:
 1. Provision unpublished test phone number(s) approved for internal use.
 2. Route them to dedicated `synthetic-*` tenant configurations.
@@ -31,9 +33,9 @@ Before any real synthetic run:
 7. Arm only for the controlled test window.
 8. Disarm immediately after the run.
 
-## September 29 preflight: no-interference requirement
+## Historical September 29 pre-provisioning preflight: no-interference requirement
 
-The current infrastructure inventory contains only the two-instance production
+The inventory at that earlier preflight contained only the two-instance production
 Render service. A new telephone number routed through that service and its
 OpenAI project would still consume shared production capacity. Do not run a load
 test there to satisfy the requirement of no interference with prospect demos.
