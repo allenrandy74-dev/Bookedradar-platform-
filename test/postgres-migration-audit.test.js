@@ -137,6 +137,7 @@ test("migration manifest preserves all store categories and normalizes event ten
   assert.equal(manifest.rows.opportunities.length, 1);
   assert.equal(manifest.rows.recoveryEvents.length, 1);
   assert.equal(manifest.rows.recoveryEvents[0].tenantId, "demo-hvac");
+  assert.equal(manifest.rows.recoveryEvents[0].sourceSequence, 0);
   assert.equal(manifest.rows.recoveryActions.length, 1);
   assert.equal(manifest.rows.attribution.length, 1);
   assert.equal(manifest.rows.webChatSessions.length, 1);
