@@ -61,6 +61,7 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   const sessions = object(webChat.sessions);
   const transferRecords = object(transfers.calls || transfers.records || transfers);
   const processedWebhooks = object(state.processedWebhooks);
+  const transferProcessedWebhooks = object(transfers.processedWebhooks);
   const metricCounts = object(growth.counts);
 
   const opportunityTenant = new Map();
@@ -308,10 +309,12 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     contacts: Object.keys(contacts).length,
     opportunities: Object.keys(opportunities).length,
     recoveryEvents: events.length,
+    recoveryEventKeys: Object.keys(object(recovery.eventKeys)).length,
     recoveryActions: Object.keys(actions).length,
     attributionRecords: Object.keys(attribution).length,
     webChatSessions: Object.keys(sessions).length,
     transferRecords: Object.keys(transferRecords).length,
+    transferProcessedWebhooks: Object.keys(transferProcessedWebhooks).length,
     growthMetricKeys: Object.keys(metricCounts).length,
     billingTestPresent: Boolean(billingTest),
     billingLivePresent: Boolean(billingLive),
@@ -427,8 +430,9 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         updatedAt: payload?.updatedAt || null,
         payload,
       })),
-      recoveryEvents: array(recovery.events).map(payload => ({
+      recoveryEvents: array(recovery.events).map((payload, sequenceNo) => ({
         eventId: String(payload?.id || ""),
+        sequenceNo,
         tenantId: eventTenant(payload),
         idempotencyKey: payload?.idempotencyKey || null,
         opportunityId: payload?.opportunityId || null,
@@ -436,6 +440,14 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
         occurredAt: payload?.occurredAt || null,
         payload,
       })),
+      recoveryEventKeys: Object.entries(object(recovery.eventKeys)).map(([eventKey, eventId]) => {
+        const payload = array(recovery.events).find(item => String(item?.id || "") === String(eventId)) || {};
+        return {
+          tenantId: eventTenant(payload),
+          eventKey,
+          eventId: String(eventId),
+        };
+      }),
       recoveryActions: Object.entries(object(recovery.actions)).map(([actionId, payload]) => ({
         actionId,
         tenantId: String(payload?.tenantId || ""),
@@ -475,6 +487,10 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
           updatedAt: payload?.updatedAt ? new Date(Number(payload.updatedAt)).toISOString() : null,
           payload,
         })),
+      transferWebhookReceipts: Object.entries(object(transfers.processedWebhooks)).map(([webhookId, receivedAt]) => ({
+        webhookId,
+        receivedAt: new Date(Number(receivedAt)).toISOString(),
+      })),
       growthMetrics: Object.entries(object(snapshot.growthMetrics?.counts)).map(([metricKey, count]) => ({
         metricKey,
         metricCount: Number(count),
