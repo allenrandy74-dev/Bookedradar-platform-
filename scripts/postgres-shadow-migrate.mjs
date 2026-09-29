@@ -50,6 +50,26 @@ export async function runPostgresShadowMigration(env = process.env) {
 
   const manifest = buildPostgresMigrationManifest(snapshot);
 
+  const expectedFingerprint = String(env.POSTGRES_MIGRATION_EXPECTED_FINGERPRINT || "").trim().toLowerCase();
+  if (expectedFingerprint && expectedFingerprint !== manifest.snapshotFingerprint.toLowerCase()) {
+    return {
+      ok: false,
+      stage: "fingerprint",
+      dryRun,
+      armed,
+      audit: {
+        counts: audit.counts,
+        warningCount: audit.warnings.length,
+        snapshotFingerprint: audit.snapshotFingerprint,
+      },
+      expectedFingerprint,
+      actualFingerprint: manifest.snapshotFingerprint,
+      error: "migration_snapshot_fingerprint_mismatch",
+      databaseTouched: false,
+      cutoverPerformed: false,
+    };
+  }
+
   if (dryRun || !armed) {
     return {
       ok: true,
