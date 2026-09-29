@@ -18,6 +18,7 @@ const EXPECTED_TABLES = [
   "billing_state",
   "growth_metrics",
   "migration_runs",
+  "ops_incidents",
 ];
 
 export async function inspectPostgresSchema(pool) {
