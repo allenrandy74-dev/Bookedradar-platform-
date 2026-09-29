@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   auditPostgresMigrationSnapshot,
   buildPostgresMigrationManifest,
+  normalizeMigrationSnapshotForContent,
+  stableHash,
 } from "../src/postgres-migration-audit.js";
 
 function validSnapshot() {
@@ -268,4 +270,25 @@ test("migration audit rejects eventKeys pointing to missing events and invalid t
   assert.equal(audit.ok, false);
   assert.ok(audit.errors.some(x => x.code === "event_key_unknown_event"));
   assert.ok(audit.errors.some(x => x.code === "transfer_webhook_invalid_timestamp"));
+});
+
+test("semantic content normalization is limited to an absent WebChat store", () => {
+  const source = { webChat: null, leads: [] };
+  const postgres = { webChat: { sessions: {} }, leads: [] };
+  assert.notEqual(stableHash(source), stableHash(postgres));
+
+  const normalizedSource = normalizeMigrationSnapshotForContent(source);
+  const normalizedPostgres = normalizeMigrationSnapshotForContent(postgres);
+  assert.deepEqual(normalizedSource.normalizations, ["webChat:null_to_empty_store"]);
+  assert.deepEqual(normalizedPostgres.normalizations, []);
+  assert.equal(stableHash(normalizedSource.snapshot), stableHash(normalizedPostgres.snapshot));
+
+  const nonEmpty = normalizeMigrationSnapshotForContent({
+    webChat: { sessions: { s1: { id: "s1" } } },
+  });
+  assert.deepEqual(nonEmpty.normalizations, []);
+  assert.notEqual(
+    stableHash(nonEmpty.snapshot),
+    stableHash(normalizeMigrationSnapshotForContent({ webChat: null }).snapshot)
+  );
 });
