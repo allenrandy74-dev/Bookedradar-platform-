@@ -30,11 +30,14 @@ test('all five isolated crafts validate without dialable transfer or customer ch
     assert.notEqual(source.tenantId,tenant.tenantId);
   }
 });
-test('armed lab routes reject public numbers and duplicate private destinations',()=>{
+test('armed lab supports staged private routes while rejecting public and duplicate destinations',()=>{
+  const oneRoute={hvac:'+14095550101'};
+  const armed={...env,VOICE_ENABLED:'true',OPENAI_API_KEY:'test-key',OPENAI_WEBHOOK_SECRET:'test-signature',PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify(oneRoute)};
+  assert.deepEqual(validateLabEnvironment(armed),oneRoute);
   const numbers=Object.fromEntries(CRAFTS.map((craft,i)=>[craft,`+1409555010${i+1}`]));
-  const armed={...env,VOICE_ENABLED:'true',OPENAI_API_KEY:'test-key',OPENAI_WEBHOOK_SECRET:'test-signature',PRIVATE_SYNTHETIC_CALLER_ID:'+14095550109',PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify(numbers)};
-  assert.deepEqual(validateLabEnvironment(armed),numbers);
-  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({...numbers,hvac:'+14092574186'})}),/public_demo_target/);
-  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({...numbers,hvac:numbers.plumbing})}),/duplicate/);
-  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_SYNTHETIC_CALLER_ID:'+14092574186'}),/public_demo_caller/);
+  assert.deepEqual(validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify(numbers)}),numbers);
+  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:'{}'}),/route_required/);
+  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({unknown:'+14095550108'})}),/unknown_route/);
+  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({hvac:'+14092574186'})}),/public_demo_target/);
+  assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({hvac:'+14095550101',plumbing:'+14095550101'})}),/duplicate/);
 });
