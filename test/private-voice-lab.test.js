@@ -15,7 +15,7 @@ test('private voice lab rejects production service and database settings',()=>{
 });
 test('private lab refuses customer integration credentials and dispatch',()=>{
   for(const change of [{TWILIO_AUTH_TOKEN:'secret'},{DEMO_HVAC_WIX_API_KEY:'secret'},{RESEND_API_KEY:'secret'},
-    {STRIPE_SECRET_KEY:'secret'},{DISPATCH_ENABLED:'true'},{OPS_ALERTS_ENABLED:'true'},
+    {STRIPE_SECRET_KEY:'secret'},{DISPATCH_ENABLED:'true'},{OPS_ALERTS_ENABLED:'true'},{POSTGRES_SHADOW_IMPORT_ON_STARTUP:'true'},{POSTGRES_RESTORE_DRILL_ON_STARTUP:'true'},{POSTGRES_JSON_ROLLBACK_ON_STARTUP:'true'},
     {DEMO_HVAC_HUMAN_TRANSFER_NUMBER:'+14095550100'}]) assert.throws(()=>validateLabEnvironment({...env,...change}),/external_integration/);
 });
 test('all five isolated crafts validate without dialable transfer or customer channels',async()=>{
@@ -40,4 +40,10 @@ test('armed lab supports staged private routes while rejecting public and duplic
   assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({unknown:'+14095550108'})}),/unknown_route/);
   assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({hvac:'+14092574186'})}),/public_demo_target/);
   assert.throws(()=>validateLabEnvironment({...armed,PRIVATE_VOICE_LAB_NUMBERS:JSON.stringify({hvac:'+14095550101',plumbing:'+14095550101'})}),/duplicate/);
+});
+
+test('lab guard refuses enabled action flags regardless of case or whitespace',()=>{
+  for(const key of ['POSTGRES_SHADOW_IMPORT_ON_STARTUP','POSTGRES_RESTORE_DRILL_ON_STARTUP','POSTGRES_JSON_ROLLBACK_ON_STARTUP','POSTGRES_MIGRATION_AUDIT_ON_STARTUP','CRM_SMOKE_TEST_ON_STARTUP','EMAIL_SMOKE_TEST_ON_STARTUP','E2E_SMOKE_TEST_ON_STARTUP','TWILIO_A2P_DIAGNOSTIC_ON_STARTUP','DISPATCH_ENABLED','BOOKEDRADAR_BILLING_ENABLED','OPS_ALERTS_ENABLED']) {
+    for(const value of ['TRUE','True',' true ']) assert.throws(()=>validateLabEnvironment({...env,[key]:value}),/external_integration/,`${key}=${value}`);
+  }
 });
