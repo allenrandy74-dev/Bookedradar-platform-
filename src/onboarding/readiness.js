@@ -20,7 +20,10 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   let selectedProfile = null;
   try {
-    selectedProfile = serviceProfile(tenant?.commercial?.serviceProfile || "");
+    const profileId = tenant?.commercial?.serviceProfile;
+    if (typeof profileId === "string" && profileId.trim()) {
+      selectedProfile = serviceProfile(profileId);
+    }
   } catch {}
   const profileReady = Boolean(selectedProfile);
   checks.push({ code: "service_profile", ok: profileReady });
@@ -145,6 +148,7 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   const ready = blockers.length === 0;
   return {
+    assessmentScope: "configuration_only",
     tenantId: tenant?.tenantId || null,
     businessName: tenant?.businessName || null,
     ready,
