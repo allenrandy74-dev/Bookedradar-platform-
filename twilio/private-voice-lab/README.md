@@ -1,8 +1,11 @@
 # Private voice fallback candidate
 
-**Not deployed or armed.** These three protected Twilio Functions are a separate
+These three protected Twilio Functions are a separate
 Programmable Voice route for one unpublished test number. They do not edit the
 existing production trunk or turn on the Render lab's voice flag.
+Deployment and live acceptance are tracked separately; this source is not proof
+of a successful AI connection. Keep both voice and call admission disabled
+between approved test windows.
 
 ## Intended path
 
@@ -18,6 +21,12 @@ existing production trunk or turn on the Render lab's voice flag.
    Admission closes two minutes before the window ends, leaving time for the
    SIP outcome callback. The admitted call makes one SIP `<Dial>` with a 15-second answer timeout
    and 60-second call limit. Every other request is rejected before SIP.
+   The Function carries the validated private destination in `P-Called-Party-ID`,
+   since the OpenAI project URI replaces the phone number in `To`. Deploy the
+   matching `src/operator.js` parser update to the isolated app before testing:
+   it reads that header only when neither `Diversion` nor `To` supplies a number.
+   A successful fallback call, including cellphone call screening, is not proof
+   that the AI accepted the SIP call or produced a greeting.
 3. The protected `/private-outcome` action ends a completed or canceled call.
    Only a validated `busy`, `failed` or `no-answer` SIP attempt with the admitted
    parent CallSid can atomically claim the run's fallback key and make one bounded
