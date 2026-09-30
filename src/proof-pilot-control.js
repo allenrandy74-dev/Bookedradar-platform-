@@ -51,7 +51,7 @@ export function proofPilotStatus(input = {}, {
   now = Date.now(),
   callsHandled = 0,
   criticalFailures = 0,
-  manuallyPaused = false,
+  manuallyPaused = input?.manuallyPaused === true,
   firstValueAt = "",
 } = {}) {
   const readiness = proofPilotReadiness(input);
