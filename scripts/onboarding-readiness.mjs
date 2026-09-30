@@ -12,7 +12,7 @@ for (const tenant of registry.list()) {
 }
 
 if (blocked) {
-  console.error(`${blocked} tenant(s) blocked from pilot activation.`);
+  console.error(`${blocked} tenant(s) have onboarding configuration blockers. Customer/provider acceptance is assessed separately.`);
   process.exit(1);
 }
-console.log(`All ${registry.list().length} tenant(s) pass onboarding readiness gates.`);
+console.log(`All ${registry.list().length} tenant(s) pass onboarding configuration checks. This does not establish customer/provider acceptance or authorize activation.`);
