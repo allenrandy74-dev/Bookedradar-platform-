@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {Pool} from 'pg';
 import {reserveProofPilotCall} from '../src/proof-pilot-admission.js';
 const connectionString=process.env.POSTGRES_TEST_URL;
@@ -49,6 +51,17 @@ test('real Postgres: pilot slots are bounded across concurrent instances, replay
     await t.test('legacy calls inside the pilot window count toward the cap',async()=>{
       await pool.query("INSERT INTO bookedradar.voice_calls(call_id,tenant_id,started_at,updated_at,payload) VALUES ('legacy','tenant-legacy',now(),now(),'{}')");
       assert.equal((await reserve('tenant-legacy','next',{maxCalls:1})).reason,'call_cap_reached');
+    });
+    await t.test('guarded lab rehearsal cleans only its fixtures and preserves prior rows',async()=>{
+      const before=(await pool.query('SELECT call_id,tenant_id,payload FROM bookedradar.voice_calls ORDER BY call_id')).rows;
+      const script=new URL('../scripts/pilot-lab-admission-check.mjs',import.meta.url).pathname;
+      const checkEnv={...process.env,DATABASE_URL:connectionString,PRIVATE_VOICE_LAB:'true',PRIVATE_VOICE_LAB_DATABASE_HOST:url.hostname,VOICE_ENABLED:'false',DISPATCH_ENABLED:'false',BOOKEDRADAR_BILLING_ENABLED:'false',OPS_ALERTS_ENABLED:'false'};
+      await assert.rejects(promisify(execFile)(process.execPath,[script,'--expected-host=wrong-host'],{env:checkEnv}),/explicit_lab_host_mismatch/);
+      await assert.rejects(promisify(execFile)(process.execPath,[script,`--expected-host=${url.hostname}`],{env:{...checkEnv,VOICE_ENABLED:'true'}}),/VOICE_ENABLED_must_be_disabled/);
+      const {stdout}=await promisify(execFile)(process.execPath,[script,`--expected-host=${url.hostname}`],{env:checkEnv});
+      const result=JSON.parse(stdout.trim());
+      assert.equal(result.ok,true);assert.equal(result.admitted,25);assert.equal(result.providerCalls,0);assert.equal(result.syntheticRowsRemaining,0);
+      assert.deepEqual((await pool.query('SELECT call_id,tenant_id,payload FROM bookedradar.voice_calls ORDER BY call_id')).rows,before);
     });
   }finally{await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await pool.end();}
 });
