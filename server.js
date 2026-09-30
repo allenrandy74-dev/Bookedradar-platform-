@@ -30,6 +30,7 @@ import {
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
+import { enforceProofPilotAdmission, pilotCriticalFailures } from "./src/proof-pilot-admission.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
@@ -1415,6 +1416,15 @@ async function handleIncomingCall(event) {
     return;
   }
 
+  const pilotAdmission = await enforceProofPilotAdmission({
+    tenant, callId, pool: postgresStores?.pool,
+    callerMasked: maskPhone(callerNumber), dialedMasked: maskPhone(dialedNumber),
+    reject: args => rejectRealtimeCall({ apiKey: OPENAI_API_KEY, ...args }),
+    end: id => callLifecycle.end(id),
+    log: fields => console.log(JSON.stringify(fields)),
+  });
+  if (pilotAdmission.handled) return;
+
   await state.patchCall(callId, {
     tenantId: tenant.tenantId,
     acceptedAt: Date.now(),
@@ -2165,10 +2175,7 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
     const callStats = await callHistory.statsSince(tenant.tenantId, startMs);
     const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs });
     const failedActions = await recoveryStore.failedActions(tenant.tenantId);
-    const criticalFailures = failedActions.filter(action =>
-      ["human_alert", "human_task"].includes(String(action.channel || "")) ||
-      String(action.lastError || "").toLowerCase().includes("transfer")
-    ).length;
+    const criticalFailures = pilotCriticalFailures(failedActions, config);
     const status = proofPilotStatus(config, {
       callsHandled: callStats.callsHandled,
       criticalFailures,
