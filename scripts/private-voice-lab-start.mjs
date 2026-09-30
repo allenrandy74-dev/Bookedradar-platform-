@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPostgresPool } from '../src/postgres-runtime.js';
-import { runPostgresShadowMigration } from './postgres-shadow-migrate.mjs';
+import { verifyValidatedProductionMigration } from '../src/postgres-server-stores.js';
 
 export const LAB_NAME = 'bookedradar-private-voice-lab-20260929';
 export const LAB_DATABASE = 'bookedradar_private_voice_lab_20260929';
@@ -21,8 +21,8 @@ export function validateLabEnvironment(env) {
   }
   const forbidden = Object.entries(env).filter(([key, value]) => value && (
     /(?:TWILIO_AUTH_TOKEN|WIX_API_KEY|RESEND_API_KEY|STRIPE_.*KEY|HUMAN_TRANSFER_NUMBER)/.test(key) ||
-    (/(?:SMOKE_TEST|DIAGNOSTIC|MIGRATION|ROLLBACK).*ON_STARTUP/.test(key) && value === 'true') ||
-    (['DISPATCH_ENABLED','BOOKEDRADAR_BILLING_ENABLED','OPS_ALERTS_ENABLED'].includes(key) && value === 'true')
+    (/(?:SMOKE_TEST|DIAGNOSTIC|MIGRATION|ROLLBACK|SHADOW_IMPORT|RESTORE_DRILL).*ON_STARTUP/.test(key) && String(value).trim().toLowerCase() === 'true') ||
+    (['DISPATCH_ENABLED','BOOKEDRADAR_BILLING_ENABLED','OPS_ALERTS_ENABLED'].includes(key) && String(value).trim().toLowerCase() === 'true')
   ));
   if (forbidden.length) throw new Error('private_lab_external_integration_forbidden');
   if (env.OPENAI_PROJECT_ID !== 'proj_O0Mk7nAzTfe0AIys8Ukwd1cn') throw new Error('private_lab_openai_project_required');
@@ -57,39 +57,22 @@ export function isolateTenant(source, craft, inboundNumber) {
   return tenant;
 }
 
-export async function initializeLabDatabase(pool, root, databaseUrl) {
+export async function validateExistingLabDatabase(pool) {
   const client = await pool.connect();
   try {
-    await client.query("SELECT pg_advisory_lock(hashtext('private_voice_lab_bootstrap'))");
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const schema = await client.query("SELECT to_regclass('bookedradar.migration_runs') AS table_name");
-    if (schema.rows[0].table_name) {
-      const existing = await client.query('SELECT source_snapshot_sha256,status FROM bookedradar.migration_runs WHERE migration_id=$1',[MIGRATION_ID]);
-      if (existing.rows[0]?.status === 'validated') return existing.rows[0].source_snapshot_sha256;
-      // An existing, unrecognized database must never be initialized over.
-      throw new Error('private_lab_database_not_fresh');
-    }
-    const migrationEnv = {DATABASE_URL:databaseUrl,POSTGRES_MIGRATION_ID:MIGRATION_ID,POSTGRES_MIGRATION_ARMED:'true',POSTGRES_MIGRATION_DRY_RUN:'false'};
-    const fixtures = {
-      STATE_FILE:['state.json',{processedWebhooks:{},calls:{}}],
-      RECOVERY_STATE_FILE:['recovery.json',{opportunities:{},actions:{},events:[],eventKeys:{},contacts:{},attribution:{}}],
-      CALL_HISTORY_FILE:['history.json',{calls:{}}],
-      WEB_CHAT_STATE_FILE:['chat.json',{sessions:{}}],
-      GROWTH_METRICS_FILE:['growth.json',{counts:{},updatedAt:null}],
-    };
-    for(const [key,[filename,data]] of Object.entries(fixtures)) {
-      migrationEnv[key]=path.join(root,filename);
-      await fs.writeFile(migrationEnv[key],JSON.stringify(data));
-    }
-    migrationEnv.LEADS_FILE=path.join(root,'leads.jsonl');
-    await fs.writeFile(migrationEnv.LEADS_FILE,'');
-    await fs.writeFile(path.join(root,'voice-transfers.json'),JSON.stringify({processedWebhooks:{},calls:{}}));
-    const migration=await runPostgresShadowMigration(migrationEnv);
-    if(!migration.ok || migration.stage!=='validated_shadow') throw new Error(`private_lab_bootstrap_${migration.stage}_failed`);
-    return migration.audit.snapshotFingerprint;
-  } finally {
-    await client.query("SELECT pg_advisory_unlock(hashtext('private_voice_lab_bootstrap'))").catch(()=>{});
-    client.release();
-  }
+    if (!schema.rows[0].table_name) throw new Error('private_lab_existing_database_required');
+    const {rows} = await client.query('SELECT source_snapshot_sha256 FROM bookedradar.migration_runs WHERE migration_id=$1', [MIGRATION_ID]);
+    const fingerprint=String(rows[0]?.source_snapshot_sha256 || '');
+    if (!/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error('private_lab_validated_migration_required');
+    await verifyValidatedProductionMigration(client,{migrationId:MIGRATION_ID,snapshotFingerprint:fingerprint});
+    await client.query('COMMIT');
+    return fingerprint;
+  } catch(error) {
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  } finally {client.release();}
 }
 
 export async function main(env = process.env) {
@@ -102,7 +85,7 @@ export async function main(env = process.env) {
   }
   const pool=createPostgresPool({connectionString:env.DATABASE_URL});
   let fingerprint;
-  try {fingerprint=await initializeLabDatabase(pool,root,env.DATABASE_URL);} finally {await pool.end();}
+  try {fingerprint=await validateExistingLabDatabase(pool);} finally {await pool.end();}
   Object.assign(env,{
     NODE_ENV:'production',TENANT_CONFIG_DIR:configDir,BOOKEDRADAR_STORAGE_BACKEND:'postgres',
     POSTGRES_PRODUCTION_ARMED:'true',POSTGRES_STATELESS_MODE:'true',POSTGRES_VALIDATED_MIGRATION_ID:MIGRATION_ID,
