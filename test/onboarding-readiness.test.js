@@ -47,14 +47,17 @@ test("approved Proof Pilot cannot activate without its customer-specific safety 
     customerApprovedScope: true,
     baselineDocumented: true,
     acceptancePassed: true,
+    carrierFallbackAccepted: true,
+    fallbackRejectStatusCode: 486,
+    fallbackAcceptanceReference: "synthetic-carrier-test",
   };
   tenant.escalation.safetyRule = " ";
-  const blocked = tenantReadiness(tenant, { env: {} });
+  const blocked = tenantReadiness(tenant, { env: { BOOKEDRADAR_STORAGE_BACKEND: "postgres" } });
   assert.equal(blocked.ready, false);
   assert.deepEqual(blocked.blockers.map(item => item.code), ["safety_rule"]);
 
   tenant.escalation.safetyRule = "Use the customer's approved emergency guidance and human escalation.";
-  assert.equal(tenantReadiness(tenant, { env: {} }).status, "READY");
+  assert.equal(tenantReadiness(tenant, { env: { BOOKEDRADAR_STORAGE_BACKEND: "postgres" } }).status, "READY");
 
   // Non-pilot drafts retain the existing warning while setup is being prepared.
   tenant.commercial.proofPilot.enabled = false;
