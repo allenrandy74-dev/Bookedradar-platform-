@@ -29,11 +29,22 @@ function baseTenant() {
   };
 }
 
-test("complete confirm-only tenant is pilot ready", () => {
+test("complete confirm-only tenant passes configuration readiness", () => {
   const result = tenantReadiness(baseTenant(), { env: {} });
   assert.equal(result.ready, true);
   assert.equal(result.status, "READY");
   assert.equal(result.blockers.length, 0);
+  assert.equal(result.assessmentScope, "configuration_only");
+});
+
+test("missing or blank service profile cannot inherit the default Recover package", () => {
+  for (const profile of [undefined, null, "", "   ", 0]) {
+    const tenant = baseTenant();
+    tenant.commercial.serviceProfile = profile;
+    const result = tenantReadiness(tenant, { env: {} });
+    assert.equal(result.ready, false);
+    assert.ok(result.blockers.some(item => item.code === "service_profile"));
+  }
 });
 
 test("approved Proof Pilot cannot activate without its customer-specific safety rule", () => {
