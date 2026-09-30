@@ -28,7 +28,7 @@ export function parseSipPhone(sipHeaders = []) {
 
 
 export function parseDialedNumber(sipHeaders = []) {
-  for (const wanted of ["diversion", "to"]) {
+  for (const wanted of ["diversion", "to", "p-called-party-id"]) {
     const value = sipHeaders.find(
       (h) => String(h?.name || "").toLowerCase() === wanted
     )?.value;
