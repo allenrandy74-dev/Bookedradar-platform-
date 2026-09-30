@@ -40,6 +40,18 @@ export function validateLabEnvironment(env) {
   return numbers;
 }
 
+export function protectedDemoNumbers(sources) {
+  return [...new Set(sources.flatMap(source => source?.integrations?.phone?.inboundNumbers || [])
+    .map(number => String(number || '').trim()).filter(Boolean))];
+}
+
+export function assertNoProtectedDemoRoutes(numbers, sources) {
+  const protectedNumbers = new Set([...PUBLIC_NUMBERS, ...protectedDemoNumbers(sources)]);
+  if (Object.values(numbers).some(number => protectedNumbers.has(String(number || '').trim()))) {
+    throw new Error('public_demo_target_forbidden');
+  }
+}
+
 export function isolateTenant(source, craft, inboundNumber) {
   const tenant = structuredClone(source);
   tenant.tenantId = `synthetic-${craft}`;
@@ -77,10 +89,13 @@ export async function validateExistingLabDatabase(pool) {
 
 export async function main(env = process.env) {
   const numbers=validateLabEnvironment(env);
+  const sources = await Promise.all(CRAFTS.map(async craft =>
+    JSON.parse(await fs.readFile(new URL(`../config/tenants/demo-${craft}.json`,import.meta.url),'utf8'))));
+  assertNoProtectedDemoRoutes(numbers, sources);
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'bookedradar-private-lab-'));
   const configDir=path.join(root,'tenants');await fs.mkdir(configDir);
-  for(const craft of CRAFTS) {
-    const source=JSON.parse(await fs.readFile(new URL(`../config/tenants/demo-${craft}.json`,import.meta.url),'utf8'));
+  for(let i=0;i<CRAFTS.length;i++) {
+    const craft=CRAFTS[i], source=sources[i];
     await fs.writeFile(path.join(configDir,`${craft}.json`),JSON.stringify(isolateTenant(source,craft,numbers[craft])));
   }
   const pool=createPostgresPool({connectionString:env.DATABASE_URL});
