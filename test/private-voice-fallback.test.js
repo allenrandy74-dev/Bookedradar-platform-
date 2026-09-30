@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import test from 'node:test';
+import { parseDialedNumber } from '../src/operator.js';
 
 const root = new URL('../twilio/private-voice-lab/functions/', import.meta.url);
 const now = Date.now();
@@ -79,7 +80,21 @@ test('approved short window makes one bounded private SIP leg', async () => {
   assert.equal(commands[0][1].timeout, 15);
   assert.equal(commands[0][1].timeLimit, 60);
   assert.match(commands[0][1].action, /^https:\/\/bookedradar-private-test\.twil\.io\/private-outcome$/);
-  assert.equal(commands[0][2][0][1], `sip:${base.PRIVATE_PROJECT_ID}@sip.api.openai.com;transport=tls`);
+  const uri = commands[0][2][0][1];
+  assert.equal(uri.split('?')[0], `sip:${base.PRIVATE_PROJECT_ID}@sip.api.openai.com;transport=tls`);
+  const calledParty = new URLSearchParams(uri.split('?')[1]).get('P-Called-Party-ID');
+  assert.equal(parseDialedNumber([
+    { name: 'To', value: `<sip:${base.PRIVATE_PROJECT_ID}@sip.api.openai.com>` },
+    { name: 'P-Called-Party-ID', value: calledParty },
+  ]), base.PRIVATE_NUMBER);
+});
+
+test('called-party routing preserves existing precedence and rejects malformed identity', () => {
+  const identity = { name: 'P-Called-Party-ID', value: `<tel:${base.PRIVATE_NUMBER}>` };
+  assert.equal(parseDialedNumber([{ name: 'To', value: '<sip:+14155550199@example.com>' }, identity]), '+14155550199');
+  assert.equal(parseDialedNumber([{ name: 'Diversion', value: '<tel:+14155550198>' }, identity]), '+14155550198');
+  assert.equal(parseDialedNumber([{ name: 'p-called-party-id', value: '<tel:invalid>' }]), '');
+  assert.equal(parseDialedNumber([{ name: 'X-Untrusted-Number', value: '<tel:+14155550110>' }]), '');
 });
 
 test('only authenticated failed SIP outcomes get one bounded human leg', async () => {
