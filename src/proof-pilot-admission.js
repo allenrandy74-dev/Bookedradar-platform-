@@ -14,8 +14,9 @@ export function pilotCriticalFailures(actions, config, now = Date.now()) {
   const start = Date.parse(config?.startAt || '');
   const end = start + Number(config?.durationDays ?? 14) * 86400000;
   return actions.filter(action => {
+    if (action.status === "dispatching" && Date.parse(action.claimExpiresAt || "") > now) return false;
     if (!['human_alert', 'human_task'].includes(String(action.channel || '')) && !String(action.lastError || '').toLowerCase().includes('transfer')) return false;
-    const at = Date.parse(action.failedAt || action.completedAt || action.createdAt || '');
+    const at = Date.parse(action.failedAt || action.dispatchStartedAt || action.completedAt || action.createdAt || '');
     // A critical failure with unknown timing cannot safely be dismissed.
     return !Number.isFinite(at) || (at >= start && at < end && at <= now);
   }).length;
@@ -43,7 +44,7 @@ export async function reserveProofPilotCall(pool, { tenantId, callId, config, ca
     if (existing && existing.tenant_id !== tenantId) throw new Error('call_tenant_conflict');
     const counts = (await client.query(`SELECT count(*)::int AS n FROM bookedradar.voice_calls
       WHERE tenant_id=$1 AND started_at >= $2::timestamptz AND started_at < $3::timestamptz`, [tenantId, startAt, endAt])).rows[0];
-    const actions = (await client.query("SELECT payload FROM bookedradar.recovery_actions WHERE tenant_id=$1 AND status='failed'", [tenantId])).rows.map(row => row.payload);
+    const actions = (await client.query("SELECT payload FROM bookedradar.recovery_actions WHERE tenant_id=$1 AND (status IN ('failed','reconciliation_required') OR (status='dispatching' AND (claim_expires_at IS NULL OR claim_expires_at <= clock_timestamp())))", [tenantId])).rows.map(row => row.payload);
     const status = proofPilotStatus(config, { now, callsHandled: counts.n, criticalFailures: pilotCriticalFailures(actions, config, now), manuallyPaused: config.manuallyPaused === true });
     // A replay never creates another reservation or repeats a provider decision.
     if (existing) {
