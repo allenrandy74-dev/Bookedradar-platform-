@@ -48,7 +48,10 @@ exports.handler = async (context, event, callback) => {
     action: `https://${context.DOMAIN_NAME}/private-outcome`,
     method: 'POST', answerOnBridge: true, timeout: 15, timeLimit: 60,
   });
-  dial.sip(`sip:${context.PRIVATE_PROJECT_ID}@sip.api.openai.com;transport=tls`);
+  // The project SIP URI replaces the original To number. Preserve the validated
+  // private destination using Twilio's supported called-party identity header.
+  const calledParty = encodeURIComponent(`<tel:${context.PRIVATE_NUMBER}>`);
+  dial.sip(`sip:${context.PRIVATE_PROJECT_ID}@sip.api.openai.com;transport=tls?P-Called-Party-ID=${calledParty}`);
   return callback(null, twiml);
 };
 
