@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, lab/private-voice-runtime]
   push:
-    branches: [main, lab/pilot-admission-integration-20260930]
+    branches: [main, lab/private-voice-runtime, lab/pilot-admission-integration-20260930]
   schedule:
     - cron: "37 11 * * 1"
 
