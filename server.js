@@ -2175,7 +2175,9 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
     const callStats = await callHistory.statsSince(tenant.tenantId, startMs);
     const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs });
     const failedActions = await recoveryStore.failedActions(tenant.tenantId);
-    const criticalFailures = pilotCriticalFailures(failedActions, config);
+    const uncertainActions = typeof recoveryStore.reconciliationActions === "function"
+      ? await recoveryStore.reconciliationActions() : [];
+    const criticalFailures = pilotCriticalFailures([...failedActions, ...uncertainActions], config);
     const status = proofPilotStatus(config, {
       callsHandled: callStats.callsHandled,
       criticalFailures,
