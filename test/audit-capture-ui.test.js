@@ -83,3 +83,14 @@ test("duplicates do not claim updated audit answers were saved", async () => {
   await p.submit();
   assert.equal(p.requests.length, 1);
 });
+
+
+test("pending409 preserves audit answers and gives email reconciliation fallback", async () => {
+  const p = page({ response: async () => Response.json({ ok: false, error: "inquiry_capture_unconfirmed" }, { status: 409 }) });
+  const before = Object.fromEntries(Object.entries(p.fields).map(([key, field]) => [key, field.value]));
+  await p.submit();
+  assert.deepEqual(Object.fromEntries(Object.entries(p.fields).map(([key, field]) => [key, field.value])), before);
+  assert.equal(p.button.disabled, false);
+  assert.deepEqual(p.telemetry, []);
+  assert.match(p.nodes.brAuditStatus.textContent, /randy@bookedradar.com.*don’t submit repeatedly/);
+});

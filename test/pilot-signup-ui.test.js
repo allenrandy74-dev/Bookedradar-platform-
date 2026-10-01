@@ -83,3 +83,15 @@ test("repeated button presses send only one in-flight request", async () => {
   finish(Response.json({ ok: true }));
   await first;
 });
+
+
+test("pending409 preserves signup details and gives email reconciliation fallback", async () => {
+  const p = page(async () => Response.json({ ok: false, error: "inquiry_capture_unconfirmed" }, { status: 409 }));
+  p.choose("phone"); p.fields.get("phone").value = "+14095550100";
+  await p.submit();
+  assert.equal(p.fields.get("phone").value, "+14095550100");
+  assert.equal(p.fields.get("pilot-request").hidden, false);
+  assert.equal(p.fields.get("success").hidden, true);
+  assert.equal(p.fields.get("submit-request").disabled, false);
+  assert.match(p.fields.get("status").textContent, /randy@bookedradar.com.*don’t submit repeatedly/);
+});

@@ -118,7 +118,7 @@ export async function createPostgresServerStores(config) {
   }
   const callOwner=id=>owner('call_control_state','call_id',id);
   const webhook=new PostgresWebhookStore(pool);
-  const state={load:noop,markWebhookOnce:id=>webhook.markWebhookOnce(id),releaseWebhook:id=>webhook.releaseWebhook(id),
+  const state={load:noop,hasInquiryReceipt:id=>webhook.hasInquiryReceipt(id),markInquiryOnce:id=>webhook.markInquiryOnce(id),markWebhookOnce:id=>webhook.markWebhookOnce(id),releaseWebhook:id=>webhook.releaseWebhook(id),
     getCall:async id=>{const tenant=await callOwner(id);return tenant ? new PostgresCallStateStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await callOwner(id);return new PostgresCallStateStore(pool,tenant).patchCall(id,patch);}};
   const callHistory={load:noop,get:(tenant,id)=>new PostgresCallHistoryStore(pool,tenant).get(id),start:(id,args)=>new PostgresCallHistoryStore(pool,args.tenantId).start(id,args)};
@@ -162,3 +162,4 @@ export async function createPostgresServerStores(config) {
     appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
     billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};
 }
+
