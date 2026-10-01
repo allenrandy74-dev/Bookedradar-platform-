@@ -1497,6 +1497,7 @@ const requireAdmin = requireBearer(BOOKEDRADAR_ADMIN_TOKEN, "admin_token");
 mountReconciliationRoutes(app, {
   requireAdmin,
   requireTenant,
+  bookingStoreForTenant: tenantId => postgresStores?.bookingStateForTenant(tenantId),
   storeForTenant: tenantId => typeof recoveryStore.forTenant === "function"
     ? recoveryStore.forTenant(tenantId)
     : recoveryStore.tenantId === tenantId ? recoveryStore : null,
