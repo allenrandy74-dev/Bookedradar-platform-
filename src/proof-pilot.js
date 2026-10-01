@@ -13,9 +13,13 @@ export function normalizeProofPilotInquiry(input = {}) {
   const serviceArea = clean(input.serviceArea, 500);
   const businessHours = clean(input.businessHours, 500);
   const services = clean(input.services, 1200);
+  const inquiryType = clean(input.inquiryType, 20) || "pilot";
+  const auditReport = clean(input.auditReport, 5000);
   const honeypot = clean(input.company_url, 200);
   const contactPreference = clean(input.contactPreference, 20) || (email ? "email" : "phone");
   if (honeypot) return { ok: false, error: "invalid_submission" };
+  if (!["pilot", "audit"].includes(inquiryType)) return { ok: false, error: "invalid_inquiry_type" };
+  if (inquiryType === "audit" && !auditReport) return { ok: false, error: "audit_report_required" };
   if (!name || !business) return { ok: false, error: "name_business_required" };
   if (!["email", "phone"].includes(contactPreference)) return { ok: false, error: "invalid_contact_preference" };
   if (!email && !phone) return { ok: false, error: "email_or_phone_required" };
@@ -23,7 +27,7 @@ export function normalizeProofPilotInquiry(input = {}) {
   if (contactPreference === "phone" && !phone) return { ok: false, error: "phone_required_for_phone_followup" };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "invalid_email" };
   if (phone && !/^[+()\d\s.-]{7,40}$/.test(phone)) return { ok: false, error: "invalid_phone" };
-  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website, serviceArea, businessHours, services } };
+  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website, serviceArea, businessHours, services, inquiryType, auditReport } };
 }
 
 export function proofPilotLead(inquiry) {
@@ -34,7 +38,7 @@ export function proofPilotLead(inquiry) {
     email: inquiry.email,
     // An email-only request must not become a generic callback task.
     callback_number: emailOnly ? "" : inquiry.phone,
-    service_type: `BookedRadar Proof Pilot inquiry — ${inquiry.trade}`,
+    service_type: `BookedRadar ${inquiry.inquiryType === "audit" ? "Revenue Leak Audit review" : "Proof Pilot inquiry"} — ${inquiry.trade}`,
     urgency: "sales follow-up",
     preferred_window: "",
     notes: [
@@ -47,7 +51,8 @@ export function proofPilotLead(inquiry) {
       contact,
       inquiry.currentWorkflow ? `Current after-hours/overflow workflow: ${inquiry.currentWorkflow}` : "",
       inquiry.goal ? `What they want to improve: ${inquiry.goal}` : "",
-      "Source: bookedradar.com/try",
+      inquiry.inquiryType === "audit" ? `Self-reported audit results — illustrative scenario, not a revenue guarantee:\n${inquiry.auditReport}` : "",
+      inquiry.inquiryType === "audit" ? "Source: bookedradar.com/audit.html" : "Source: bookedradar.com/try",
     ].filter(Boolean).join("\n"),
   };
 }
@@ -59,7 +64,8 @@ export function proofPilotInquiryKey(inquiry = {}) {
     String(inquiry.email || "").trim().toLowerCase(),
     String(inquiry.phone || "").replace(/\D/g, ""),
   ].join("|");
-  return "proof-pilot:" + crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
+  const prefix = inquiry.inquiryType === "audit" ? "audit-review:" : "proof-pilot:";
+  return prefix + crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
 }
 
 export function proofPilotTaskLead(inquiry) {
@@ -67,7 +73,7 @@ export function proofPilotTaskLead(inquiry) {
   return {
     ...lead,
     name: "",
-    service_type: "Proof Pilot",
+    service_type: inquiry.inquiryType === "audit" ? "Revenue Leak Audit" : "Proof Pilot",
     urgency: "",
     notes: [
       inquiry.contactPreference === "phone" ? "PHONE — customer requested a call." : "EMAIL ONLY — do not make a sales call.",

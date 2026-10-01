@@ -24,7 +24,16 @@ test("public onboarding serves the reviewed page and assets without exposing the
   const css = await fetch(`${base}/styles.css`);
   assert.equal(css.status, 200);
   assert.match(css.headers.get("content-type"), /text\/css/);
-  for (const other of ["index.html", "audit.html", "wix.config.json"]) {
+  const audit = await fetch(`${base}/audit.html`);
+  const auditHtml = await audit.text();
+  assert.equal(audit.status, 200);
+  assert.match(auditHtml, /https:\/\/bookedradar-platform.onrender.com\/onboarding\/audit-capture.js/);
+  assert.match(auditHtml, /https:\/\/bookedradar-platform.onrender.com\/onboarding\/audit.js/);
+  assert.doesNotMatch(auditHtml, /oauth2\/token|form-submission-service/);
+  for (const asset of ["audit.js", "audit-capture.js", "bookedradar-telemetry.js"]) {
+    assert.equal((await fetch(`${base}/${asset}`)).status, 200);
+  }
+  for (const other of ["index.html", "wix.config.json", "demo-chat.html"]) {
     assert.equal((await fetch(`${base}/${other}`)).status, 404);
   }
 });

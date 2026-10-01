@@ -2004,7 +2004,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
   const submissionKey = proofPilotInquiryKey(parsed.inquiry);
   const firstSubmission = await state.markWebhookOnce(submissionKey);
   if (!firstSubmission) {
-    return res.status(200).json({ ok: true, duplicate: true, message: "We already received this Proof Pilot request." });
+    return res.status(200).json({ ok: true, duplicate: true, message: "We already received this request." });
   }
   try {
     const lead = proofPilotLead(parsed.inquiry);
@@ -2033,10 +2033,10 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       timeoutMs,
       retries,
     });
-    if (!task?.ok) throw new Error("task_create_failed");
+    if (!task?.ok || !task?.taskId) throw new Error("task_create_failed");
     // CRM capture is already complete. A metrics failure must not release the
     // submission key or tell the visitor to retry a successfully captured lead.
-    await growthMetrics.record({ event: "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: "short_form" }).catch(error => {
+    await growthMetrics.record({ event: parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : "short_form" }).catch(error => {
       console.error(JSON.stringify({ event: "growth.proof_pilot_metric_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     });
     console.log(JSON.stringify({
@@ -2045,7 +2045,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       crm_contact_id: contact.contactId,
       task_id: task.taskId || null,
     }));
-    return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your workflow and follow up." });
+    return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your request and follow up." });
   } catch (error) {
     await state.releaseWebhook(submissionKey).catch(() => {});
     console.error(JSON.stringify({ event: "growth.proof_pilot_inquiry_failed", reason: String(error?.message || "failed").slice(0, 120) }));
