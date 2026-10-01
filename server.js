@@ -6,6 +6,7 @@ import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGu
 import { createWarmTransfer, createTransferController, validTwilioSignature } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
+import { createPublicOnboardingRouter } from "./src/public-onboarding.js";
 import { createBilling } from "./src/billing/http.js";
 import { provisionDemoNumbers } from "./src/demo-number-provision.js";
 import OpenAI from "openai";
@@ -2407,6 +2408,7 @@ app.get("/api/v1/radarproof", async (req, res) => {
   }
 });
 
+app.use("/onboarding", createPublicOnboardingRouter());
 app.use("/dashboard", express.static("public"));
 app.use("/assets", express.static("public"));
 
