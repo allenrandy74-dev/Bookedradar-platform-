@@ -30,7 +30,13 @@
       <label id="phone-field" hidden>Phone number<input name="phone" id="phone" type="tel" autocomplete="tel" maxlength="40" disabled><span class="hint">Only needed when you ask us to call.</span></label>
       <details><summary>Add business details (optional)</summary><div class="optional">
         <label>Your trade<select name="trade"><option value="">Choose later</option><option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>Roofing</option><option>Multi-Trade Home Services</option><option>Other</option></select></label>
+        <label>Service area<input name="serviceArea" maxlength="500" placeholder="Cities, counties or ZIP codes you serve"></label>
+        <label>Business hours<input name="businessHours" maxlength="500" placeholder="For example: weekdays 8–5, emergency service after hours"></label>
+        <label>Main services<textarea name="services" maxlength="1200" placeholder="The jobs your team handles"></textarea></label>
+        <label>How do you handle missed or after-hours calls now?<textarea name="currentWorkflow" maxlength="1200" placeholder="For example: voicemail, an answering service or the owner's phone."></textarea></label>
+        <label>Business website<input name="website" maxlength="300" placeholder="Your public business website (optional)"></label>
         <label>What would you like help with?<textarea name="goal" maxlength="1200" placeholder="For example: calls while everyone is on a job."></textarea></label>
+        <p class="hint">You can leave these blank and share them by email later. Please do not include passwords, payment details or customer information. We confirm coverage and business rules with you before activation.</p>
       </div></details>
       <input class="hp" name="company_url" tabindex="-1" autocomplete="off" aria-hidden="true">
       <button id="submit-request" type="submit">Request my pilot</button>

@@ -67,3 +67,27 @@ test("email-only signup carries its preference through the actual Wix task paylo
   assert.match(payload.task.description, /jane@example.com/);
   assert.doesNotMatch(payload.task.description, /Callback:/);
 });
+
+test("optional business details are bounded and preserved in the actual follow-up task", async (t) => {
+  let payload;
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return Response.json({ task: { id: "synthetic-task" } });
+  });
+  const result = normalizeProofPilotInquiry({
+    name: "Synthetic", business: "Synthetic HVAC", email: "synthetic@example.com",
+    serviceArea: "  Beaumont and nearby ZIP codes  ", businessHours: "Weekdays 8–5",
+    services: "HVAC maintenance and repairs", currentWorkflow: "Voicemail after hours",
+    website: "https://example.com", goal: "Respond to missed calls",
+  });
+  assert.equal(result.ok, true);
+  await createWixFollowupTask({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", lead: proofPilotLead(result.inquiry), retries: 0 });
+  for (const value of ["Service area: Beaumont and nearby ZIP codes", "Business hours: Weekdays 8–5", "Main services: HVAC maintenance and repairs", "Voicemail after hours", "https://example.com", "Respond to missed calls"]) {
+    assert.ok(payload.task.description.includes(value), value);
+  }
+  assert.doesNotMatch(payload.task.description, /Callback:/);
+  const bounded = normalizeProofPilotInquiry({ ...result.inquiry, serviceArea: "a".repeat(501), businessHours: "b".repeat(501), services: "c".repeat(1201) });
+  assert.equal(bounded.inquiry.serviceArea.length, 500);
+  assert.equal(bounded.inquiry.businessHours.length, 500);
+  assert.equal(bounded.inquiry.services.length, 1200);
+});

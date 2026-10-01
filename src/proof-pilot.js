@@ -10,6 +10,9 @@ export function normalizeProofPilotInquiry(input = {}) {
   const currentWorkflow = clean(input.currentWorkflow, 1200);
   const goal = clean(input.goal, 1200);
   const website = clean(input.website, 300);
+  const serviceArea = clean(input.serviceArea, 500);
+  const businessHours = clean(input.businessHours, 500);
+  const services = clean(input.services, 1200);
   const honeypot = clean(input.company_url, 200);
   const contactPreference = clean(input.contactPreference, 20) || (email ? "email" : "phone");
   if (honeypot) return { ok: false, error: "invalid_submission" };
@@ -20,7 +23,7 @@ export function normalizeProofPilotInquiry(input = {}) {
   if (contactPreference === "phone" && !phone) return { ok: false, error: "phone_required_for_phone_followup" };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "invalid_email" };
   if (phone && !/^[+()\d\s.-]{7,40}$/.test(phone)) return { ok: false, error: "invalid_phone" };
-  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website } };
+  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website, serviceArea, businessHours, services } };
 }
 
 export function proofPilotLead(inquiry) {
@@ -38,6 +41,9 @@ export function proofPilotLead(inquiry) {
       `Business: ${inquiry.business}`,
       emailOnly ? "Contact preference: EMAIL ONLY — do not make a sales call." : "Contact preference: PHONE — customer requested a call.",
       inquiry.website ? `Website: ${inquiry.website}` : "",
+      inquiry.serviceArea ? `Service area: ${inquiry.serviceArea}` : "",
+      inquiry.businessHours ? `Business hours: ${inquiry.businessHours}` : "",
+      inquiry.services ? `Main services: ${inquiry.services}` : "",
       contact,
       inquiry.currentWorkflow ? `Current after-hours/overflow workflow: ${inquiry.currentWorkflow}` : "",
       inquiry.goal ? `What they want to improve: ${inquiry.goal}` : "",
