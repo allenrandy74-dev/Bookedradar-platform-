@@ -6,6 +6,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { PostgresCallStateStore, PostgresWebhookStore, exportPostgresCallState } from "../src/postgres-state-store.js";
 import { JsonStateStore } from "../src/state-store.js";
+import { createBookingOnce } from "../src/integrations/booking-once.js";
 
 const connectionString = process.env.POSTGRES_TEST_URL;
 
@@ -58,6 +59,25 @@ test("real Postgres: concurrent state, tenant isolation, deduplication and JSON 
         await client.query("ROLLBACK");
       } finally { client.release(); }
       assert.equal((await a.getCall("shared")).rolledBack, undefined);
+    });
+    await t.test("independent workers book once, preserve receipts and isolate tenants", async () => {
+      let writes = 0;
+      const request = { tenantId: "tenant-a", callId: "shared", slot: "synthetic-slot" };
+      const adapter = { async createBooking() { writes++; return { confirmed: true, bookingId: "booking-1" }; } };
+      await Promise.all(Array.from({ length: 40 }, () => createBookingOnce({
+        store: new PostgresCallStateStore(pool, "tenant-a"), adapter, request,
+      })));
+      assert.equal(writes, 1);
+      const replay = await createBookingOnce({ store: new PostgresCallStateStore(pool, "tenant-a"), adapter, request });
+      assert.equal(replay.confirmed, true);
+      assert.equal(replay.duplicate, true);
+      assert.equal(writes, 1);
+      assert.equal(await b.claimBooking("shared", { attemptId: "other", requestHash: "a".repeat(64) }), null);
+      assert.equal(await a.finishBooking("shared", "wrong-owner", { status: "uncertain", result: { confirmed: false } }), null);
+      assert.equal((await a.getCall("shared")).bookingAttempt.status, "confirmed");
+      // Simulate process loss after a durable claim but before receipt persistence.
+      await b.claimBooking("other", { attemptId: "interrupted", requestHash: "b".repeat(64) });
+      assert.equal(await new PostgresCallStateStore(pool, "tenant-b").claimBooking("other", { attemptId: "restart", requestHash: "b".repeat(64) }), null);
     });
     await t.test("export restores payloads and deduplication into existing JSON store", async () => {
       const report = await exportPostgresCallState(pool, root, { writersQuiesced: true });
