@@ -72,3 +72,17 @@ test("ops email contains no caller content and uses deterministic idempotency",a
   assert.equal(body.text.includes("do not include this free text"),false);
   assert.equal(request.options.headers["Idempotency-Key"],`bookedradar/ops/${candidate.incidentKey}`);
 });
+
+test("ops alerts do not report acceptance without a verified provider receipt",async t=>{
+  const candidate=buildOpsAlertCandidate({scopeKey:'tenant:synthetic',assessment:{status:'critical',signals:[{code:'transfer_failure',count:1}]}});
+  for (const [name,body] of [['empty',''],['invalid JSON','invalid'],['missing receipt','{}'],['null receipt','{"id":null}'],['numeric receipt','{"id":123}'],['blank receipt','{"id":"  "}'],['object receipt','{"id":{}}']]) {
+    await t.test(name,async()=>{
+      let writes=0;
+      await assert.rejects(sendOpsAlertEmail({apiKey:'synthetic',from:'ops@example.com',to:'owner@example.com',candidate,
+        fetchImpl:async()=>{writes++;return {ok:true,status:200,text:async()=>body};}}),/ops_alert_email_acceptance_unverified/);
+      assert.equal(writes,1);
+    });
+  }
+  assert.deepEqual(await sendOpsAlertEmail({apiKey:'synthetic',from:'ops@example.com',to:'owner@example.com',candidate,
+    fetchImpl:async()=>({ok:true,status:200,text:async()=>'{"id":" receipt-1 "}'})}),{accepted:true,id:'receipt-1'});
+});
