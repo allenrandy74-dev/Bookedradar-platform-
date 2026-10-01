@@ -80,7 +80,7 @@ import {
 import { CallHistoryStore } from "./src/call-history.js";
 import { assessVoiceHealth } from "./src/ops-health.js";
 import { buildOpsAlertCandidate, PostgresOpsIncidentStore, sendOpsAlertEmail } from "./src/ops-alerting.js";
-import { assessCustomerHealth } from "./src/customer-health.js";
+import { assessCustomerHealth, recoveryActionHealth } from "./src/customer-health.js";
 import { runStartupPostgresHealth } from "./src/postgres-startup-health.js";
 import { runStartupMigrationAudit } from "./src/postgres-startup-migration-audit.js";
 import { runStartupShadowImport } from "./src/postgres-startup-shadow-import.js";
@@ -2346,6 +2346,7 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
     const proof = await radarProof(recoveryStore, tenantId);
     const callActivity = await callHistory.stats(tenantId);
     const recoverySnapshot = await recoveryStore.snapshot();
+    const recoveryReview = recoveryActionHealth(Object.values(recoverySnapshot.actions || {}), tenantId);
     const recentOpportunities = Object.values(recoverySnapshot.opportunities || {}).filter(item => {
       if (item.tenantId !== tenantId) return false;
       const timestamp = Date.parse(item.createdAt || item.updatedAt || "");
@@ -2357,6 +2358,8 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
       readinessBlockers: readiness.blockers.length,
       criticalFailedActions,
       totalFailedActions: failedActions.length,
+      totalUnresolvedActions: recoveryReview.totalUnresolvedActions,
+      criticalUnresolvedActions: recoveryReview.criticalUnresolvedActions,
       crmSyncFailures: voiceSummary.crmSyncFailures,
       recentCalls: voiceSummary.callsStarted,
       opportunitiesCaptured: recentOpportunities,
@@ -2381,6 +2384,7 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
         recovery: {
           failedActions: failedActions.length,
           criticalFailedActions,
+          ...recoveryReview,
         },
         activity: {
           recentOpportunities,
