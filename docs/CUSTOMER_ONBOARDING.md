@@ -5,6 +5,7 @@ A new customer should be configuration-and-test work, not custom software develo
 
 ## 1. Customer discovery
 Collect:
+- Setup contact preference: email only by default, or an explicitly requested call
 - Legal/business name and public-facing business name
 - Trade/industry, timezone, service area, services offered
 - Business hours and after-hours policy
@@ -16,6 +17,12 @@ Collect:
 - Existing business phone number and desired routing: after-hours, overflow, or broader coverage
 - CRM, email, SMS, calendar/booking systems
 - FAQs, warranties, financing, memberships, service exclusions, and other approved answers
+
+Keep setup follow-up separate from caller escalation. Email-only customers still
+provide a direct number for callers who need a person, but that number must not
+be used for setup or sales calls. Review the saved `contact_preference` and the
+operator note before follow-up. Missing preferences default to email; clarify
+legacy choices in writing rather than inferring permission from a phone number.
 
 ## 2. Tenant provisioning map
 Onboarding answers map to these tenant fields:

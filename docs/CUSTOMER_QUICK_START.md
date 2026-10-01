@@ -5,6 +5,12 @@
 
 Target customer time: **10 minutes or less** for the first pass.
 
+Setup updates default to email only. Collect a setup-call number only when the
+customer explicitly requests a phone call. Record the chosen method in the Wix
+submission and onboarding draft; an escalation destination never authorizes
+setup or sales calls. Older submissions without a choice need email follow-up
+to confirm the preferred method before any setup call.
+
 The long master onboarding checklist is for BookedRadar internally. Customers should not be presented with it.
 
 ## Step 1 — Your business

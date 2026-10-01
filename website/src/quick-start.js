@@ -2,7 +2,18 @@
   const form = document.getElementById('quickStart');
   const status = document.getElementById('setupStatus');
   const next = document.getElementById('nextSteps');
-  const fields = ['first_name','business_name','email','phone','business_type','service_area','business_hours','services','coverage','urgent_contact','urgent_definition','customer_tracking','booking','anything_else'];
+  const preference = form.elements.contact_preference;
+  const phoneField = document.getElementById('setup-phone-field');
+  const followup = document.getElementById('setup-followup');
+  const fields = ['first_name','business_name','email','contact_preference','phone','business_type','service_area','business_hours','services','coverage','urgent_contact','urgent_definition','customer_tracking','booking','anything_else'];
+  function updateContactPreference() {
+    const wantsCall = preference.value === 'phone';
+    phoneField.hidden = !wantsCall;
+    form.elements.phone.required = wantsCall;
+    form.elements.phone.disabled = !wantsCall;
+  }
+  preference.addEventListener('change', updateContactPreference);
+  updateContactPreference();
   let busy = false;
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -19,7 +30,12 @@
       if (!tokenResponse.ok) throw new Error('Unable to start submission');
       const token = (await tokenResponse.json()).access_token;
       if (!token) throw new Error('Unable to start submission');
-      const submissions = Object.fromEntries(fields.map(key => [key, form.elements[key].value.trim()]).filter(([,value])=>value));
+      const submissions = Object.fromEntries(fields.filter(key => !form.elements[key].disabled).map(key => [key, form.elements[key].value.trim()]).filter(([,value])=>value));
+      const wantsCall = submissions.contact_preference === 'phone';
+      submissions.anything_else = [
+        wantsCall ? 'Setup contact preference: PHONE — customer requested a setup call.' : 'Setup contact preference: EMAIL ONLY — do not make setup or sales calls. The escalation number is for caller transfers only.',
+        submissions.anything_else
+      ].filter(Boolean).join('\n');
       const response = await fetch('https://www.wixapis.com/form-submission-service/v4/submissions', {
         method:'POST', headers:{'Content-Type':'application/json',Authorization:token},
         body:JSON.stringify({submission:{formId:'1738b140-49de-4cde-b966-3dcd5f676cfc',submissions}})
@@ -28,7 +44,9 @@
       const data = await response.json();
       if (!data.submission?.id) throw new Error('Submission not confirmed');
       status.textContent = 'Thank you. Your answers were received. Setup reference: '+data.submission.id;
+      followup.textContent = wantsCall ? 'You requested a setup call.' : 'We’ll follow up by email, with no setup or sales call.';
       form.reset();
+      updateContactPreference();
       form.hidden = true;
       next.hidden = false;
     } catch {

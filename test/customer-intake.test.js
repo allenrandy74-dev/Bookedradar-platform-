@@ -5,6 +5,31 @@ import {
   quickStartInputFromWixSubmission,
 } from "../src/onboarding/customer-intake.js";
 
+test("email-only setup never repurposes its escalation number as a setup contact", () => {
+  const input = quickStartInputFromWixSubmission({ submissions: {
+    business_name: "QA HVAC", contact_preference: "email", phone: "+14095550199",
+    urgent_contact: "Operator 409-555-0100"
+  } });
+  const result = buildTenantDraftFromQuickStart(input);
+  assert.equal(result.tenant.onboarding.contactPreference, "email");
+  assert.equal(result.tenant.onboarding.phone, "");
+  assert.equal(result.tenant.escalation.humanPhone, "+14095550100");
+  assert.equal(result.needsFromCustomer.includes("setup_call_phone"), false);
+});
+
+test("requested setup calls retain a distinct contact number and ask when it is missing", () => {
+  const input = quickStartInputFromWixSubmission({ submissions: {
+    business_name: "QA HVAC", contact_preference: "phone", phone: "+14095550199",
+    urgent_contact: "Operator 409-555-0100"
+  } });
+  const result = buildTenantDraftFromQuickStart(input);
+  assert.equal(result.tenant.onboarding.phone, "+14095550199");
+  assert.equal(result.tenant.onboarding.contactPreference, "phone");
+  assert.equal(result.needsFromCustomer.includes("setup_call_phone"), false);
+  input.phone = "";
+  assert.ok(buildTenantDraftFromQuickStart(input).needsFromCustomer.includes("setup_call_phone"));
+});
+
 test("urgent contact accepts one direct US number and normalizes formatting", () => {
   for (const urgent_contact of ["Randy (409) 555-0100", "+1 409-555-0100", "4095550100"]) {
     assert.equal(quickStartInputFromWixSubmission({ submissions: { urgent_contact } }).escalationPhone, "+14095550100");
