@@ -30,9 +30,8 @@ of the new public experience or a live submission through the new page.
 
 ## Release and acceptance
 
-1. Review/merge the code after CI; release backend mapper through the existing
-   platform workflow when ready. The webpage saves the preference and operator
-   instruction even while the previous mapper remains deployed.
+1. Completed: PR #78 merged after CI and CodeQL passed. The backend onboarding
+   mapper was deployed successfully and the signup page remained available.
 2. Publish the refreshed Windows package to the existing Wix site. It includes
    the already-prepared homepage Start online links.
 3. Verify email-only default, call selection, required setup phone only for calls,
@@ -47,6 +46,27 @@ and task were persisted in Wix on October 1. Its task was labeled QA/do not
 contact and completed. That test is evidence for pilot signup, not this Quick
 Start change.
 
+## Live provider acceptance — October 1
+
+A clearly marked synthetic Quick Start test was submitted through the Wix Forms
+API after backend release, omitting the setup phone. A later readback confirmed
+that Wix finished processing it successfully.
+
+- Saved preference was email-only; the setup phone was absent.
+- The separate synthetic caller-transfer destination remained in the setup answers.
+- The operator note preserved the email-only instruction and marked the test
+  QA ONLY / DO NOT CONTACT.
+- The synthetic CRM contact had no phone or additional phone numbers. The transfer
+  destination was not repurposed as the setup contact number.
+- No customer tenant or phone route was activated by this test.
+
+This establishes provider persistence and contact mapping. Visitor-origin capture
+through the unpublished new page and the production preparation endpoint still
+need the public release and controlled follow-up.
+
+Local checks: 370 tests passed; 15 Postgres integration tests skipped locally.
+GitHub CI (including disposable Postgres), CodeQL and the website build passed.
+
 ## Rollback
 
 Restore previous HTML/JS and preparation code through the existing release
@@ -54,3 +74,4 @@ workflow. Keep the added optional preference field so saved choices remain
 visible. Restoring the phone-required flag would prevent email-only clients
 from submitting; do not do that without also withdrawing the new page. Never
 discard saved preferences or interpret escalation numbers as follow-up consent.
+
