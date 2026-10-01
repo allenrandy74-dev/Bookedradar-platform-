@@ -77,3 +77,22 @@ test("human follow-up uses its own call identity despite a later call on the sam
   assert.equal(await resolve({ ...context, action: { channel: "sms" } }), context.contact);
   await assert.rejects(resolve({ ...context, opportunity: { tenantId: "other", metadata: { callId: "full" } } }), /tenant mismatch/);
 });
+
+test('unverified provider acceptance stays held across legacy store restart with no second send',async t=>{
+  const {ResendEmailAdapter}=await import('../src/integrations/resend-email.js');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'br-receipt-hold-'));
+  const file=path.join(dir,'state.json');const store=new RecoveryStore(file);
+  await store.upsertContact('t1:email',{email:'synthetic@example.invalid',marketingConsent:true});
+  const opportunity=await store.createOpportunity({tenantId:'t1',type:'missed_call',contactKey:'t1:email'});
+  const action=await store.scheduleAction({tenantId:'t1',opportunityId:opportunity.id,contactKey:'t1:email',channel:'email',purpose:'service',template:'estimate_followup',dueAt:new Date(Date.now()-60000).toISOString()});
+  let sends=0;t.mock.method(globalThis,'fetch',async()=>{sends++;return new Response('{}',{status:200});});
+  const adapters={email:new ResendEmailAdapter({apiKey:'synthetic',from:'synthetic@example.invalid'})};
+  try {
+    const result=await new ActionDispatcher({store,tenant:tenant(),adapters}).runOnce();
+    assert.equal(result[0].reconciliationRequired,true);assert.equal(result[0].action.status,'reconciliation_required');
+    const restarted=new RecoveryStore(file);
+    assert.equal((await restarted.snapshot()).actions[action.id].status,'reconciliation_required');
+    assert.deepEqual(await new ActionDispatcher({store:restarted,tenant:tenant(),adapters}).runOnce({now:new Date(Date.now()+86400000)}),[]);
+    assert.equal(sends,1);
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
