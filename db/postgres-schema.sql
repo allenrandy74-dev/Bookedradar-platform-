@@ -220,6 +220,17 @@ CREATE TABLE IF NOT EXISTS bookedradar.ops_incidents (
 CREATE INDEX IF NOT EXISTS ops_incidents_scope_status_idx
   ON bookedradar.ops_incidents (scope_key, status, last_seen_at DESC);
 
+CREATE TABLE IF NOT EXISTS bookedradar.ops_notifications (
+  notification_id text PRIMARY KEY,
+  incident_key text NOT NULL REFERENCES bookedradar.ops_incidents(incident_key),
+  state text NOT NULL CHECK (state IN ('pending','accepted','uncertain','not_sent')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  provider_receipt text,
+  payload jsonb NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ops_notifications_incident_created_idx
+  ON bookedradar.ops_notifications (incident_key,created_at DESC);
+
 CREATE TABLE IF NOT EXISTS bookedradar.migration_runs (
   migration_id text PRIMARY KEY,
   source_snapshot_sha256 text NOT NULL,

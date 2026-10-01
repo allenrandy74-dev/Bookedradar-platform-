@@ -23,7 +23,7 @@
     "migration:audit": "node scripts/postgres-migration-audit.mjs",
     "migration:shadow": "node scripts/postgres-shadow-migrate.mjs",
     "postgres:health": "node scripts/postgres-health.mjs",
-    "test:postgres": "node --test --test-concurrency=1 test/postgres-*.integration.test.js"
+    "test:postgres": "node --test --test-concurrency=1 test/postgres-*.integration.test.js test/ops-alerting.integration.test.js"
   },
   "dependencies": {
     "dotenv": "17.4.2",

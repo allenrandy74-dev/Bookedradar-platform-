@@ -411,7 +411,7 @@ async function runOpsAlertCheck() {
       if (!observed.shouldNotify) continue;
 
       if (!OPS_ALERT_EMAIL || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        await opsIncidentStore.releaseNotification(candidate.incidentKey, observed.notification.notification_id);
         console.error(JSON.stringify({
           event:"ops.alert_delivery_unconfigured",
           scope_key:scopeKey,
@@ -428,7 +428,9 @@ async function runOpsAlertCheck() {
           to:OPS_ALERT_EMAIL,
           candidate,
           incidentId:candidate.incidentKey,
+          notificationId:observed.notification.notification_id,
         });
+        await opsIncidentStore.acceptNotification(candidate.incidentKey, observed.notification.notification_id, accepted.id);
         console.log(JSON.stringify({
           event:"ops.alert_accepted",
           scope_key:scopeKey,
@@ -438,9 +440,9 @@ async function runOpsAlertCheck() {
           provider_id:accepted.id,
         }));
       } catch (error) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        await opsIncidentStore.holdNotification(candidate.incidentKey, observed.notification.notification_id);
         console.error(JSON.stringify({
-          event:"ops.alert_delivery_failed",
+          event:"ops.alert_acceptance_uncertain",
           scope_key:scopeKey,
           severity:candidate.severity,
           incident_key:candidate.incidentKey,
