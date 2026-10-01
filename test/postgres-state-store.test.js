@@ -30,6 +30,23 @@ test("booking claims and completion reject invalid evidence before querying", as
   await assert.rejects(store.finishBooking("c", "attempt", { status: "retry", result: {} }), /booking_status_invalid/);
 });
 
+test("booking review is read-only, tenant scoped and paginated without provider payloads", async () => {
+  let queried;
+  const rows=Array.from({length:51},(_,i)=>({callId:`call-${String(i).padStart(3,'0')}`,attemptId:`attempt-${i}`,status:'uncertain',updatedAt:'synthetic'}));
+  const store=new PostgresCallStateStore({async query(sql,args){queried={sql,args};return {rows};}},'tenant-a');
+  for (const cursor of [[],{},'x'.repeat(257)]) await assert.rejects(store.listBookingReview({afterCallId:cursor}),/booking_review_cursor_invalid/);
+  assert.equal(queried,undefined);
+  const page=await store.listBookingReview({afterCallId:'previous-call'});
+  assert.deepEqual(queried.args,['tenant-a','previous-call']);
+  assert.match(queried.sql,/^\s*SELECT/);
+  assert.match(queried.sql,/tenant_id=\$1/);
+  assert.match(queried.sql,/IN \('pending','uncertain'\)/);
+  assert.match(queried.sql,/ORDER BY call_id ASC LIMIT 51/);
+  assert.doesNotMatch(queried.sql,/SELECT payload|UPDATE|DELETE|INSERT/);
+  assert.equal(page.attempts.length,50);
+  assert.equal(page.nextAfterCallId,'call-049');
+});
+
 test("failed rollback snapshot aborts transaction and releases connection", async () => {
   const queries = [];
   let released = false;
