@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const ALLOWED = new Set(["page_view","demo_call_click","proof_pilot_start","proof_pilot_submit"]);
+const ALLOWED = new Set(["page_view","demo_call_click","proof_pilot_start","proof_pilot_submit","audit_review_submit"]);
 const TRADES = new Set(["hvac","plumbing","electrical","roofing","home_services","unknown"]);
 
 function clean(value, max=80){ return String(value||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,max); }

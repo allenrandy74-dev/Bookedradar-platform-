@@ -118,3 +118,31 @@ test("a failed or unconfirmed contact note prevents successful capture", async (
   t.mock.method(globalThis, "fetch", async () => Response.json({}));
   await assert.rejects(createWixInquiryNotes({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", text: "Saved answers", retries: 0 }), /inquiry_note_create_failed/);
 });
+
+test("audit reviews preserve full results and remain distinct from pilot requests", async (t) => {
+  const base = { name: "Synthetic", business: "QA HVAC", email: "qa@example.com" };
+  const pilot = normalizeProofPilotInquiry(base).inquiry;
+  const report = "Seven self-reported answers and an illustrative scenario. ".repeat(80).trim();
+  const audit = normalizeProofPilotInquiry({ ...base, inquiryType: "audit", auditReport: report }).inquiry;
+  assert.notEqual(proofPilotInquiryKey(audit), proofPilotInquiryKey(pilot));
+  assert.equal(proofPilotInquiryKey({ ...pilot, inquiryType: undefined }), proofPilotInquiryKey(pilot));
+  assert.equal(normalizeProofPilotInquiry({ ...base, inquiryType: "audit" }).error, "audit_report_required");
+  assert.equal(normalizeProofPilotInquiry({ ...base, inquiryType: "other" }).error, "invalid_inquiry_type");
+  const lead = proofPilotLead(audit);
+  assert.match(lead.service_type, /Revenue Leak Audit review/);
+  assert.ok(lead.notes.includes(report));
+  assert.match(lead.notes, /not a revenue guarantee/);
+  const payloads = [];
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    payloads.push(JSON.parse(options.body));
+    return Response.json({ note: { id: "synthetic-note" }, task: { id: "synthetic-task" } });
+  });
+  await createWixInquiryNotes({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", text: lead.notes, retries: 0 });
+  assert.equal(payloads.map(payload => payload.note.text).join(""), lead.notes);
+  payloads.length = 0;
+  await createWixFollowupTask({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", lead: proofPilotTaskLead(audit), retries: 0 });
+  assert.match(payloads[0].task.title, /Revenue Leak Audit/);
+  assert.doesNotMatch(payloads[0].task.title, /Proof Pilot/);
+  assert.match(payloads[0].task.description, /EMAIL ONLY/);
+  assert.ok(payloads[0].task.description.length <= 500);
+});
