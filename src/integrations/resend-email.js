@@ -57,10 +57,14 @@ export class ResendEmailAdapter {
       );
     }
 
+    if (typeof data?.id !== "string" || !data.id.trim()) {
+      throw Object.assign(new Error("resend_email_acceptance_unverified"), { reconciliationRequired: true });
+    }
+
     return {
       provider: "resend",
       accepted: true,
-      id: data?.id || null,
+      id: data.id.trim(),
     };
   }
 }
