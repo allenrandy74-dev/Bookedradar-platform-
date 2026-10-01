@@ -153,5 +153,8 @@ export async function sendOpsAlertEmail({
   const raw=await response.text();
   if(!response.ok) throw new Error(`ops_alert_email_failed_${response.status}`);
   let data={};try{data=raw?JSON.parse(raw):{};}catch{}
-  return {accepted:true,id:data?.id || null};
+  const id=typeof data?.id === 'string' ? data.id.trim() : '';
+  if (!id) throw new Error('ops_alert_email_acceptance_unverified');
+  // Provider acceptance is not evidence of delivery to the recipient's inbox.
+  return {accepted:true,id};
 }
