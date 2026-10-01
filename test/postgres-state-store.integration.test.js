@@ -79,6 +79,20 @@ test("real Postgres: concurrent state, tenant isolation, deduplication and JSON 
       await b.claimBooking("other", { attemptId: "interrupted", requestHash: "b".repeat(64) });
       assert.equal(await new PostgresCallStateStore(pool, "tenant-b").claimBooking("other", { attemptId: "restart", requestHash: "b".repeat(64) }), null);
     });
+    await t.test("booking review includes only owned unresolved attempts without changing claims", async () => {
+      assert.deepEqual(await a.listBookingReview(), { attempts: [], nextAfterCallId: null });
+      const before = await b.getCall("other");
+      const page = await b.listBookingReview();
+      assert.equal(page.attempts.length, 1);
+      assert.equal(page.attempts[0].callId, "other");
+      assert.equal(page.attempts[0].status, "pending");
+      assert.deepEqual(Object.keys(page.attempts[0]).sort(), ["attemptId", "callId", "status", "updatedAt"]);
+      assert.deepEqual(await b.getCall("other"), before);
+      assert.equal((await b.listBookingReview({ afterCallId: "other" })).attempts.length, 0);
+      await b.patchCall("other", { bookingAttempt: { ...before.bookingAttempt, status: "uncertain" } });
+      assert.equal((await b.listBookingReview()).attempts[0].status, "uncertain");
+      assert.equal((await a.listBookingReview()).attempts.length, 0);
+    });
     await t.test("export restores payloads and deduplication into existing JSON store", async () => {
       const report = await exportPostgresCallState(pool, root, { writersQuiesced: true });
       assert.equal(report.calls, 2);

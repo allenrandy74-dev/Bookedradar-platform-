@@ -1,6 +1,6 @@
 // Caller supplies existing admin and tenant authentication middleware. No
 // provider calls, automatic resend, or unauthenticated store access live here.
-export function mountReconciliationRoutes(app, { requireAdmin,requireTenant,storeForTenant }) {
+export function mountReconciliationRoutes(app, { requireAdmin,requireTenant,storeForTenant,bookingStoreForTenant }) {
   if (typeof requireAdmin!=='function' || typeof requireTenant!=='function' || typeof storeForTenant!=='function') throw new Error('reconciliation_auth_required');
   const storeFor=async(req,res)=>{
     const tenantId=req.bookedRadarTenant?.tenantId;
@@ -16,6 +16,22 @@ export function mountReconciliationRoutes(app, { requireAdmin,requireTenant,stor
       const store=await storeFor(req,res);if(!store)return;
       res.json({ok:true,tenantId:store.tenantId,actions:await store.reconciliationActions()});
     } catch {res.status(503).json({ok:false,error:'reconciliation_query_failed'});}
+  });
+  app.get('/api/v1/bookings/reconciliation',requireAdmin,requireTenant,async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    try {
+      const tenantId=req.bookedRadarTenant?.tenantId;
+      if (!tenantId) return res.status(403).json({ok:false,error:'tenant_required'});
+      const store=typeof bookingStoreForTenant==='function' ? await bookingStoreForTenant(tenantId) : null;
+      if (!store || store.tenantId!==tenantId || typeof store.listBookingReview!=='function') {
+        return res.status(503).json({ok:false,error:'booking_review_store_unavailable'});
+      }
+      const page=await store.listBookingReview({afterCallId:req.query.afterCallId ?? ''});
+      res.json({ok:true,tenantId,...page,guardrail:'HUMAN_REVIEW_REQUIRED_NO_AUTOMATIC_RETRY'});
+    } catch(error) {
+      if (error?.message==='booking_review_cursor_invalid') return res.status(400).json({ok:false,error:error.message});
+      res.status(503).json({ok:false,error:'booking_review_query_failed'});
+    }
   });
   app.post('/api/v1/actions/:id/reconcile',requireAdmin,requireTenant,async(req,res)=>{
     try {

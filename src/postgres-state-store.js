@@ -55,6 +55,22 @@ export class PostgresCallStateStore {
     return rows[0]?.attempt || null;
   }
 
+  async listBookingReview({ afterCallId = "" } = {}) {
+    if (typeof afterCallId !== "string" || afterCallId.length > 256) throw new Error("booking_review_cursor_invalid");
+    // Read-only projection: do not expose caller details or provider payloads.
+    // Pending includes in-flight writes; this queue never authorizes a retry.
+    const { rows } = await this.pool.query(`
+      SELECT call_id AS "callId", updated_at AS "updatedAt",
+        payload->'bookingAttempt'->>'attemptId' AS "attemptId",
+        payload->'bookingAttempt'->>'status' AS status
+      FROM bookedradar.call_control_state
+      WHERE tenant_id=$1 AND call_id>$2
+        AND payload->'bookingAttempt'->>'status' IN ('pending','uncertain')
+      ORDER BY call_id ASC LIMIT 51`, [this.tenantId, afterCallId]);
+    const attempts = rows.slice(0, 50);
+    return { attempts, nextAfterCallId: rows.length > 50 ? attempts.at(-1).callId : null };
+  }
+
   async finishBooking(callId, attemptId, { status, result }) {
     required(callId, "call_id");
     required(attemptId, "booking_attempt_id");
