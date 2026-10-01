@@ -2036,7 +2036,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
     if (!task?.ok || !task?.taskId) throw new Error("task_create_failed");
     // CRM capture is already complete. A metrics failure must not release the
     // submission key or tell the visitor to retry a successfully captured lead.
-    await growthMetrics.record({ event: parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : "short_form" }).catch(error => {
+    await growthMetrics.record({ event: parsed.inquiry.inquiryType === "setup" ? "setup_answers_submit" : parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: parsed.inquiry.inquiryType === "setup" ? "detailed_setup" : parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : "short_form" }).catch(error => {
       console.error(JSON.stringify({ event: "growth.proof_pilot_metric_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     });
     console.log(JSON.stringify({
