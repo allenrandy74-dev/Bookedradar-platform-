@@ -23,27 +23,23 @@
     button.disabled = true;
     status.textContent = 'Saving your setup answers…';
     try {
-      const tokenResponse = await fetch('https://www.wixapis.com/oauth2/token', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({clientId:'a5fc33eb-4eb3-4562-9e5d-6c1a61623499',grantType:'anonymous'})
-      });
-      if (!tokenResponse.ok) throw new Error('Unable to start submission');
-      const token = (await tokenResponse.json()).access_token;
-      if (!token) throw new Error('Unable to start submission');
-      const submissions = Object.fromEntries(fields.filter(key => !form.elements[key].disabled).map(key => [key, form.elements[key].value.trim()]).filter(([,value])=>value));
+      const submissions = Object.fromEntries(fields.filter(key => !form.elements[key].disabled).map(key => [key, form.elements[key].value.trim()]));
       const wantsCall = submissions.contact_preference === 'phone';
-      submissions.anything_else = [
-        wantsCall ? 'Setup contact preference: PHONE — customer requested a setup call.' : 'Setup contact preference: EMAIL ONLY — do not make setup or sales calls. The escalation number is for caller transfers only.',
-        submissions.anything_else
-      ].filter(Boolean).join('\n');
-      const response = await fetch('https://www.wixapis.com/form-submission-service/v4/submissions', {
-        method:'POST', headers:{'Content-Type':'application/json',Authorization:token},
-        body:JSON.stringify({submission:{formId:'1738b140-49de-4cde-b966-3dcd5f676cfc',submissions}})
+      const response = await fetch('https://bookedradar-platform.onrender.com/api/v1/public/proof-pilot', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ inquiryType: 'setup', setupAnswers: submissions, company_url: form.elements.website_check.value })
       });
-      if (!response.ok) throw new Error('Submission not confirmed');
       const data = await response.json();
-      if (!data.submission?.id || data.submission.status !== 'CONFIRMED') throw new Error('Submission not confirmed');
-      status.textContent = 'Thank you. Your answers were received. Setup reference: '+data.submission.id;
+      if (response.status === 400) {
+        status.textContent = data.error === 'setup_transfer_number_required'
+          ? 'Enter one direct US phone number for caller transfers, without an extension. This is separate from setup follow-up. Your answers are still here.'
+          : 'Please check your required answers, email, phone numbers and selections. Your answers are still here; nothing has been confirmed yet.';
+        button.disabled = false;
+        busy = false;
+        return;
+      }
+      if (!response.ok || !data.ok) throw new Error('Submission not confirmed');
+      status.textContent = data.duplicate ? 'These setup answers are already recorded for review.' : 'Thank you. Your setup answers were received and saved for review.';
       followup.textContent = wantsCall ? 'You requested a setup call.' : 'We’ll follow up by email, with no setup or sales call.';
       form.reset();
       updateContactPreference();
@@ -55,4 +51,6 @@
       busy = false;
     }
   });
+  // Show the form only after attaching the handler, preventing a default GET.
+  form.hidden = false;
 })();

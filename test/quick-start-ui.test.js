@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 
 const script = await fs.readFile(new URL("../website/src/quick-start.js", import.meta.url), "utf8");
-function page({ fail = false, submissionStatus = 'CONFIRMED' } = {}) {
+function page({ fail = false, confirmed = true, duplicate = false } = {}) {
   const values = {
     first_name: "Synthetic", business_name: "QA HVAC", email: "qa@example.com",
     contact_preference: "email", phone: "", business_type: "HVAC",
@@ -31,8 +31,7 @@ function page({ fail = false, submissionStatus = 'CONFIRMED' } = {}) {
     fetch: async (url, options) => {
       const body = JSON.parse(options.body);
       requests.push({ url, body });
-      if (url.includes('oauth2')) return Response.json({ access_token: 'test-only' });
-      return fail ? Response.json({}, { status: 503 }) : Response.json({ submission: { id: 'qa-submission', status: submissionStatus } });
+      return fail ? Response.json({}, { status: 503 }) : Response.json({ ok: confirmed, duplicate });
     }
   });
   return {
@@ -46,11 +45,12 @@ test("email-only setup suppresses a stale setup phone while retaining the separa
   const p = page();
   p.elements.phone.value = "+14095550199";
   await p.submit();
-  const submitted = p.requests[1].body.submission.submissions;
+  const submitted = p.requests[0].body.setupAnswers;
   assert.equal(submitted.contact_preference, "email");
   assert.equal("phone" in submitted, false);
   assert.equal(submitted.urgent_contact, "Operator 409-555-0100");
-  assert.match(submitted.anything_else, /EMAIL ONLY.*do not make setup or sales calls/);
+  assert.equal(p.requests[0].body.inquiryType, "setup");
+  assert.equal(p.requests.length, 1);
   assert.match(p.nodes['setup-followup'].textContent, /by email/);
 });
 
@@ -61,7 +61,7 @@ test("a requested setup call requires its own number and persists the explicit p
   assert.equal(p.requests.length, 0);
   p.elements.phone.value = "+14095550199";
   await p.submit();
-  const submitted = p.requests[1].body.submission.submissions;
+  const submitted = p.requests[0].body.setupAnswers;
   assert.equal(submitted.contact_preference, "phone");
   assert.equal(submitted.phone, "+14095550199");
   assert.match(p.nodes['setup-followup'].textContent, /requested a setup call/);
@@ -85,14 +85,17 @@ test("an unconfirmed setup submission retains answers for correction", async () 
   assert.equal(p.elements.business_name.value, "QA HVAC");
 });
 
-test("a submission reference alone cannot claim that Wix recorded the answers", async () => {
-  for (const submissionStatus of ['PENDING', 'PAYMENT_WAITING', null, '']) {
-    const p = page({ submissionStatus });
-    await p.submit();
-    assert.equal(p.nodes.quickStart.hidden, false);
-    assert.equal(p.nodes.nextSteps.hidden, true);
-    assert.equal(p.button.disabled, false);
-    assert.match(p.nodes.setupStatus.textContent, /could not confirm receipt/);
-    assert.equal(p.elements.business_name.value, 'QA HVAC');
-  }
+test("an HTTP success without a confirmed capture cannot claim receipt", async () => {
+  const p = page({ confirmed: false });
+  await p.submit();
+  assert.equal(p.nodes.quickStart.hidden, false);
+  assert.equal(p.nodes.nextSteps.hidden, true);
+  assert.equal(p.button.disabled, false);
+  assert.match(p.nodes.setupStatus.textContent, /could not confirm receipt/);
+});
+
+test("identical answers already captured are reported honestly", async () => {
+  const p = page({ duplicate: true });
+  await p.submit();
+  assert.match(p.nodes.setupStatus.textContent, /already recorded/);
 });

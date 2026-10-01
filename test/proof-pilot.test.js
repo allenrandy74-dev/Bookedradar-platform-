@@ -38,7 +38,7 @@ test("email-only preference suppresses a callback even if a phone was provided",
   const result = normalizeProofPilotInquiry({ name: "Jane", business: "Jane HVAC", email: "jane@example.com", phone: "+14095550100", contactPreference: "email" });
   const lead = proofPilotLead(result.inquiry);
   assert.equal(lead.callback_number, "");
-  assert.match(lead.notes, /EMAIL ONLY.*do not make a sales call/);
+  assert.match(lead.notes, /EMAIL ONLY.*do not make setup or sales calls/);
 });
 
 test("chosen channel requires matching contact information", () => {
@@ -63,7 +63,7 @@ test("email-only signup carries its preference through the actual Wix task paylo
   });
   const result = normalizeProofPilotInquiry({ name: "Jane", business: "Jane HVAC", email: "jane@example.com", contactPreference: "email" });
   await createWixFollowupTask({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", lead: proofPilotLead(result.inquiry), retries: 0 });
-  assert.match(payload.task.description, /EMAIL ONLY.*do not make a sales call/);
+  assert.match(payload.task.description, /EMAIL ONLY.*do not make setup or sales calls/);
   assert.match(payload.task.description, /jane@example.com/);
   assert.doesNotMatch(payload.task.description, /Callback:/);
 });
@@ -86,7 +86,7 @@ test("optional business details are bounded and preserved in contact notes", asy
   for (const value of ["Service area: Beaumont and nearby ZIP codes", "Business hours: Weekdays 8–5", "Main services: HVAC maintenance and repairs", "Voicemail after hours", "https://example.com", "Respond to missed calls"]) {
     assert.ok(saved.includes(value), value);
   }
-  assert.match(saved, /EMAIL ONLY.*do not make a sales call/);
+  assert.match(saved, /EMAIL ONLY.*do not make setup or sales calls/);
   const bounded = normalizeProofPilotInquiry({ ...result.inquiry, serviceArea: "a".repeat(501), businessHours: "b".repeat(501), services: "c".repeat(1201) });
   assert.equal(bounded.inquiry.serviceArea.length, 500);
   assert.equal(bounded.inquiry.businessHours.length, 500);
