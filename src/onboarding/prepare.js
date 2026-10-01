@@ -8,6 +8,7 @@ const FRIENDLY = {
   services: "Main services",
   business_hours: "Business hours",
   urgent_contact: "Who we should contact when a caller needs a person",
+  setup_call_phone: "A direct number for the setup call you requested",
   where_customer_information_is_kept: "Where customer and lead information is kept",
   what_counts_as_urgent: "What usually counts as urgent",
 };

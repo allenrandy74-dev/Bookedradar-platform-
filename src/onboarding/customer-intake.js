@@ -35,6 +35,7 @@ export function quickStartInputFromWixSubmission(submission = {}) {
     businessName: clean(values.business_name),
     email: clean(values.email),
     phone: clean(values.phone),
+    contactPreference: ['email', 'phone'].includes(clean(values.contact_preference)) ? clean(values.contact_preference) : 'email',
     website: clean(values.website),
     trade: clean(values.business_type),
     serviceArea: clean(values.service_area),
@@ -71,6 +72,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
   const bookingMode = "confirm_only";
   const schedulingRequested = /live.?booking|schedul|dispatch/.test(bookingChoice);
   const selectedServiceProfile = clean(input.serviceProfile || "recover").toLowerCase();
+  const contactPreference = input.contactPreference === "phone" ? "phone" : "email";
 
   let tenant = {
     tenantId,
@@ -131,7 +133,8 @@ export function buildTenantDraftFromQuickStart(input = {}) {
     onboarding: {
       firstName: clean(input.firstName),
       email: clean(input.email),
-      phone: clean(input.phone),
+      phone: contactPreference === "phone" ? clean(input.phone) : "",
+      contactPreference,
       website: clean(input.website),
       requestedBookingPreference: clean(input.bookingPreference),
       requestedServiceProfile: selectedServiceProfile,
@@ -158,6 +161,7 @@ export function buildTenantDraftFromQuickStart(input = {}) {
   if (!services.length) needsFromCustomer.push("services");
   if (!businessHoursText && !Object.keys(structuredBusinessHours).length) needsFromCustomer.push("business_hours");
   if (!escalationPhone) needsFromCustomer.push("urgent_contact");
+  if (contactPreference === "phone" && !extractUsPhone(input.phone)) needsFromCustomer.push("setup_call_phone");
 
   const internalPreparation = [];
   if (schedulingRequested) internalPreparation.push("prepare_separate_scheduling_scope_and_quote");
