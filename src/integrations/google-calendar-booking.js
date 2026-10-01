@@ -123,7 +123,20 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
         items: [{ id: this.calendarId }],
       }),
     });
-    const busy = data?.calendars?.[this.calendarId]?.busy || [];
+    // A successful HTTP response can still contain a per-calendar error.
+    // Unknown availability must never be treated as an empty calendar.
+    const calendar = data?.calendars?.[this.calendarId];
+    if (!calendar ||
+        (calendar.errors !== undefined && (!Array.isArray(calendar.errors) || calendar.errors.length > 0)) ||
+        !Array.isArray(calendar.busy) ||
+        calendar.busy.some(item => {
+          const start = typeof item?.start === "string" ? Date.parse(item.start) : NaN;
+          const end = typeof item?.end === "string" ? Date.parse(item.end) : NaN;
+          return !Number.isFinite(start) || !Number.isFinite(end) || end <= start;
+        })) {
+      throw new Error("google_calendar_availability_unverified");
+    }
+    const busy = calendar.busy;
     const stepMs = this.slotIncrementMinutes * 60_000;
     const durationMs = duration * 60_000;
     const slots = [];
