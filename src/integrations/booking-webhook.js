@@ -35,7 +35,16 @@ export class BookingWebhookAdapter {
     return this.request("find_availability", { request });
   }
 
-  createBooking(request) {
-    return this.request("create_booking", { request });
+  async createBooking(request) {
+    const data = await this.request("create_booking", { request });
+    const unverified = { confirmed: false, bookingId: null, reason: "booking_confirmation_unverified" };
+    if (!data || typeof data !== "object" || Array.isArray(data)) return unverified;
+
+    const bookingId = typeof data.bookingId === "string" ? data.bookingId.trim() : "";
+    // HTTP success alone is not a booking receipt. Do not throw or retry an
+    // ambiguous write: the provider may already have created an appointment.
+    if (data.confirmed === true && bookingId) return { ...data, bookingId };
+    if (data.confirmed === false) return { ...data, confirmed: false, bookingId: bookingId || null };
+    return { ...data, ...unverified };
   }
 }
