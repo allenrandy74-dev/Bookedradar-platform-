@@ -1,129 +1,165 @@
-// Deliberately not selected by server.js until all stores and cutover gates pass.
-import fs from "node:fs/promises";
-import path from "node:path";
+import { createPostgresPool,postgresHealth } from './postgres-runtime.js';
+import { PostgresCallStateStore,PostgresWebhookStore } from './postgres-state-store.js';
+import { PostgresCallHistoryStore } from './postgres-call-history.js';
+import { PostgresRecoveryStore,readRecovery } from './postgres-recovery-store.js';
+import { PostgresWebChatStore,PostgresTransferStore,PostgresGrowthMetricsStore } from './postgres-aux-stores.js';
+import { PostgresLeadStore } from './postgres-lead-store.js';
+import { PostgresBillingStore } from './billing/postgres-store.js';
+import { persistPostgresVoiceLead,persistPostgresChatTurn } from './postgres-intake-workflows.js';
+import { CallHistoryStore } from './call-history.js';
 
-function required(value, name) {
-  if (typeof value !== "string" || !value.trim()) throw new Error(`${name}_required`);
-  return value;
+const LOCALHOSTS = new Set(['localhost','127.0.0.1','[::1]']);
+
+export function postgresLabConfig(env) {
+  const backend=env.BOOKEDRADAR_STORAGE_BACKEND || 'json';
+  if (backend==='json') return null;
+  if (backend!=='postgres_lab') throw new Error('storage_backend_not_lab');
+  const url=new URL(env.DATABASE_URL || '');
+  if (!LOCALHOSTS.has(url.hostname) || url.pathname!=='/bookedradar_test' || !['postgres:','postgresql:'].includes(url.protocol)) throw new Error('postgres_lab_requires_disposable_database');
+  if (['CRM_SMOKE_TEST_ON_STARTUP','EMAIL_SMOKE_TEST_ON_STARTUP','E2E_SMOKE_TEST_ON_STARTUP','TWILIO_A2P_DIAGNOSTIC_ON_STARTUP'].some(key=>env[key]==='true') || env.VOICE_ENABLED==='true' || env.DISPATCH_ENABLED==='true' || env.BOOKEDRADAR_BILLING_ENABLED==='true' || env.DEMO_NUMBER_PROVISION_MODE && env.DEMO_NUMBER_PROVISION_MODE!=='off' || ['OPENAI_API_KEY','TWILIO_AUTH_TOKEN','STRIPE_SECRET_KEY','RESEND_API_KEY','WIX_API_KEY'].some(key=>env[key])) throw new Error('postgres_lab_requires_providers_disabled');
+  return {connectionString:env.DATABASE_URL,mode:'lab'};
 }
 
-export class PostgresCallStateStore {
-  constructor(pool, tenantId) {
-    this.pool = pool;
-    this.tenantId = required(tenantId, "tenant_id");
+export function postgresBackendConfig(env) {
+  const backend=String(env.BOOKEDRADAR_STORAGE_BACKEND || 'json').trim();
+  if (backend==='json') return null;
+  if (backend==='postgres_lab') return postgresLabConfig(env);
+  if (backend!=='postgres') throw new Error('storage_backend_not_released');
+  if (String(env.POSTGRES_PRODUCTION_ARMED || 'false').toLowerCase()!=='true') {
+    throw new Error('postgres_production_not_armed');
   }
 
-  async getCall(callId) {
-    required(callId, "call_id");
-    const result = await this.pool.query(
-      "SELECT payload FROM bookedradar.call_control_state WHERE call_id=$1 AND tenant_id=$2",
-      [callId, this.tenantId]
-    );
-    return result.rows[0]?.payload || null;
+  const connectionString=String(env.DATABASE_URL || '').trim();
+  const url=new URL(connectionString);
+  if (!['postgres:','postgresql:'].includes(url.protocol) || LOCALHOSTS.has(url.hostname) || url.pathname==='/bookedradar_test') {
+    throw new Error('postgres_production_requires_managed_database');
   }
 
-  async patchCall(callId, patch) {
-    required(callId, "call_id");
-    if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("call_patch_required");
-    if (patch.tenantId !== undefined && patch.tenantId !== this.tenantId) throw new Error("call_tenant_conflict");
-    const payload = JSON.stringify({ ...patch, tenantId: this.tenantId });
-    // Merge inside the statement, under PostgreSQL's row lock. No cached read/modify/write.
-    // The WHERE clause prevents a globally unique call ID being reassigned to another tenant.
-    const result = await this.pool.query(`
-      INSERT INTO bookedradar.call_control_state AS existing (call_id, tenant_id, updated_at, payload)
-      VALUES ($1,$2,clock_timestamp(),$3::jsonb || jsonb_build_object('updatedAt',floor(extract(epoch FROM clock_timestamp())*1000)::bigint))
-      ON CONFLICT (call_id) DO UPDATE SET
-        updated_at=clock_timestamp(),
-        payload=existing.payload || $3::jsonb || jsonb_build_object('updatedAt',floor(extract(epoch FROM clock_timestamp())*1000)::bigint)
-      WHERE existing.tenant_id=$2
-      RETURNING payload`, [callId, this.tenantId, payload]);
-    if (!result.rows.length) throw new Error("call_tenant_conflict");
-    return result.rows[0].payload;
-  }
+  const migrationId=String(env.POSTGRES_VALIDATED_MIGRATION_ID || '').trim();
+  const snapshotFingerprint=String(env.POSTGRES_VALIDATED_SNAPSHOT_FINGERPRINT || '').trim().toLowerCase();
+  if (!/^[a-zA-Z0-9_-]{8,160}$/.test(migrationId)) throw new Error('postgres_validated_migration_id_required');
+  if (!/^[a-f0-9]{64}$/.test(snapshotFingerprint)) throw new Error('postgres_validated_snapshot_fingerprint_required');
 
-  async claimBooking(callId, { attemptId, requestHash }) {
-    required(callId, "call_id");
-    required(attemptId, "booking_attempt_id");
-    if (!/^[a-f0-9]{64}$/.test(requestHash || "")) throw new Error("booking_request_hash_required");
-    const attempt = JSON.stringify({ attemptId, requestHash, status: "pending" });
-    // One booking attempt per call. Never expire/reclaim an uncertain write.
-    const { rows } = await this.pool.query(`
-      UPDATE bookedradar.call_control_state SET updated_at=clock_timestamp(),
-        payload=payload || jsonb_build_object('bookingAttempt',$3::jsonb)
-      WHERE call_id=$1 AND tenant_id=$2 AND NOT (payload ? 'bookingAttempt')
-      RETURNING payload->'bookingAttempt' AS attempt`, [callId, this.tenantId, attempt]);
-    return rows[0]?.attempt || null;
-  }
-
-  async finishBooking(callId, attemptId, { status, result }) {
-    required(callId, "call_id");
-    required(attemptId, "booking_attempt_id");
-    if (!["confirmed", "unconfirmed", "uncertain"].includes(status)) throw new Error("booking_status_invalid");
-    if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("booking_result_required");
-    if (status === "confirmed" && (result.confirmed !== true || typeof result.bookingId !== "string" || !result.bookingId.trim())) {
-      throw new Error("booking_receipt_required");
-    }
-    const patch = JSON.stringify({ status, result });
-    const { rows } = await this.pool.query(`
-      UPDATE bookedradar.call_control_state SET updated_at=clock_timestamp(),
-        payload=payload || jsonb_build_object('bookingAttempt',(payload->'bookingAttempt') || $4::jsonb)
-      WHERE call_id=$1 AND tenant_id=$2 AND payload->'bookingAttempt'->>'attemptId'=$3
-        AND payload->'bookingAttempt'->>'status'='pending'
-      RETURNING payload->'bookingAttempt' AS attempt`, [callId, this.tenantId, attemptId, patch]);
-    return rows[0]?.attempt || null;
-  }
+  return {
+    connectionString,
+    mode:'production',
+    migrationId,
+    snapshotFingerprint,
+  };
 }
 
-// Webhook IDs are globally unique provider event IDs, matching the existing JSON contract.
-// Failures propagate; never silently switch to JSON and split the deduplication authority.
-export class PostgresWebhookStore {
-  constructor(pool) { this.pool = pool; }
-
-  async markWebhookOnce(id) {
-    if (!id) return true;
-    required(id, "webhook_id");
-    const result = await this.pool.query(`
-      INSERT INTO bookedradar.webhook_receipts AS existing (webhook_id, received_at)
-      VALUES ($1,clock_timestamp())
-      ON CONFLICT (webhook_id) DO UPDATE SET received_at=clock_timestamp()
-      WHERE existing.received_at < clock_timestamp() - interval '24 hours'
-      RETURNING webhook_id`, [id]);
-    return result.rows.length === 1;
-  }
-
-  async releaseWebhook(id) {
-    if (!id) return false;
-    required(id, "webhook_id");
-    const result = await this.pool.query(
-      "DELETE FROM bookedradar.webhook_receipts WHERE webhook_id=$1 RETURNING webhook_id", [id]
-    );
-    return result.rows.length === 1;
-  }
+export function providerAdaptersEnabledForStorage(stores) {
+  return !stores || stores.mode !== 'lab';
 }
 
-// Operator-only export of these two tables. This is NOT a full-platform rollback.
-// Caller must stop/drain all writers before using the export for a future cutover.
-// Export creates a new private directory and never overwrites a live JSON file.
-export async function exportPostgresCallState(pool, destinationRoot, { writersQuiesced = false } = {}) {
-  if (!writersQuiesced) throw new Error("writers_must_be_quiesced");
-  required(destinationRoot, "destination_root");
-  const client = await pool.connect();
-  const state = { processedWebhooks: Object.create(null), calls: Object.create(null) };
+export function validateProductionCutoverSourceAudit(audit,expectedFingerprint) {
+  if (!audit?.ok) throw new Error('postgres_cutover_source_audit_failed');
+  if (
+    String(audit.snapshotFingerprint || '').toLowerCase() !==
+    String(expectedFingerprint || '').toLowerCase()
+  ) {
+    throw new Error('postgres_cutover_source_fingerprint_mismatch');
+  }
+  if (Number(audit.errorCount || 0) > 0 || Number(audit.warningCount || 0) > 0) {
+    throw new Error('postgres_cutover_source_audit_not_clean');
+  }
+  return {
+    ok:true,
+    snapshotFingerprint:String(audit.snapshotFingerprint).toLowerCase(),
+  };
+}
+
+export async function verifyValidatedProductionMigration(pool,{migrationId,snapshotFingerprint}={}) {
+  const {rows}=await pool.query(
+    `SELECT migration_id,source_snapshot_sha256,status,validation
+       FROM bookedradar.migration_runs
+      WHERE migration_id=$1`,
+    [migrationId]
+  );
+  const row=rows[0];
+  if (!row) throw new Error('postgres_validated_migration_missing');
+  if (row.status!=='validated') throw new Error('postgres_validated_migration_status_invalid');
+  if (String(row.source_snapshot_sha256 || '').toLowerCase()!==String(snapshotFingerprint || '').toLowerCase()) {
+    throw new Error('postgres_validated_migration_fingerprint_mismatch');
+  }
+  const validation=row.validation || {};
+  if (validation?.tableCounts?.ok!==true || validation?.content?.ok!==true) {
+    throw new Error('postgres_validated_migration_reconciliation_invalid');
+  }
+  if (
+    validation?.content?.sourceContentHash &&
+    validation?.content?.postgresContentHash &&
+    validation.content.sourceContentHash!==validation.content.postgresContentHash
+  ) {
+    throw new Error('postgres_validated_migration_content_hash_mismatch');
+  }
+  return {
+    migrationId:row.migration_id,
+    snapshotFingerprint:String(row.source_snapshot_sha256).toLowerCase(),
+    validated:true,
+  };
+}
+
+export async function createPostgresServerStores(config) {
+  const pool=createPostgresPool(config);
+  let productionValidation=null;
   try {
-    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const receipts = await client.query("SELECT webhook_id, received_at FROM bookedradar.webhook_receipts ORDER BY webhook_id");
-    const calls = await client.query("SELECT call_id, payload FROM bookedradar.call_control_state ORDER BY call_id");
-    for (const row of receipts.rows) state.processedWebhooks[row.webhook_id] = new Date(row.received_at).getTime();
-    for (const row of calls.rows) state.calls[row.call_id] = row.payload;
-    await client.query("COMMIT");
-  } catch (error) {
-    try { await client.query("ROLLBACK"); } catch {}
-    throw error;
-  } finally { client.release(); }
-  await fs.mkdir(destinationRoot, { recursive: true, mode: 0o700 });
-  const directory = await fs.mkdtemp(path.join(destinationRoot, "call-state-export-"));
-  await fs.chmod(directory, 0o700);
-  const file = path.join(directory, "state.json");
-  await fs.writeFile(file, JSON.stringify(state, null, 2) + "\n", { flag: "wx", mode: 0o600 });
-  return { file, calls: Object.keys(state.calls).length, webhooks: Object.keys(state.processedWebhooks).length };
+    await postgresHealth(pool);
+    if (config?.mode==='production') {
+      productionValidation=await verifyValidatedProductionMigration(pool,config);
+    }
+  } catch(error) {await pool.end();throw error;}
+  const noop=async()=>{};
+  // Lookup is for already-authenticated internal provider callbacks whose IDs
+  // are globally unique. Tenant-facing APIs still pass explicit tenant IDs.
+  async function owner(table,key,id) {
+    const {rows}=await pool.query(`SELECT tenant_id FROM bookedradar.${table} WHERE ${key}=$1`,[id]);
+    return rows[0]?.tenant_id || null;
+  }
+  const callOwner=id=>owner('call_control_state','call_id',id);
+  const webhook=new PostgresWebhookStore(pool);
+  const state={load:noop,markWebhookOnce:id=>webhook.markWebhookOnce(id),releaseWebhook:id=>webhook.releaseWebhook(id),
+    getCall:async id=>{const tenant=await callOwner(id);return tenant ? new PostgresCallStateStore(pool,tenant).getCall(id) : null;},
+    patchCall:async(id,patch)=>{const tenant=patch.tenantId || await callOwner(id);return new PostgresCallStateStore(pool,tenant).patchCall(id,patch);}};
+  const callHistory={load:noop,get:(tenant,id)=>new PostgresCallHistoryStore(pool,tenant).get(id),start:(id,args)=>new PostgresCallHistoryStore(pool,args.tenantId).start(id,args)};
+  for (const method of ['addTurn','addKnowledgeGap','finish','mark'])callHistory[method]=async(id,...args)=>{
+    const tenant=await owner('voice_calls','call_id',id);return tenant ? new PostgresCallHistoryStore(pool,tenant)[method](id,...args) : null;
+  };
+  for (const method of ['list','stats','statsSince'])callHistory[method]=(tenant,...args)=>new PostgresCallHistoryStore(pool,tenant)[method](...args);
+  callHistory.operationalSummary=async options=>{
+    if (!options?.tenantId) {
+      const {rows}=await pool.query('SELECT call_id,payload FROM bookedradar.voice_calls');
+      const view=new CallHistoryStore('/unused/report.json');view.loaded=true;view.data={calls:Object.fromEntries(rows.map(r=>[r.call_id,r.payload]))};
+      return view.operationalSummary(options);
+    }
+    return new PostgresCallHistoryStore(pool,options.tenantId).operationalSummary(options);
+  };
+  const forTenant=tenant=>new PostgresRecoveryStore(pool,tenant);
+  const recovery={load:noop,forTenant,failedActions:tenant=>forTenant(tenant).failedActions(),
+    snapshot:async()=>{
+      const client=await pool.connect();
+      try {await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');const data=await readRecovery(client);await client.query('COMMIT');return data;}
+      catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
+    },
+    upsertContact:(key,patch)=>forTenant(key.split(':')[0]).upsertContact(key,patch),
+    scheduleAction:action=>forTenant(action.tenantId).scheduleAction(action),
+    prune:async options=>{
+      const {rows}=await pool.query('SELECT DISTINCT tenant_id FROM bookedradar.recovery_events WHERE tenant_id IS NOT NULL UNION SELECT DISTINCT tenant_id FROM bookedradar.recovery_actions');
+      const total={deletedEvents:0,deletedActions:0};
+      for(const row of rows){const r=await forTenant(row.tenant_id).prune(options);total.deletedEvents+=r.deletedEvents;total.deletedActions+=r.deletedActions;}
+      return total;
+    },
+  };
+  for(const [method,table,key] of [['getContact','recovery_contacts','contact_key'],['getOpportunity','recovery_opportunities','opportunity_id'],['patchOpportunity','recovery_opportunities','opportunity_id'],['patchAction','recovery_actions','action_id']])recovery[method]=async(id,...args)=>{
+    const tenant=await owner(table,key,id);if(!tenant){if(method.startsWith('get'))return null;throw new Error('record_not_found');}return forTenant(tenant)[method](id,...args);
+  };
+  const webChat={load:noop,getOrCreate:(tenant,id)=>new PostgresWebChatStore(pool,tenant).getOrCreate(id),
+    update:async(id,patch,options)=>{const tenant=await owner('web_chat_sessions','session_id',id);return new PostgresWebChatStore(pool,tenant).update(id,patch,options);}};
+  const transfers={load:noop,getCall:async id=>{const tenant=await owner('transfer_records','transfer_id',id);return tenant ? new PostgresTransferStore(pool,tenant).getCall(id) : null;},
+    patchCall:async(id,patch)=>{const tenant=patch.tenantId || await owner('transfer_records','transfer_id',id);return new PostgresTransferStore(pool,tenant).patchCall(id,patch);}};
+  return {pool,mode:config?.mode || 'lab',productionValidation,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
+    bookingStateForTenant:tenant=>new PostgresCallStateStore(pool,tenant),
+    persistVoiceLead:args=>persistPostgresVoiceLead(pool,args),persistChatTurn:args=>persistPostgresChatTurn(pool,args),
+    appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
+    billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};
 }
