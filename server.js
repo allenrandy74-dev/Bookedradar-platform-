@@ -31,7 +31,7 @@ import {
 import { createWixContact, createWixFollowupTask } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
-import { enforceProofPilotAdmission, pilotCriticalFailures } from "./src/proof-pilot-admission.js";
+import { enforceProofPilotAdmission, pilotCriticalFailures, pilotBookingHolds } from "./src/proof-pilot-admission.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
@@ -2183,9 +2183,12 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
     const uncertainActions = typeof recoveryStore.reconciliationActions === "function"
       ? await recoveryStore.reconciliationActions() : [];
     const criticalFailures = pilotCriticalFailures([...failedActions, ...uncertainActions], config);
+    const unresolvedBookings = config.enabled === true
+      ? await pilotBookingHolds(postgresStores?.pool, tenant.tenantId) : 0;
     const status = proofPilotStatus(config, {
       callsHandled: callStats.callsHandled,
       criticalFailures,
+      unresolvedBookings,
       firstValueAt: callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "",
     });
     const scorecard = proofPilotScorecard({
@@ -2197,6 +2200,7 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
       recoveredOpportunities: proof.recoveredOpportunities,
       confirmedRevenue: proof.confirmedRevenue,
       criticalFailures,
+      unresolvedBookings,
       firstValueAt: status.firstValueAt,
     });
     return res.json({
