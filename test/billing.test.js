@@ -149,6 +149,34 @@ test('ACH-first Checkout subscriptions also accept later card updates through th
   assert.deepEqual(f.sub.payment_settings.payment_method_types, ['us_bank_account', 'card']);
 });
 
+test('retired and competing subscription events cannot mutate Stripe settings or account state', async t => {
+  for (const retired of [true, false]) {
+    const f = await fixture(t); await f.enroll();
+    await f.service.processEvent(f.event('evt_current'));
+    if (retired) {
+      await f.store.transaction(data => {
+        data.accounts.tenant1.retiredSubscriptionIds = ['sub_old'];
+      });
+      // A cancelled current subscription must still reject a retired one.
+      await f.store.transaction(data => { data.accounts.tenant1.status = 'cancelled'; });
+    }
+    const before = await f.service.get('tenant1');
+    f.sub.id = retired ? 'sub_old' : 'sub_other';
+    f.sub.payment_settings.payment_method_types = ['us_bank_account'];
+    let updates = 0;
+    f.stripe.subscriptions.update = async () => {
+      updates++;
+      throw new Error('ignored_subscription_must_not_be_updated');
+    };
+    const event = f.event(retired ? 'evt_retired' : 'evt_competing');
+    event.data.object.parent.subscription_details.subscription = f.sub.id;
+    assert.deepEqual(await f.service.processEvent(event), { ignored: true });
+    assert.equal(updates, 0);
+    assert.deepEqual(await f.service.get('tenant1'), before);
+    assert.equal(f.store.data.events[event.id], undefined);
+  }
+});
+
 
 test('portal cancellation with cancel_at timestamp is recognized at the paid period end', async t => {
   const f = await fixture(t); await f.enroll();
