@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Pool} from 'pg';
 import {validateExistingLabDatabase} from '../scripts/private-voice-lab-start.mjs';
+import {ensurePrivateLabOpsNotifications} from '../scripts/private-lab-ops-notifications.mjs';
 const connectionString=process.env.POSTGRES_TEST_URL;
 test('private lab startup validates existing migration without bootstrapping or changing rows',{skip:!connectionString},async t=>{
   const url=new URL(connectionString);
@@ -27,9 +28,20 @@ test('private lab startup validates existing migration without bootstrapping or 
       assert.deepEqual((await pool.query('SELECT * FROM bookedradar.migration_runs')).rows,before);
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM bookedradar.call_control_state')).rows[0].n,1);
     });
-    await t.test('unvalidated migration is refused',async()=>{
+    await t.test('bounded notification migration is repeatable and preserves existing records',async()=>{
+      await pool.query('DROP TABLE bookedradar.ops_notifications');
+      const before=(await pool.query('SELECT * FROM bookedradar.migration_runs')).rows;
+      const callsBefore=(await pool.query('SELECT * FROM bookedradar.call_control_state')).rows;
+      const results=await Promise.all([ensurePrivateLabOpsNotifications(pool),ensurePrivateLabOpsNotifications(pool)]);
+      assert.ok(results.every(x=>x.ok));
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM bookedradar.ops_notifications')).rows[0].n,0);
+      assert.deepEqual((await pool.query('SELECT * FROM bookedradar.migration_runs')).rows,before);
+      assert.deepEqual((await pool.query('SELECT * FROM bookedradar.call_control_state')).rows,callsBefore);
+    });
+    await t.test('unvalidated migration is refused' ,async()=>{
       await pool.query("UPDATE bookedradar.migration_runs SET status='failed'");
       await assert.rejects(validateExistingLabDatabase(pool),/status_invalid/);
+      await assert.rejects(ensurePrivateLabOpsNotifications(pool),/status_invalid/);
     });
     await t.test('unreconciled migration is refused',async()=>{
       await pool.query("UPDATE bookedradar.migration_runs SET status='validated',validation='{}'");
