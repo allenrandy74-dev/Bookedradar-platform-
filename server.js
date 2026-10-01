@@ -1,5 +1,6 @@
 import { createPostSaveResponse } from "./src/post-save-response.js";
 import { createCallLifecycle } from "./src/call-lifecycle.js";
+import { createBookingOnce } from "./src/integrations/booking-once.js";
 import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from "./src/greeting-watchdog.js";
@@ -1009,7 +1010,7 @@ async function executeTool({
 
   if (name === "book_appointment") {
     const booking = bookingAdapterForTenant(tenant, { timeoutMs });
-    const result = await booking.createBooking({
+    const bookingRequest = {
       name: args.name || "",
       callbackNumber: args.callback_number || callerNumber || "",
       serviceType: args.service_type || "",
@@ -1019,7 +1020,10 @@ async function executeTool({
       notes: args.notes || "",
       tenantId: tenant.tenantId,
       callId,
-    });
+    };
+    const result = tenant?.policies?.bookingMode === "live_booking"
+      ? await createBookingOnce({ store: postgresStores?.bookingStateForTenant(tenant.tenantId), adapter: booking, request: bookingRequest })
+      : await booking.createBooking(bookingRequest);
 
     if (result?.confirmed && result?.bookingId) {
       const call = await state.getCall(callId);
