@@ -31,6 +31,7 @@ import {
 import { createWixContact, createWixFollowupTask, createWixInquiryNotes } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey, proofPilotTaskLead } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
+import { enforceProofPilotAdmission, readProofPilotSnapshot, preparePilotCall } from "./src/proof-pilot-admission.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
@@ -1416,52 +1417,70 @@ async function handleIncomingCall(event) {
     return;
   }
 
-  await state.patchCall(callId, {
-    tenantId: tenant.tenantId,
-    acceptedAt: Date.now(),
-    callerHintMasked: maskPhone(callerNumber),
-    dialedNumberMasked: maskPhone(dialedNumber),
+  const pilotAdmission = await enforceProofPilotAdmission({
+    tenant, callId, pool: postgresStores?.pool,
+    callerMasked: maskPhone(callerNumber), dialedMasked: maskPhone(dialedNumber),
+    reject: args => rejectRealtimeCall({ apiKey: OPENAI_API_KEY, ...args }),
+    end: id => callLifecycle.end(id),
+    log: fields => console.log(JSON.stringify(fields)),
   });
-  await callHistory.start(callId, {
-    tenantId: tenant.tenantId,
-    callerMasked: maskPhone(callerNumber),
-    dialedMasked: maskPhone(dialedNumber),
+  if (pilotAdmission.handled) return;
+
+  const acceptanceOptions = await preparePilotCall({
+    pilotEnabled: tenant?.commercial?.proofPilot?.enabled === true,
+    reject: () => rejectRealtimeCall({ apiKey: OPENAI_API_KEY, callId,
+      statusCode: [486, 503].includes(tenant.commercial.proofPilot.fallbackRejectStatusCode)
+        ? tenant.commercial.proofPilot.fallbackRejectStatusCode : 503 }),
+    setup: async () => {
+      await state.patchCall(callId, {
+        tenantId: tenant.tenantId,
+        acceptedAt: Date.now(),
+        callerHintMasked: maskPhone(callerNumber),
+        dialedNumberMasked: maskPhone(dialedNumber),
+      });
+      await callHistory.start(callId, {
+        tenantId: tenant.tenantId,
+        callerMasked: maskPhone(callerNumber),
+        dialedMasked: maskPhone(dialedNumber),
+      });
+    
+      const businessContext = localBusinessContext(tenant);
+      const returningCaller = await returningCallerContext({
+        store: recoveryStore,
+        tenant,
+        callerNumber,
+      });
+      const instructions = buildOperatorInstructions({
+        ...operatorRulesForTenant(tenant),
+        companyName: tenant.businessName,
+        companyTrade: tenant.trade,
+        serviceArea: Array.isArray(tenant.serviceArea)
+          ? tenant.serviceArea.join(", ")
+          : tenant.serviceArea,
+        callerNumber,
+        bookingMode: tenant?.policies?.bookingMode || "confirm_only",
+        quotePrices: Boolean(tenant?.policies?.quotePrices),
+        highValueThreshold: Number(tenant?.economics?.highValueThreshold || 0),
+        services: tenant?.services || [],
+        localTime: businessContext.localTime,
+        businessHoursText: businessContext.businessHoursText,
+        timeZone: tenant?.timeZone || "America/Chicago",
+        featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
+        assistantDisclosure: Boolean(tenant?.policies?.assistantDisclosure),
+      });
+      return {
+        apiKey: OPENAI_API_KEY,
+        callId,
+        model: tenant?.integrations?.phone?.model || OPENAI_REALTIME_MODEL,
+        instructions,
+        voice: tenant?.integrations?.phone?.voice || OPENAI_VOICE,
+        tools: toolsForTenant(tools, tenant),
+        inputTranscription: inputTranscriptionForTenant(tenant),
+      };
+    },
   });
 
-  const businessContext = localBusinessContext(tenant);
-  const returningCaller = await returningCallerContext({
-    store: recoveryStore,
-    tenant,
-    callerNumber,
-  });
-  const instructions = buildOperatorInstructions({
-    ...operatorRulesForTenant(tenant),
-    companyName: tenant.businessName,
-    companyTrade: tenant.trade,
-    serviceArea: Array.isArray(tenant.serviceArea)
-      ? tenant.serviceArea.join(", ")
-      : tenant.serviceArea,
-    callerNumber,
-    bookingMode: tenant?.policies?.bookingMode || "confirm_only",
-    quotePrices: Boolean(tenant?.policies?.quotePrices),
-    highValueThreshold: Number(tenant?.economics?.highValueThreshold || 0),
-    services: tenant?.services || [],
-    localTime: businessContext.localTime,
-    businessHoursText: businessContext.businessHoursText,
-    timeZone: tenant?.timeZone || "America/Chicago",
-    featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
-    assistantDisclosure: Boolean(tenant?.policies?.assistantDisclosure),
-  });
-
-  await acceptRealtimeCall({
-    apiKey: OPENAI_API_KEY,
-    callId,
-    model: tenant?.integrations?.phone?.model || OPENAI_REALTIME_MODEL,
-    instructions,
-    voice: tenant?.integrations?.phone?.voice || OPENAI_VOICE,
-    tools: toolsForTenant(tools, tenant),
-    inputTranscription: inputTranscriptionForTenant(tenant),
-  });
+  await acceptRealtimeCall(acceptanceOptions);
 
   const acceptanceMs = Date.now() - receivedAt;
   recordCallMilestone(callId, "call.accepted", { latencyMs: acceptanceMs });
@@ -2183,35 +2202,45 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
     const tenant = req.bookedRadarTenant;
     const config = tenant?.commercial?.proofPilot || {};
     const startMs = Date.parse(config.startAt || "") || 0;
-    const callStats = await callHistory.statsSince(tenant.tenantId, startMs);
-    const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs });
-    const failedActions = await recoveryStore.failedActions(tenant.tenantId);
-    const criticalFailures = failedActions.filter(action =>
+    const candidateEnd = startMs + Number(config.durationDays ?? 14) * 86400000;
+    const endMs = config.enabled === true && Number.isFinite(candidateEnd) ? candidateEnd : Infinity;
+    const callStats = await callHistory.statsSince(tenant.tenantId, startMs, endMs);
+    const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs, untilMs: endMs });
+    const snapshot = config.enabled === true
+      ? await readProofPilotSnapshot(postgresStores?.pool, { tenantId: tenant.tenantId, config }) : null;
+    const failedActions = snapshot ? [] : await recoveryStore.failedActions(tenant.tenantId);
+    const criticalFailures = snapshot?.criticalFailures ?? failedActions.filter(action =>
       ["human_alert", "human_task"].includes(String(action.channel || "")) ||
       String(action.lastError || "").toLowerCase().includes("transfer")
     ).length;
-    const status = proofPilotStatus(config, {
-      callsHandled: callStats.callsHandled,
-      criticalFailures,
-      firstValueAt: callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "",
-    });
+    const callsHandled = snapshot?.callsHandled ?? callStats.callsHandled;
+    const unresolvedBookings = snapshot?.unresolvedBookings || 0;
+    const firstValueAt = callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "";
+    const status = snapshot ? { ...snapshot.status, firstValueAt: firstValueAt || null }
+      : proofPilotStatus(config, { callsHandled, criticalFailures, firstValueAt });
     const scorecard = proofPilotScorecard({
       status: status.status,
-      callsHandled: callStats.callsHandled,
+      callsHandled,
       qualifiedOpportunities: proof.opportunitiesCaptured,
       humanTransfers: callStats.humanTransfers,
       incompleteCalls: callStats.incompleteCalls,
       recoveredOpportunities: proof.recoveredOpportunities,
       confirmedRevenue: proof.confirmedRevenue,
       criticalFailures,
-      firstValueAt: status.firstValueAt,
+      unresolvedBookings,
+      firstValueAt,
     });
+    if (snapshot && !snapshot.verified) {
+      scorecard.criticalFailures = null;
+      scorecard.unresolvedBookings = null;
+    }
     return res.json({
       ok: true,
       tenantId: tenant.tenantId,
       status,
       scorecard,
       proof,
+      safety: snapshot ? { verified: snapshot.verified === true, criticalActionFailures: snapshot.criticalActionFailures ?? null, criticalVoiceFailures: snapshot.criticalVoiceFailures ?? null, unresolvedBookings: snapshot.unresolvedBookings ?? null } : null,
       guardrail: status.status === "ACTIVE" || status.status === "SCHEDULED"
         ? "PILOT_WITHIN_APPROVED_SCOPE"
         : "DO_NOT_EXPAND_OR_CONTINUE_PILOT_TRAFFIC_UNTIL_REVIEWED",

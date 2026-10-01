@@ -271,10 +271,10 @@ export class CallHistoryStore {
       }));
   }
 
-  async statsSince(tenantId, sinceMs = 0) {
+  async statsSince(tenantId, sinceMs = 0, untilMs = Infinity) {
     await this.load();
     const calls = Object.values(this.data.calls).filter(call =>
-      call.tenantId === tenantId && Number(call.startedAt || 0) >= Number(sinceMs || 0)
+      call.tenantId === tenantId && Number(call.startedAt || 0) >= Number(sinceMs || 0) && Number(call.startedAt || 0) < Number(untilMs)
     );
     return {
       callsHandled: calls.length,
@@ -308,3 +308,4 @@ export class CallHistoryStore {
     return call?.tenantId === tenantId ? structuredClone(call) : null;
   }
 }
+

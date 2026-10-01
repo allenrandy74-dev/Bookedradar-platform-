@@ -109,6 +109,7 @@ export class ActionDispatcher {
 
         const updated = await this.store.patchAction(action.id, {
           status: failed ? "failed" : "pending",
+          failedAt: failed ? new Date().toISOString() : null,
           attempts,
           dueAt: failed ? action.dueAt : new Date(Date.now() + retryDelayMs).toISOString(),
           lastError: String(error?.message || error).slice(0, 500),
@@ -148,7 +149,7 @@ export class ActionDispatcher {
     try {
       result = await adapter.send({ action,contact,opportunity,tenant:this.tenant,content,deliveryPolicy:"single_attempt" });
     } catch (error) {
-      const uncertain = await finish({ status:"reconciliation_required",lastError:String(error?.message || error).slice(0,500) });
+      const uncertain = await finish({ status:"reconciliation_required",failedAt:new Date().toISOString(),lastError:String(error?.message || error).slice(0,500) });
       return { action:uncertain,dispatched:false,reconciliationRequired:true,error:uncertain.lastError };
     }
     // A database failure here must propagate. It must not turn a successful
@@ -157,3 +158,4 @@ export class ActionDispatcher {
     return { action:completed,dispatched:true,result };
   }
 }
+
