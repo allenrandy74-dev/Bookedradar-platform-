@@ -61,3 +61,18 @@ export function proofPilotInquiryKey(inquiry = {}) {
   ].join("|");
   return "proof-pilot:" + crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
 }
+
+export function proofPilotTaskLead(inquiry) {
+  const lead = proofPilotLead(inquiry);
+  return {
+    ...lead,
+    name: "",
+    service_type: "Proof Pilot",
+    urgency: "",
+    notes: [
+      inquiry.contactPreference === "phone" ? "PHONE — customer requested a call." : "EMAIL ONLY — do not make a sales call.",
+      `Business: ${inquiry.business}`,
+      "Full request and business answers are saved in this contact's notes.",
+    ].join("\n"),
+  };
+}

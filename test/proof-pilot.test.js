@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "../src/proof-pilot.js";
-import { createWixFollowupTask } from "../src/wix.js";
+import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey, proofPilotTaskLead } from "../src/proof-pilot.js";
+import { createWixFollowupTask, createWixInquiryNotes } from "../src/wix.js";
 
 test("proof pilot inquiry requires business context and contact", () => {
   assert.equal(normalizeProofPilotInquiry({ name:"A", business:"B", trade:"HVAC" }).ok, false);
@@ -68,11 +68,11 @@ test("email-only signup carries its preference through the actual Wix task paylo
   assert.doesNotMatch(payload.task.description, /Callback:/);
 });
 
-test("optional business details are bounded and preserved in the actual follow-up task", async (t) => {
-  let payload;
+test("optional business details are bounded and preserved in contact notes", async (t) => {
+  const payloads = [];
   t.mock.method(globalThis, "fetch", async (_url, options) => {
-    payload = JSON.parse(options.body);
-    return Response.json({ task: { id: "synthetic-task" } });
+    payloads.push(JSON.parse(options.body));
+    return Response.json({ note: { id: "synthetic-note" } });
   });
   const result = normalizeProofPilotInquiry({
     name: "Synthetic", business: "Synthetic HVAC", email: "synthetic@example.com",
@@ -81,13 +81,40 @@ test("optional business details are bounded and preserved in the actual follow-u
     website: "https://example.com", goal: "Respond to missed calls",
   });
   assert.equal(result.ok, true);
-  await createWixFollowupTask({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", lead: proofPilotLead(result.inquiry), retries: 0 });
+  await createWixInquiryNotes({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", text: proofPilotLead(result.inquiry).notes, retries: 0 });
+  const saved = payloads.map(payload => payload.note.text).join("");
   for (const value of ["Service area: Beaumont and nearby ZIP codes", "Business hours: Weekdays 8–5", "Main services: HVAC maintenance and repairs", "Voicemail after hours", "https://example.com", "Respond to missed calls"]) {
-    assert.ok(payload.task.description.includes(value), value);
+    assert.ok(saved.includes(value), value);
   }
-  assert.doesNotMatch(payload.task.description, /Callback:/);
+  assert.match(saved, /EMAIL ONLY.*do not make a sales call/);
   const bounded = normalizeProofPilotInquiry({ ...result.inquiry, serviceArea: "a".repeat(501), businessHours: "b".repeat(501), services: "c".repeat(1201) });
   assert.equal(bounded.inquiry.serviceArea.length, 500);
   assert.equal(bounded.inquiry.businessHours.length, 500);
   assert.equal(bounded.inquiry.services.length, 1200);
+});
+
+test("long notes preserve all text and tasks stay within Wix limits for either follow-up choice", async (t) => {
+  const payloads = [];
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    payloads.push(JSON.parse(options.body));
+    return Response.json({ note: { id: "synthetic-note" }, task: { id: "synthetic-task" } });
+  });
+  const text = "a".repeat(6301);
+  await createWixInquiryNotes({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", text, retries: 0 });
+  assert.equal(payloads.map(payload => payload.note.text).join(""), text);
+  assert.ok(payloads.every(payload => payload.note.text.length <= 2048 && payload.note.contactId === "synthetic-contact"));
+  payloads.length = 0;
+  for (const contactPreference of ["email", "phone"]) {
+    const inquiry = normalizeProofPilotInquiry({ name: "a".repeat(120), business: "b".repeat(160), email: "synthetic@example.com", phone: "+14095550100", contactPreference }).inquiry;
+    await createWixFollowupTask({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", lead: proofPilotTaskLead(inquiry), retries: 0 });
+  }
+  assert.ok(payloads.every(payload => payload.task.description.length <= 500));
+  assert.match(payloads[0].task.description, /EMAIL ONLY/);
+  assert.doesNotMatch(payloads[0].task.description, /Callback:/);
+  assert.match(payloads[1].task.description, /Callback: \+14095550100/);
+});
+
+test("a failed or unconfirmed contact note prevents successful capture", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({}));
+  await assert.rejects(createWixInquiryNotes({ apiKey: "synthetic-key", siteId: "synthetic-site", contactId: "synthetic-contact", text: "Saved answers", retries: 0 }), /inquiry_note_create_failed/);
 });

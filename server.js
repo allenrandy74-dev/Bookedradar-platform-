@@ -28,8 +28,8 @@ import {
   parseDialedNumber,
   tools,
 } from "./src/operator.js";
-import { createWixContact, createWixFollowupTask } from "./src/wix.js";
-import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey } from "./src/proof-pilot.js";
+import { createWixContact, createWixFollowupTask, createWixInquiryNotes } from "./src/wix.js";
+import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey, proofPilotTaskLead } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
@@ -2016,11 +2016,19 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       retries,
     });
     if (!contact?.ok || !contact?.contactId) throw new Error("contact_create_failed");
+    await createWixInquiryNotes({
+      apiKey: wix.apiKey,
+      siteId: wix.siteId,
+      contactId: contact.contactId,
+      text: lead.notes,
+      timeoutMs,
+      retries,
+    });
     const task = await createWixFollowupTask({
       apiKey: wix.apiKey,
       siteId: wix.siteId,
       contactId: contact.contactId,
-      lead,
+      lead: proofPilotTaskLead(parsed.inquiry),
       dueInMinutes: 15,
       timeoutMs,
       retries,

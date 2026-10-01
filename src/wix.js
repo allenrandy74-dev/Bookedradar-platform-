@@ -82,6 +82,21 @@ export async function createWixContact({ apiKey, siteId, lead, previousContactId
   const data = await wixFetch("https://www.wixapis.com/contacts/v5/contacts", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ contact }) }, { timeoutMs, retries });
   return { ok: true, reused: false, contactId: data?.contact?.id || null, contact: data?.contact || null };
 }
+export async function createWixInquiryNotes({ apiKey, siteId, contactId, text, timeoutMs = 8000, retries = 3 }) {
+  if (!apiKey || !siteId || !contactId || !text) return { ok: false, reason: "missing_note_prerequisite" };
+  const noteIds = [];
+  // Wix notes allow 2048 characters; preserve every answer across linked notes.
+  for (let offset = 0; offset < text.length; offset += 2000) {
+    const data = await wixFetch("https://www.wixapis.com/crm/notes/v2/notes", {
+      method: "POST", headers: wixHeaders(apiKey, siteId),
+      body: JSON.stringify({ note: { contactId, text: text.slice(offset, offset + 2000), type: "NOT_SET" } }),
+    }, { timeoutMs, retries });
+    if (!data?.note?.id) throw new Error("inquiry_note_create_failed");
+    noteIds.push(data.note.id);
+  }
+  return { ok: true, noteIds };
+}
+
 export async function createWixFollowupTask({ apiKey, siteId, contactId, lead, dueInMinutes = 15, timeoutMs = 8000, retries = 3 }) {
   if (!apiKey || !siteId || !contactId) return { ok: false, skipped: true, reason: "missing_task_prerequisite" };
   const due = new Date(Date.now() + dueInMinutes * 60000).toISOString();
