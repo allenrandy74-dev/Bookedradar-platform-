@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceProofPilotAdmission, pilotFallbackReadiness, pilotCriticalFailures } from '../src/proof-pilot-admission.js';
+import { enforceProofPilotAdmission, pilotFallbackReadiness, pilotCriticalFailures, pilotBookingHolds } from '../src/proof-pilot-admission.js';
 import { proofPilotStatus } from '../src/proof-pilot-control.js';
 const config = { enabled:true,startAt:'2026-09-29T00:00:00Z',durationDays:14,maxCalls:25,customerApprovedScope:true,baselineDocumented:true,acceptancePassed:true,carrierFallbackAccepted:true,fallbackRejectStatusCode:486,fallbackAcceptanceReference:'synthetic-test' };
 test('fallback requires a recorded carrier acceptance and tested response code',()=>{
@@ -34,4 +34,18 @@ test('critical failures use failure time, exclude historical and future events, 
 });
 test('manual pause in tenant configuration is reflected by the status API rules',()=>{
   assert.equal(proofPilotStatus({...config,manuallyPaused:true},{now:Date.parse('2026-09-30T00:00:00Z')}).stopReason,'manual_pause');
+});
+test('booking hold reads require verified tenant-scoped counts and propagate outages',async()=>{
+  let read;
+  const database={async query(sql,args){read={sql,args};return {rows:[{n:2}]};}};
+  await assert.rejects(pilotBookingHolds(database,''),/pilot_tenant_required/);
+  assert.equal(read,undefined);
+  assert.equal(await pilotBookingHolds(database,'tenant-a'),2);
+  assert.deepEqual(read.args,['tenant-a']);
+  assert.match(read.sql,/tenant_id=\$1/);
+  assert.match(read.sql,/IN \('pending','uncertain'\)/);
+  for (const n of [undefined,null,'0',-1,0.5]) {
+    await assert.rejects(pilotBookingHolds({query:async()=>({rows:[{n}]})},'tenant-a'),/pilot_booking_hold_count_unverified/);
+  }
+  await assert.rejects(pilotBookingHolds({query:async()=>{throw Error('offline');}},'tenant-a'),/offline/);
 });

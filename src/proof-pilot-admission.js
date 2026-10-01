@@ -22,6 +22,17 @@ export function pilotCriticalFailures(actions, config, now = Date.now()) {
   }).length;
 }
 
+export async function pilotBookingHolds(database, tenantId) {
+  if (typeof tenantId !== 'string' || !tenantId.trim()) throw new Error('pilot_tenant_required');
+  // A hold is unresolved regardless of its age. Pending may still be in flight;
+  // conservatively pause new admission until a verified receipt is persisted.
+  const { rows } = await database.query(`SELECT count(*)::int AS n FROM bookedradar.call_control_state
+    WHERE tenant_id=$1 AND payload->'bookingAttempt'->>'status' IN ('pending','uncertain')`, [tenantId]);
+  const n = rows[0]?.n;
+  if (!Number.isInteger(n) || n < 0) throw new Error('pilot_booking_hold_count_unverified');
+  return n;
+}
+
 // Every app instance reserves under the same tenant lock. The existing durable
 // call-history row is the reservation; a crash or acceptance failure consumes
 // a slot conservatively, rather than allowing more than the approved maximum.
@@ -45,7 +56,8 @@ export async function reserveProofPilotCall(pool, { tenantId, callId, config, ca
     const counts = (await client.query(`SELECT count(*)::int AS n FROM bookedradar.voice_calls
       WHERE tenant_id=$1 AND started_at >= $2::timestamptz AND started_at < $3::timestamptz`, [tenantId, startAt, endAt])).rows[0];
     const actions = (await client.query("SELECT payload FROM bookedradar.recovery_actions WHERE tenant_id=$1 AND (status IN ('failed','reconciliation_required') OR (status='dispatching' AND (claim_expires_at IS NULL OR claim_expires_at <= clock_timestamp())))", [tenantId])).rows.map(row => row.payload);
-    const status = proofPilotStatus(config, { now, callsHandled: counts.n, criticalFailures: pilotCriticalFailures(actions, config, now), manuallyPaused: config.manuallyPaused === true });
+    const unresolvedBookings = await pilotBookingHolds(client, tenantId);
+    const status = proofPilotStatus(config, { now, callsHandled: counts.n, unresolvedBookings, criticalFailures: pilotCriticalFailures(actions, config, now), manuallyPaused: config.manuallyPaused === true });
     // A replay never creates another reservation or repeats a provider decision.
     if (existing) {
       await client.query('COMMIT');

@@ -34,6 +34,19 @@ test("critical failure pauses pilot", () => {
   assert.equal(s.status,"PAUSED");
   assert.equal(s.stopReason,"critical_failure");
 });
+test("pilot cannot disable critical-failure stopping", () => {
+  const unsafe = { ...ready, stopOnCriticalFailure: false };
+  assert.equal(proofPilotReadiness(unsafe).ready, false);
+  assert.ok(proofPilotReadiness(unsafe).blockers.includes("stop_on_critical_failure_required"));
+  assert.equal(proofPilotStatus(unsafe, { now: Date.parse("2026-09-28T12:00:00Z") }).status, "BLOCKED");
+});
+test("unresolved bookings pause the pilot without being counted as failed deliveries", () => {
+  const status = proofPilotStatus(ready, { now: Date.parse("2026-09-28T12:00:00Z"), unresolvedBookings: 1 });
+  assert.equal(status.status, "PAUSED");
+  assert.equal(status.stopReason, "booking_review_required");
+  assert.equal(status.unresolvedBookings, 1);
+  assert.equal(proofPilotScorecard({ status: status.status, unresolvedBookings: 1 }).unresolvedBookings, 1);
+});
 test("scorecard exposes incomplete and failed outcomes", () => {
   const s=proofPilotScorecard({status:"ACTIVE",callsHandled:10,incompleteCalls:2,criticalFailures:1,confirmedRevenue:500});
   assert.equal(s.intakeCompletionRate,.8);

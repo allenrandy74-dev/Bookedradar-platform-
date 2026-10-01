@@ -48,6 +48,25 @@ test('real Postgres: pilot slots are bounded across concurrent instances, replay
       await pool.query("INSERT INTO bookedradar.recovery_actions(action_id,tenant_id,channel,status,created_at,payload) VALUES ('uncertain','tenant-uncertain','human_task','reconciliation_required',now(),$1)",[JSON.stringify(action)]);
       assert.equal((await reserve('tenant-uncertain','u-1')).reason,'critical_failure');
     });
+    await t.test('pending and uncertain bookings pause new admission without clearing or aging out holds',async()=>{
+      for (const status of ['pending','uncertain']) {
+        const tenantId=`booking-${status}`;
+        const payload={tenantId,bookingAttempt:{attemptId:'held',status}};
+        await pool.query("INSERT INTO bookedradar.call_control_state(call_id,tenant_id,updated_at,payload) VALUES ($1,$2,'2020-01-01',$3)",[tenantId,tenantId,JSON.stringify(payload)]);
+        const held=await Promise.all(Array.from({length:10},(_,i)=>reserve(tenantId,`${tenantId}-${i}`)));
+        assert.ok(held.every(r=>!r.admitted && r.reason==='booking_review_required' && r.status.unresolvedBookings===1));
+        assert.deepEqual((await pool.query('SELECT payload FROM bookedradar.call_control_state WHERE call_id=$1',[tenantId])).rows[0].payload,payload);
+        assert.equal((await pool.query('SELECT count(*)::int AS n FROM bookedradar.voice_calls WHERE tenant_id=$1',[tenantId])).rows[0].n,0);
+      }
+      assert.equal((await reserve('unaffected-booking-tenant','unaffected')).admitted,true);
+      for (const status of ['confirmed','unconfirmed']) {
+        const tenantId=`booking-${status}`;
+        await pool.query("INSERT INTO bookedradar.call_control_state(call_id,tenant_id,updated_at,payload) VALUES ($1,$1,now(),$2)",[tenantId,JSON.stringify({bookingAttempt:{status}})]);
+        assert.equal((await reserve(tenantId,`${tenantId}-next`)).admitted,true);
+      }
+      assert.equal((await reserve('unsafe-stop','unsafe',{stopOnCriticalFailure:false})).reason,'pilot_not_ready');
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM bookedradar.voice_calls WHERE tenant_id='unsafe-stop'")).rows[0].n,0);
+    });
     await t.test('legacy calls inside the pilot window count toward the cap',async()=>{
       await pool.query("INSERT INTO bookedradar.voice_calls(call_id,tenant_id,started_at,updated_at,payload) VALUES ('legacy','tenant-legacy',now(),now(),'{}')");
       assert.equal((await reserve('tenant-legacy','next',{maxCalls:1})).reason,'call_cap_reached');

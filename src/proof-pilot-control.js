@@ -43,6 +43,7 @@ export function proofPilotReadiness(input = {}) {
   if (!pilot.customerApprovedScope) blockers.push("customer_scope_approval_required");
   if (!pilot.baselineDocumented) blockers.push("baseline_workflow_required");
   if (!pilot.acceptancePassed) blockers.push("acceptance_test_required");
+  if (!pilot.stopOnCriticalFailure) blockers.push("stop_on_critical_failure_required");
   if (!pilot.startAt) blockers.push("pilot_start_time_required");
   return { enabled: true, ready: blockers.length === 0, blockers, pilot };
 }
@@ -51,6 +52,7 @@ export function proofPilotStatus(input = {}, {
   now = Date.now(),
   callsHandled = 0,
   criticalFailures = 0,
+  unresolvedBookings = 0,
   manuallyPaused = input?.manuallyPaused === true,
   firstValueAt = "",
 } = {}) {
@@ -69,6 +71,9 @@ export function proofPilotStatus(input = {}, {
   if (manuallyPaused) {
     status = "PAUSED";
     stopReason = "manual_pause";
+  } else if (Number(unresolvedBookings || 0) > 0) {
+    status = "PAUSED";
+    stopReason = "booking_review_required";
   } else if (pilot.stopOnCriticalFailure && Number(criticalFailures || 0) > 0) {
     status = "PAUSED";
     stopReason = "critical_failure";
@@ -91,6 +96,7 @@ export function proofPilotStatus(input = {}, {
     durationDays: pilot.durationDays,
     maxCalls: pilot.maxCalls,
     callsHandled: Number(callsHandled || 0),
+    unresolvedBookings: Number(unresolvedBookings || 0),
     callsRemaining,
     timeRemainingMs,
     firstValueAt: clean(firstValueAt, 60) || null,
@@ -110,6 +116,7 @@ export function proofPilotScorecard({
   recoveredOpportunities = 0,
   confirmedRevenue = 0,
   criticalFailures = 0,
+  unresolvedBookings = 0,
   firstValueAt = null,
 } = {}) {
   const handled = Number(callsHandled || 0);
@@ -122,6 +129,7 @@ export function proofPilotScorecard({
     recoveredOpportunities: Number(recoveredOpportunities || 0),
     confirmedRevenue: Number(confirmedRevenue || 0),
     criticalFailures: Number(criticalFailures || 0),
+    unresolvedBookings: Number(unresolvedBookings || 0),
     firstValueAt: firstValueAt || null,
     intakeCompletionRate: handled ? Math.max(0, (handled - Number(incompleteCalls || 0)) / handled) : 0,
     disclaimer: "Confirmed revenue is shown only when supplied by a trusted source or authorized user. Pilot results include incomplete and failed outcomes; synthetic/demo activity must be excluded.",
