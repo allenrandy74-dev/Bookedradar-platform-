@@ -158,6 +158,7 @@ export async function createPostgresServerStores(config) {
   const transfers={load:noop,getCall:async id=>{const tenant=await owner('transfer_records','transfer_id',id);return tenant ? new PostgresTransferStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await owner('transfer_records','transfer_id',id);return new PostgresTransferStore(pool,tenant).patchCall(id,patch);}};
   return {pool,mode:config?.mode || 'lab',productionValidation,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
+    bookingStateForTenant:tenant=>new PostgresCallStateStore(pool,tenant),
     persistVoiceLead:args=>persistPostgresVoiceLead(pool,args),persistChatTurn:args=>persistPostgresChatTurn(pool,args),
     appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
     billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};
