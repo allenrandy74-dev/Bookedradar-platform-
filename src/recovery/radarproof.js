@@ -53,7 +53,13 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0 } = {}) {
   }
 
   const responseLatencies = data.events
-    .filter((event) => Number.isFinite(Number(event.responseLatencySeconds)))
+    .filter((event) => (!tenantId || event.tenantId === tenantId) &&
+      inWindow({ at: event.occurredAt || event.createdAt || event.updatedAt || event.at }))
+    .filter((event) => {
+      const value = event.responseLatencySeconds;
+      return (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) &&
+        Number.isFinite(Number(value)) && Number(value) >= 0;
+    })
     .map((event) => Number(event.responseLatencySeconds));
 
   return {
