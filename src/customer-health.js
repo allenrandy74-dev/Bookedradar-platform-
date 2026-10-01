@@ -3,11 +3,30 @@ function count(value) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+export function recoveryActionHealth(actions, tenantId, { now = new Date() } = {}) {
+  if (typeof tenantId !== "string" || !tenantId.trim()) throw new Error("known_tenant_required");
+  const selected = actions.filter(action => action.tenantId === tenantId);
+  const active = selected.filter(action => action.status === "dispatching" &&
+    Date.parse(action.claimExpiresAt || "") > now.getTime());
+  const unresolved = selected.filter(action => action.status === "reconciliation_required" ||
+    (action.status === "dispatching" && !(Date.parse(action.claimExpiresAt || "") > now.getTime())));
+  const timestamps = unresolved.map(action => Date.parse(action.dispatchStartedAt || action.failedAt || action.updatedAt || action.createdAt || ""))
+    .filter(Number.isFinite);
+  return {
+    totalUnresolvedActions: unresolved.length,
+    criticalUnresolvedActions: unresolved.filter(action => ["human_alert", "human_task"].includes(action.channel)).length,
+    activeDispatches: active.length,
+    oldestUnresolvedAt: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
+  };
+}
+
 export function assessCustomerHealth({
   voiceAssessment = {},
   readinessBlockers = 0,
   criticalFailedActions = 0,
   totalFailedActions = 0,
+  totalUnresolvedActions = 0,
+  criticalUnresolvedActions = 0,
   crmSyncFailures = 0,
   valueReviewOverdue = false,
   unresolvedKnowledgeGaps = 0,
@@ -21,6 +40,8 @@ export function assessCustomerHealth({
   const blockers = count(readinessBlockers);
   const criticalActions = count(criticalFailedActions);
   const failedActions = count(totalFailedActions);
+  const unresolved = count(totalUnresolvedActions);
+  const criticalUnresolved = count(criticalUnresolvedActions);
   const crmFailures = count(crmSyncFailures);
   const gaps = count(unresolvedKnowledgeGaps);
   const repeats = count(repeatedSupportIssues);
@@ -58,6 +79,14 @@ export function assessCustomerHealth({
   }
 
   const nonCriticalFailedActions = Math.max(0, failedActions - criticalActions);
+  if (criticalUnresolved > 0) {
+    atRisk.push({ code: "critical_action_unresolved", count: criticalUnresolved,
+      message: "One or more critical human-alert/task sends require verified human review." });
+  }
+  if (unresolved > criticalUnresolved) {
+    watch.push({ code: "recovery_action_unresolved", count: unresolved - criticalUnresolved,
+      message: "One or more recovery sends require verified human review; do not resend automatically." });
+  }
   if (nonCriticalFailedActions > 0) {
     watch.push({
       code: "recovery_action_failure",

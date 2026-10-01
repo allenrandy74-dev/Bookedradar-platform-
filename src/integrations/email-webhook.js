@@ -31,6 +31,11 @@ export class EmailWebhookAdapter {
       throw new Error(`Email webhook failed (${response.status})`);
     }
 
-    return { provider: "email_webhook", accepted: true };
+    let data = null;
+    try { data = await response.json(); } catch {}
+    if (data?.accepted !== true || typeof data.id !== "string" || !data.id.trim()) {
+      throw Object.assign(new Error("email_webhook_acceptance_unverified"), { reconciliationRequired: true });
+    }
+    return { provider: "email_webhook", accepted: true, id: data.id.trim() };
   }
 }

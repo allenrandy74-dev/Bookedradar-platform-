@@ -44,10 +44,16 @@ export class TwilioSmsAdapter {
       throw new Error(`Twilio SMS failed (${response.status}): ${data?.message || text}`);
     }
 
+    if (typeof data?.sid !== "string" || !/^(SM|MM)[0-9a-fA-F]{32}$/.test(data.sid) ||
+        !["accepted", "scheduled", "queued", "sending", "sent", "delivered"].includes(data.status)) {
+      throw Object.assign(new Error("twilio_sms_acceptance_unverified"), { reconciliationRequired: true });
+    }
+
     return {
       provider: "twilio",
-      sid: data?.sid || null,
-      status: data?.status || null,
+      accepted: true,
+      sid: data.sid,
+      status: data.status,
     };
   }
 }

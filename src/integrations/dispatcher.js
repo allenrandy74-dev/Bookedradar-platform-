@@ -104,20 +104,21 @@ export class ActionDispatcher {
         const attempts = Number(action.attempts || 0) + 1;
         const maxAttempts = Number(this.tenant?.policies?.maxDispatchAttempts || 3);
         const baseMinutes = Number(this.tenant?.policies?.retryBaseMinutes || 5);
+        const uncertain = error?.reconciliationRequired === true;
         const failed = attempts >= maxAttempts;
         const retryDelayMs = baseMinutes * 60 * 1000 * (2 ** Math.max(0, attempts - 1));
 
         const updated = await this.store.patchAction(action.id, {
-          status: failed ? "failed" : "pending",
+          status: uncertain ? "reconciliation_required" : failed ? "failed" : "pending",
           failedAt: failed ? new Date().toISOString() : null,
           attempts,
-          dueAt: failed ? action.dueAt : new Date(Date.now() + retryDelayMs).toISOString(),
+          dueAt: uncertain || failed ? action.dueAt : new Date(Date.now() + retryDelayMs).toISOString(),
           lastError: String(error?.message || error).slice(0, 500),
           claimedBy: null,
           claimedAt: null,
           claimExpiresAt: null,
         });
-        results.push({ action: updated, dispatched: false, error: updated.lastError });
+        results.push({ action: updated, dispatched: false, ...(uncertain ? { reconciliationRequired: true } : {}), error: updated.lastError });
       }
     }
 
