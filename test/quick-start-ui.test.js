@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 
 const script = await fs.readFile(new URL("../website/src/quick-start.js", import.meta.url), "utf8");
-function page({ fail = false } = {}) {
+function page({ fail = false, submissionStatus = 'CONFIRMED' } = {}) {
   const values = {
     first_name: "Synthetic", business_name: "QA HVAC", email: "qa@example.com",
     contact_preference: "email", phone: "", business_type: "HVAC",
@@ -32,7 +32,7 @@ function page({ fail = false } = {}) {
       const body = JSON.parse(options.body);
       requests.push({ url, body });
       if (url.includes('oauth2')) return Response.json({ access_token: 'test-only' });
-      return fail ? Response.json({}, { status: 503 }) : Response.json({ submission: { id: 'qa-submission' } });
+      return fail ? Response.json({}, { status: 503 }) : Response.json({ submission: { id: 'qa-submission', status: submissionStatus } });
     }
   });
   return {
@@ -83,4 +83,16 @@ test("an unconfirmed setup submission retains answers for correction", async () 
   assert.equal(p.nodes.nextSteps.hidden, true);
   assert.equal(p.button.disabled, false);
   assert.equal(p.elements.business_name.value, "QA HVAC");
+});
+
+test("a submission reference alone cannot claim that Wix recorded the answers", async () => {
+  for (const submissionStatus of ['PENDING', 'PAYMENT_WAITING', null, '']) {
+    const p = page({ submissionStatus });
+    await p.submit();
+    assert.equal(p.nodes.quickStart.hidden, false);
+    assert.equal(p.nodes.nextSteps.hidden, true);
+    assert.equal(p.button.disabled, false);
+    assert.match(p.nodes.setupStatus.textContent, /could not confirm receipt/);
+    assert.equal(p.elements.business_name.value, 'QA HVAC');
+  }
 });

@@ -42,7 +42,7 @@
       });
       if (!response.ok) throw new Error('Submission not confirmed');
       const data = await response.json();
-      if (!data.submission?.id) throw new Error('Submission not confirmed');
+      if (!data.submission?.id || data.submission.status !== 'CONFIRMED') throw new Error('Submission not confirmed');
       status.textContent = 'Thank you. Your answers were received. Setup reference: '+data.submission.id;
       followup.textContent = wantsCall ? 'You requested a setup call.' : 'We’ll follow up by email, with no setup or sales call.';
       form.reset();
