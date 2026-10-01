@@ -47,6 +47,19 @@ export class PostgresCallStateStore {
 export class PostgresWebhookStore {
   constructor(pool) { this.pool = pool; }
 
+  async hasInquiryReceipt(id) {
+    required(id, "webhook_id");
+    const result = await this.pool.query(
+      "SELECT 1 FROM bookedradar.webhook_receipts WHERE webhook_id=$1 AND received_at >= clock_timestamp() - interval '24 hours'", [id]
+    );
+    return result.rows.length > 0;
+  }
+
+  async markInquiryOnce(id) {
+    required(id, "inquiry_key");
+    return this.markWebhookOnce(id);
+  }
+
   async markWebhookOnce(id) {
     if (!id) return true;
     required(id, "webhook_id");
@@ -95,3 +108,4 @@ export async function exportPostgresCallState(pool, destinationRoot, { writersQu
   await fs.writeFile(file, JSON.stringify(state, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   return { file, calls: Object.keys(state.calls).length, webhooks: Object.keys(state.processedWebhooks).length };
 }
+

@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 
 const script = await fs.readFile(new URL("../website/src/quick-start.js", import.meta.url), "utf8");
-function page({ fail = false, confirmed = true, duplicate = false } = {}) {
+function page({ fail = false, confirmed = true, duplicate = false, statusCode = 200 } = {}) {
   const values = {
     first_name: "Synthetic", business_name: "QA HVAC", email: "qa@example.com",
     contact_preference: "email", phone: "", business_type: "HVAC",
@@ -19,7 +19,7 @@ function page({ fail = false, confirmed = true, duplicate = false } = {}) {
   }]));
   const button = { disabled: false };
   const form = {
-    elements, hidden: false, listeners: {}, reset() {},
+    elements, hidden: false, listeners: {}, resetCalls: 0, reset() { this.resetCalls++; },
     addEventListener(event, fn) { this.listeners[event] = fn; },
     reportValidity() { return !elements.phone.required || Boolean(elements.phone.value); },
     querySelector() { return button; }
@@ -31,7 +31,7 @@ function page({ fail = false, confirmed = true, duplicate = false } = {}) {
     fetch: async (url, options) => {
       const body = JSON.parse(options.body);
       requests.push({ url, body });
-      return fail ? Response.json({}, { status: 503 }) : Response.json({ ok: confirmed, duplicate });
+      return fail ? Response.json({}, { status: 503 }) : Response.json({ ok: confirmed, duplicate }, { status: statusCode });
     }
   });
   return {
@@ -98,4 +98,17 @@ test("identical answers already captured are reported honestly", async () => {
   const p = page({ duplicate: true });
   await p.submit();
   assert.match(p.nodes.setupStatus.textContent, /already recorded/);
+});
+
+
+test("pending409 preserves every setup answer without reset and gives email reconciliation fallback", async () => {
+  const p = page({ confirmed: false, statusCode: 409 });
+  const before = Object.fromEntries(Object.entries(p.elements).map(([key, field]) => [key, field.value]));
+  await p.submit();
+  assert.deepEqual(Object.fromEntries(Object.entries(p.elements).map(([key, field]) => [key, field.value])), before);
+  assert.equal(p.nodes.quickStart.resetCalls, 0);
+  assert.equal(p.nodes.quickStart.hidden, false);
+  assert.equal(p.nodes.nextSteps.hidden, true);
+  assert.equal(p.button.disabled, false);
+  assert.match(p.nodes.setupStatus.textContent, /randy@bookedradar.com.*check before you submit again/);
 });

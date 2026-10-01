@@ -35,6 +35,19 @@ export class JsonStateStore {
     for (const [id, ts] of Object.entries(this.state.processedWebhooks)) if (Number(ts) < webhookCutoff) delete this.state.processedWebhooks[id];
     for (const [id, value] of Object.entries(this.state.calls)) if (Number(value?.updatedAt || 0) < callCutoff) delete this.state.calls[id];
   }
+  async hasInquiryReceipt(id) {
+    await this.load();
+    return Number(this.state.processedWebhooks[id] || 0) >= Date.now() - 24 * 60 * 60 * 1000;
+  }
+  // Inquiry TTL is scoped here; preserve existing voice-webhook semantics.
+  async markInquiryOnce(id) {
+    await this.load();
+    if (!id) throw new Error("inquiry_key_required");
+    if (Number(this.state.processedWebhooks[id] || 0) < Date.now() - 24 * 60 * 60 * 1000) {
+      delete this.state.processedWebhooks[id];
+    }
+    return this.markWebhookOnce(id);
+  }
   async markWebhookOnce(id) {
     await this.load();
     if (!id) return true;
@@ -58,3 +71,4 @@ export class JsonStateStore {
     return this.state.calls[callId];
   }
 }
+

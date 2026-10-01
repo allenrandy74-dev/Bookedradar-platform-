@@ -71,9 +71,27 @@ test("real Postgres: concurrent state, tenant isolation, deduplication and JSON 
       const another = await exportPostgresCallState(pool, root, { writersQuiesced: true });
       assert.notEqual(another.file, report.file);
     });
+    await t.test("inquiry completion is distinct from pending and expiry permits only one new claim across instances", async () => {
+      const peer = new PostgresWebhookStore(pool);
+      const key = "proof-pilot:synthetic-inquiry";
+      const done = `${key}:completed`;
+      assert.equal(await webhooks.markInquiryOnce(key), true);
+      assert.equal(await peer.hasInquiryReceipt(done), false);
+      assert.equal(await peer.markInquiryOnce(key), false);
+      assert.equal(await webhooks.markInquiryOnce(done), true);
+      assert.equal(await peer.hasInquiryReceipt(done), true);
+      await pool.query("UPDATE bookedradar.webhook_receipts SET received_at=now()-interval '25 hours' WHERE webhook_id=ANY($1::text[])", [[key, done]]);
+      assert.equal(await peer.hasInquiryReceipt(done), false);
+      const claims = await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? peer : webhooks).markInquiryOnce(key)));
+      assert.equal(claims.filter(Boolean).length, 1);
+      assert.equal(await peer.markInquiryOnce(done), true);
+      assert.equal(await webhooks.hasInquiryReceipt(done), true);
+    });
+
   } finally {
     await pool.query("DROP SCHEMA IF EXISTS bookedradar CASCADE");
     await pool.end();
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+

@@ -2002,12 +2002,21 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
   const wix = crmTenant ? wixCredentialsForTenant(crmTenant) : null;
   if (!wix) return res.status(503).json({ ok: false, error: "crm_unavailable" });
   const submissionKey = proofPilotInquiryKey(parsed.inquiry);
-  const firstSubmission = await state.markWebhookOnce(submissionKey);
-  if (!firstSubmission) {
-    return res.status(200).json({ ok: true, duplicate: true, message: "We already received this request." });
-  }
+  const completedKey = `${submissionKey}:completed`;
+  const duplicateSuccess = () => res.status(200).json({ ok: true, duplicate: true, message: "We already received this request." });
+  let ownsReservation = false;
+  let providerWorkStarted = false;
   try {
+    if (await state.hasInquiryReceipt(completedKey)) return duplicateSuccess();
+    ownsReservation = await state.markInquiryOnce(submissionKey);
+    if (!ownsReservation) {
+      if (await state.hasInquiryReceipt(completedKey)) return duplicateSuccess();
+      // A reservation is not proof that Wix saved the request. Preserve the form
+      // and require reconciliation if a previous worker died during capture.
+      return res.status(409).json({ ok: false, error: "inquiry_capture_unconfirmed" });
+    }
     const lead = proofPilotLead(parsed.inquiry);
+    providerWorkStarted = true;
     const contact = await createWixContact({
       apiKey: wix.apiKey,
       siteId: wix.siteId,
@@ -2034,6 +2043,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       retries,
     });
     if (!task?.ok || !task?.taskId) throw new Error("task_create_failed");
+    await state.markInquiryOnce(completedKey);
     // CRM capture is already complete. A metrics failure must not release the
     // submission key or tell the visitor to retry a successfully captured lead.
     await growthMetrics.record({ event: parsed.inquiry.inquiryType === "setup" ? "setup_answers_submit" : parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: parsed.inquiry.inquiryType === "setup" ? "detailed_setup" : parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : "short_form" }).catch(error => {
@@ -2047,7 +2057,9 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
     }));
     return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your request and follow up." });
   } catch (error) {
-    await state.releaseWebhook(submissionKey).catch(() => {});
+    // A provider timeout may occur after a write succeeded. Keep uncertain
+    // captures reserved for review instead of creating duplicate notes/tasks.
+    if (ownsReservation && !providerWorkStarted) await state.releaseWebhook(submissionKey).catch(() => {});
     console.error(JSON.stringify({ event: "growth.proof_pilot_inquiry_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     return res.status(503).json({ ok: false, error: "inquiry_capture_failed" });
   }
@@ -2656,3 +2668,4 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
