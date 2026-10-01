@@ -422,7 +422,7 @@ async function runOpsAlertCheck() {
       }
 
       try {
-        const delivered = await sendOpsAlertEmail({
+        const accepted = await sendOpsAlertEmail({
           apiKey:process.env.RESEND_API_KEY,
           from:process.env.RESEND_FROM_EMAIL,
           to:OPS_ALERT_EMAIL,
@@ -430,12 +430,12 @@ async function runOpsAlertCheck() {
           incidentId:candidate.incidentKey,
         });
         console.log(JSON.stringify({
-          event:"ops.alert_delivered",
+          event:"ops.alert_accepted",
           scope_key:scopeKey,
           severity:candidate.severity,
           incident_key:candidate.incidentKey,
           provider:"resend",
-          provider_id:delivered.id || null,
+          provider_id:accepted.id,
         }));
       } catch (error) {
         await opsIncidentStore.releaseNotification(candidate.incidentKey);
