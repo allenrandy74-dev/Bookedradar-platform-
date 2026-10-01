@@ -23,6 +23,13 @@ test("rollback export requires an explicit writer freeze", async () => {
   await assert.rejects(exportPostgresCallState({}, "/tmp/unused"), /writers_must_be_quiesced/);
 });
 
+test("booking claims and completion reject invalid evidence before querying", async () => {
+  const store = new PostgresCallStateStore({ query() { throw new Error("unexpected_query"); } }, "a");
+  await assert.rejects(store.claimBooking("c", { attemptId: "attempt", requestHash: "bad" }), /booking_request_hash_required/);
+  await assert.rejects(store.finishBooking("c", "attempt", { status: "confirmed", result: { confirmed: true } }), /booking_receipt_required/);
+  await assert.rejects(store.finishBooking("c", "attempt", { status: "retry", result: {} }), /booking_status_invalid/);
+});
+
 test("failed rollback snapshot aborts transaction and releases connection", async () => {
   const queries = [];
   let released = false;
