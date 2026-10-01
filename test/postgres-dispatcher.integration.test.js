@@ -5,6 +5,8 @@ import { Pool } from 'pg';
 import { PostgresRecoveryStore } from '../src/postgres-recovery-store.js';
 import { ActionDispatcher } from '../src/integrations/dispatcher.js';
 import { RecoveryEngine } from '../src/recovery/engine.js';
+import { ResendEmailAdapter } from '../src/integrations/resend-email.js';
+import { recoveryActionHealth } from '../src/customer-health.js';
 
 const connectionString=process.env.POSTGRES_TEST_URL;
 test('real Postgres: application dispatcher fences sends and ambiguous outcomes', {skip:!connectionString},async t=>{
@@ -87,6 +89,23 @@ test('real Postgres: application dispatcher fences sends and ambiguous outcomes'
       await store.beginDispatch(action.id,claim);
       const current=(await store.reconciliationActions()).find(a=>a.id===action.id);
       await assert.rejects(store.reconcileAction(action.id,{decision:'cancelled',resolutionId:'active_resolution',expectedRevision:current.reconciliationRevision,evidence:'Synthetic review',actor:'synthetic_admin'}),/dispatch_still_active/);
+    });
+    await t.test('unverified email receipt remains held and visible after worker restart',async()=>{
+      const action=await seed('invalid-email-receipt');
+      const claims=await store.claimDueActions({workerId:'receipt-check',leaseMs:60000});
+      const claim=claims.find(item=>item.id===action.id);assert.ok(claim);
+      const email=new ResendEmailAdapter({apiKey:'synthetic',from:'synthetic@example.invalid'});
+      let sends=0;const mock=t.mock.method(globalThis,'fetch',async()=>{sends++;return new Response('{}',{status:200});});
+      try {
+        const result=await dispatcher({send:ctx=>email.send({...ctx,contact:{email:'synthetic@example.invalid'}})}).runFencedAction(claim,new Date());
+        assert.equal(result.reconciliationRequired,true);assert.equal(result.action.status,'reconciliation_required');
+        const restarted=new PostgresRecoveryStore(pool,'t1');
+        const current=(await restarted.snapshot()).actions[action.id];
+        assert.equal(current.status,'reconciliation_required');
+        assert.equal(recoveryActionHealth([current],'t1').criticalUnresolvedActions,1);
+        assert.ok(!(await restarted.claimDueActions({workerId:'later-worker',now:new Date(Date.now()+86400000)})).some(item=>item.id===action.id));
+        assert.equal(sends,1);
+      }finally{mock.mock.restore();}
     });
   } finally {await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await pool.end();}
 });
