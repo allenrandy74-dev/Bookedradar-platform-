@@ -32,3 +32,16 @@ test("RadarProof keeps estimated value separate from confirmed revenue", async (
   assert.equal(report.confirmedRevenue,0);
   assert.match(report.disclaimer,/not confirmed revenue/i);
 });
+
+
+test('bounded pilot cohort excludes later activity and other-tenant latency while retaining linked outcome evidence',async()=>{
+ const store={snapshot:async()=>({
+  opportunities:{a:{id:'a',tenantId:'t1',createdAt:'2026-10-01T00:00:00Z'},later:{id:'later',tenantId:'t1',createdAt:'2026-10-15T00:00:00Z'}},
+  attribution:{a:{opportunityId:'a',tenantId:'t1',createdAt:'2026-10-16T00:00:00Z',confirmedRevenue:200},later:{opportunityId:'later',tenantId:'t1',createdAt:'2026-10-15T00:00:00Z',confirmedRevenue:999}},
+  actions:{later:{tenantId:'t1',createdAt:'2026-10-15T00:00:00Z',status:'pending'}},
+  events:[{tenantId:'t1',occurredAt:'2026-10-01T00:00:00Z',responseLatencySeconds:5},{tenantId:'t2',occurredAt:'2026-10-01T00:00:00Z',responseLatencySeconds:999},{tenantId:'t1',occurredAt:'2026-10-15T00:00:00Z',responseLatencySeconds:999}]
+ })};
+ const result=await radarProof(store,'t1',{sinceMs:Date.parse('2026-10-01T00:00:00Z'),untilMs:Date.parse('2026-10-15T00:00:00Z')});
+ assert.equal(result.opportunitiesCaptured,1);assert.equal(result.pendingActions,0);assert.equal(result.confirmedRevenue,200);assert.equal(result.medianResponseSeconds,5);
+ assert.match(result.outcomeScope,/later evidence linked/);
+});

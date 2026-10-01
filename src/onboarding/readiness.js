@@ -3,6 +3,7 @@ import { validateTenant } from "../recovery/tenant.js";
 import { buildTenantAdapters, bookingAdapterForTenant, wixCredentialsForTenant } from "../integrations/tenant-adapters.js";
 import { serviceProfile } from "./service-profiles.js";
 import { proofPilotReadiness } from "../proof-pilot-control.js";
+import { pilotFallbackReadiness } from "../proof-pilot-admission.js";
 
 function add(items, code, message) {
   items.push({ code, message });
@@ -19,7 +20,10 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   let selectedProfile = null;
   try {
-    selectedProfile = serviceProfile(tenant?.commercial?.serviceProfile || "");
+    const profileId = tenant?.commercial?.serviceProfile;
+    if (typeof profileId === "string" && profileId.trim()) {
+      selectedProfile = serviceProfile(profileId);
+    }
   } catch {}
   const profileReady = Boolean(selectedProfile);
   checks.push({ code: "service_profile", ok: profileReady });
@@ -108,6 +112,14 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   if (!escalationReady) add(blockers, "human_escalation", "Human escalation phone must be a valid E.164 number.");
 
   const pilot = proofPilotReadiness(tenant?.commercial?.proofPilot || {});
+  if (pilot.enabled) {
+    const fallback = pilotFallbackReadiness(tenant.commercial.proofPilot);
+    checks.push({ code: "proof_pilot_fallback", ok: fallback.ready });
+    for (const reason of fallback.blockers) add(blockers, "proof_pilot_fallback", `Proof Pilot blocked: ${reason}.`);
+    const sharedStorage = env.BOOKEDRADAR_STORAGE_BACKEND === "postgres";
+    checks.push({ code: "proof_pilot_storage", ok: sharedStorage });
+    if (!sharedStorage) add(blockers, "proof_pilot_storage", "Proof Pilot call admission requires shared Postgres storage.");
+  }
   const safetyReady = Boolean(String(tenant?.escalation?.safetyRule || "").trim());
   checks.push({ code: "safety_rule", ok: safetyReady });
   if (!safetyReady) {
@@ -136,6 +148,7 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
 
   const ready = blockers.length === 0;
   return {
+    assessmentScope: "configuration_only",
     tenantId: tenant?.tenantId || null,
     businessName: tenant?.businessName || null,
     ready,

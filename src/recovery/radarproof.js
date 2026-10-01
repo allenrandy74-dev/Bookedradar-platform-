@@ -7,12 +7,12 @@ function median(values) {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export async function radarProof(store, tenantId = "", { sinceMs = 0 } = {}) {
+export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = Infinity } = {}) {
   const data = await store.snapshot();
   const inWindow = (item) => {
-    if (!sinceMs) return true;
+    if (!sinceMs && untilMs === Infinity) return true;
     const ts = Date.parse(item?.createdAt || item?.updatedAt || item?.at || "");
-    return Number.isFinite(ts) && ts >= Number(sinceMs);
+    return Number.isFinite(ts) && ts >= Number(sinceMs) && ts < Number(untilMs);
   };
   const opportunities = Object.values(data.opportunities)
     .filter((item) => (!tenantId || item.tenantId === tenantId) && inWindow(item));
@@ -53,12 +53,16 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0 } = {}) {
   }
 
   const responseLatencies = data.events
+    .filter((event) => (!tenantId || event.tenantId === tenantId) &&
+      inWindow({ at: event.occurredAt || event.at || event.createdAt || event.updatedAt }))
     .filter((event) => Number.isFinite(Number(event.responseLatencySeconds)))
     .map((event) => Number(event.responseLatencySeconds));
 
   return {
     generatedAt: new Date().toISOString(),
     windowStart: sinceMs ? new Date(Number(sinceMs)).toISOString() : null,
+    windowEnd: Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null,
+    outcomeScope: "Window activity plus later evidence linked to opportunities captured in this window.",
     opportunitiesCaptured: opportunities.length,
     recoveredOpportunities: recovered.length,
     recoveryRate:
@@ -74,3 +78,4 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0 } = {}) {
       "Estimated opportunity and recovered values are diagnostic estimates, not confirmed revenue. Confirmed revenue is reported separately only when explicitly supplied by a source system or authorized user.",
   };
 }
+

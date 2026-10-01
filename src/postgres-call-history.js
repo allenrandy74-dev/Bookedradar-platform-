@@ -96,7 +96,7 @@ export class PostgresCallHistoryStore {
   }
   async list(options = {}) { return (await this.readView()).list(this.tenantId, options); }
   async stats() { return (await this.readView()).stats(this.tenantId); }
-  async statsSince(sinceMs = 0) { return (await this.readView()).statsSince(this.tenantId, sinceMs); }
+  async statsSince(sinceMs = 0, untilMs = Infinity) { return (await this.readView()).statsSince(this.tenantId, sinceMs, untilMs); }
   async operationalSummary({ sinceMs = 0, now = Date.now() } = {}) {
     return (await this.readView()).operationalSummary({ tenantId: this.tenantId, sinceMs, now });
   }
@@ -113,3 +113,4 @@ export async function exportPostgresCallHistory(pool, root, { writersQuiesced = 
   await fs.writeFile(file, JSON.stringify({ calls: Object.fromEntries(rows.map(row => [row.call_id, row.payload])) }) + '\n', { flag: 'wx', mode: 0o600 });
   return { file, calls: rows.length };
 }
+
