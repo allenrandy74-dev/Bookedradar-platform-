@@ -54,3 +54,30 @@ test("Google Calendar booking refuses a slot that became busy", async () => {
   assert.equal(result.confirmed,false);
   assert.equal(result.reason,"slot_no_longer_available");
 });
+
+test("Google Calendar does not offer or book slots when free/busy evidence is incomplete", async t => {
+  const invalidCalendars = [
+    ["missing calendar", {}],
+    ["calendar error", { primary: { errors: [{ reason: "notFound" }] } }],
+    ["error with empty busy list", { primary: { errors: [{ reason: "internalError" }], busy: [] } }],
+    ["missing busy list", { primary: {} }],
+    ["invalid busy list", { primary: { busy: {} } }],
+    ["invalid interval", { primary: { busy: [{ start: "invalid", end: "invalid" }] } }],
+    ["reversed interval", { primary: { busy: [{ start: "2026-09-25T15:00:00Z", end: "2026-09-25T14:00:00Z" }] } }],
+    ["null interval", { primary: { busy: [null] } }],
+  ];
+  for (const [name, calendars] of invalidCalendars) {
+    await t.test(name, async () => {
+      let inserts = 0;
+      const a = adapter(async url => {
+        if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "token", expires_in: 3600 });
+        if (url.endsWith("/freeBusy")) return Response.json({ calendars });
+        inserts++;
+        return Response.json({ id: "must-not-be-created" });
+      });
+      await assert.rejects(a.findAvailability({ windowStart: "2026-09-25T14:00:00Z", windowEnd: "2026-09-25T15:00:00Z" }), /google_calendar_availability_unverified/);
+      await assert.rejects(a.createBooking({ slot: "2026-09-25T14:00:00Z|2026-09-25T15:00:00Z" }), /google_calendar_availability_unverified/);
+      assert.equal(inserts, 0);
+    });
+  }
+});
