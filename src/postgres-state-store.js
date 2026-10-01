@@ -40,6 +40,38 @@ export class PostgresCallStateStore {
     if (!result.rows.length) throw new Error("call_tenant_conflict");
     return result.rows[0].payload;
   }
+
+  async claimBooking(callId, { attemptId, requestHash }) {
+    required(callId, "call_id");
+    required(attemptId, "booking_attempt_id");
+    if (!/^[a-f0-9]{64}$/.test(requestHash || "")) throw new Error("booking_request_hash_required");
+    const attempt = JSON.stringify({ attemptId, requestHash, status: "pending" });
+    // One booking attempt per call. Never expire/reclaim an uncertain write.
+    const { rows } = await this.pool.query(`
+      UPDATE bookedradar.call_control_state SET updated_at=clock_timestamp(),
+        payload=payload || jsonb_build_object('bookingAttempt',$3::jsonb)
+      WHERE call_id=$1 AND tenant_id=$2 AND NOT (payload ? 'bookingAttempt')
+      RETURNING payload->'bookingAttempt' AS attempt`, [callId, this.tenantId, attempt]);
+    return rows[0]?.attempt || null;
+  }
+
+  async finishBooking(callId, attemptId, { status, result }) {
+    required(callId, "call_id");
+    required(attemptId, "booking_attempt_id");
+    if (!["confirmed", "unconfirmed", "uncertain"].includes(status)) throw new Error("booking_status_invalid");
+    if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("booking_result_required");
+    if (status === "confirmed" && (result.confirmed !== true || typeof result.bookingId !== "string" || !result.bookingId.trim())) {
+      throw new Error("booking_receipt_required");
+    }
+    const patch = JSON.stringify({ status, result });
+    const { rows } = await this.pool.query(`
+      UPDATE bookedradar.call_control_state SET updated_at=clock_timestamp(),
+        payload=payload || jsonb_build_object('bookingAttempt',(payload->'bookingAttempt') || $4::jsonb)
+      WHERE call_id=$1 AND tenant_id=$2 AND payload->'bookingAttempt'->>'attemptId'=$3
+        AND payload->'bookingAttempt'->>'status'='pending'
+      RETURNING payload->'bookingAttempt' AS attempt`, [callId, this.tenantId, attemptId, patch]);
+    return rows[0]?.attempt || null;
+  }
 }
 
 // Webhook IDs are globally unique provider event IDs, matching the existing JSON contract.
