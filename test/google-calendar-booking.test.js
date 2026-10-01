@@ -70,7 +70,7 @@ test("Google Calendar does not offer or book slots when free/busy evidence is in
     await t.test(name, async () => {
       let inserts = 0;
       const a = adapter(async url => {
-        if (url.includes("oauth2.googleapis.com")) return Response.json({ access_token: "token", expires_in: 3600 });
+        if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "token", expires_in: 3600 });
         if (url.endsWith("/freeBusy")) return Response.json({ calendars });
         inserts++;
         return Response.json({ id: "must-not-be-created" });
