@@ -408,6 +408,12 @@ export class BillingService {
         items[0].quantity !== 1
       ) throw new BillingError('unexpected_subscription_price');
 
+      // Ignore obsolete or competing subscriptions before any provider write.
+      if (a.subscriptionId && a.subscriptionId !== sub.id && a.status !== 'cancelled') {
+        return { ignored: true };
+      }
+      if ((a.retiredSubscriptionIds || []).includes(sub.id)) return { ignored: true };
+
       if (
         !['canceled', 'incomplete_expired'].includes(sub.status) &&
         (
@@ -420,11 +426,6 @@ export class BillingService {
           expand: ['latest_invoice'],
         });
       }
-
-      if (a.subscriptionId && a.subscriptionId !== sub.id && a.status !== 'cancelled') {
-        return { ignored: true };
-      }
-      if ((a.retiredSubscriptionIds || []).includes(sub.id)) return { ignored: true };
 
       if (a.subscriptionId && a.subscriptionId !== sub.id) {
         a.retiredSubscriptionIds = [...(a.retiredSubscriptionIds || []), a.subscriptionId];
