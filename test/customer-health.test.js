@@ -63,3 +63,28 @@ test("customer health keeps reliability risk visible even before traffic exists"
   assert.equal(result.status, "at_risk");
   assert.equal(result.evidenceLevel, "limited");
 });
+
+test('unresolved customer sends require review even with no failed actions',()=>{
+  const result=assessCustomerHealth({recentCalls:3,totalUnresolvedActions:1});
+  assert.equal(result.status,'watch');assert.equal(result.signals[0].code,'recovery_action_unresolved');
+  const critical=assessCustomerHealth({criticalUnresolvedActions:1,totalUnresolvedActions:2});
+  assert.equal(critical.status,'at_risk');assert.equal(critical.evidenceLevel,'limited');
+});
+
+test('recovery review is tenant-bound and separates active sends from durable holds',async()=>{
+  const {recoveryActionHealth}=await import('../src/customer-health.js');
+  const now=new Date('2026-10-01T12:00:00Z');
+  const actions=[
+    {tenantId:'a',status:'dispatching',channel:'human_task',claimExpiresAt:'2026-10-01T12:01:00Z'},
+    {tenantId:'a',status:'dispatching',channel:'human_task',claimExpiresAt:'2026-10-01T12:00:00Z',dispatchStartedAt:'2026-09-01T00:00:00Z'},
+    {tenantId:'a',status:'dispatching',channel:'email',claimExpiresAt:'invalid'},
+    {tenantId:'a',status:'reconciliation_required',channel:'sms',createdAt:'2026-10-01T10:00:00Z'},
+    {tenantId:'b',status:'reconciliation_required',channel:'human_alert'},
+    {tenantId:'a',status:'completed',channel:'human_alert'},
+    {tenantId:'a',status:'processing',channel:'human_alert'},
+  ];
+  const before=structuredClone(actions);
+  assert.deepEqual(recoveryActionHealth(actions,'a',{now}),{totalUnresolvedActions:3,criticalUnresolvedActions:1,activeDispatches:1,oldestUnresolvedAt:'2026-09-01T00:00:00.000Z'});
+  assert.deepEqual(actions,before);assert.throws(()=>recoveryActionHealth(actions,''),/known_tenant_required/);
+  assert.equal(recoveryActionHealth([{tenantId:'a',status:'reconciliation_required'}],'a',{now}).oldestUnresolvedAt,null);
+});
