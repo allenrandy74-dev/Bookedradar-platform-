@@ -1,3 +1,4 @@
+import { extractFixtureScript } from './dashboard-script.js';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
@@ -24,7 +25,7 @@ s=store(); let b=await brief(s),p=await radarProof(s,'t1');
 record('empty_counts','Owner Brief opportunity and revenue counts',[0,0,0,0,0,0,0],[b.newOpportunities,b.recoveredOpportunities,b.confirmedRevenue,b.openRevenueLeaks,b.estimatedValueAtRisk,b.membershipRenewalsDue,b.reviewEligibleJobs],'Observed counts from empty supplied snapshot; does not establish source completeness');
 record('empty_rates_api','RadarProof no-data rate and latency',[null,null],[p.recoveryRate,p.medianResponseSeconds],'No denominator or timed events');
 const html=await fs.readFile(root+'/public/radarproof-dashboard.html','utf8');
-const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const script=extractFixtureScript(html);
 const nodes=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,{value:'',textContent:'',className:'',innerHTML:''}]));
 const ctx=vm.createContext({...nodes,document:{getElementById:id=>nodes[id]},sessionStorage:{getItem:()=>'',setItem(){}},location:{search:''},URLSearchParams,Intl,setInterval(){},fetch:async()=>({ok:true,json:async()=>({report:p})})});
 vm.runInContext(script.replace('load();\nsetInterval(load,30000);','setInterval(load,30000);'),ctx); await ctx.load();

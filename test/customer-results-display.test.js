@@ -1,3 +1,4 @@
+import { extractFixtureScript } from './fixtures/dashboard-script.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -10,7 +11,7 @@ for (const page of ['owner-brief', 'radarproof-dashboard']) {
     const notice = 'Unmarked history has not been verified. Duplicate attribution makes monetary totals unavailable.';
     const result = { recoveryRate: null, confirmedRevenue: null, estimatedRecoveredValue: null, recoveredOpportunities: 0, dataCoverage: { notice }, topAttentionItems: [], bySource: {} };
     const payload = page === 'owner-brief' ? { brief: result } : { report: result };
-    let script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    let script = extractFixtureScript(html);
     script = script.replace('$("load").onclick=load;load();', '$("load").onclick=load;').replace('load();\nsetInterval(load,30000);', 'setInterval(load,30000);');
     const context = vm.createContext({ ...nodes, document: { getElementById: id => nodes[id] }, sessionStorage: { getItem: () => '', setItem() {} }, location: { search: '' }, URLSearchParams, Intl, setInterval() {}, fetch: async () => ({ ok: true, json: async () => payload }) });
     vm.runInContext(script, context);

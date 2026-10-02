@@ -1,3 +1,4 @@
+import { extractFixtureScript } from './fixtures/dashboard-script.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -149,7 +150,7 @@ test('Actual recovery event records its outcome timestamp and keeps explicit rev
 
 test('Owner Brief UI renders unavailable recovery with an explanation and preserves zero', async () => {
   const html = await fs.readFile(new URL('../public/owner-brief.html', import.meta.url), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = extractFixtureScript(html);
   const nodes = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, { value: '', textContent: '', className: '', innerHTML: '' }]));
   let brief = await ownerDailyBrief(storeFor({ a: opportunity('a', { recovered: true }) }), 't1', { now });
   const context = vm.createContext({ ...nodes, document: { getElementById: id => nodes[id] }, sessionStorage: { getItem: () => '', setItem() {} }, fetch: async () => ({ ok: true, json: async () => ({ brief }) }), Intl });
