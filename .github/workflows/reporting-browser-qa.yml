@@ -44,9 +44,10 @@ jobs:
           SIM_SCENARIOS: '200'
       - name: Install exact official Playwright package without lifecycle scripts
         working-directory: qa/reporting-browser
-        run: npm install --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
-      - name: Preserve actual resolved QA dependency lock
+        run: npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+      - name: Verify and preserve committed QA dependency lock
         run: |
+          git diff --exit-code -- qa/reporting-browser/package-lock.json
           echo QA_PACKAGE_LOCK_BEGIN
           cat qa/reporting-browser/package-lock.json
           echo QA_PACKAGE_LOCK_END

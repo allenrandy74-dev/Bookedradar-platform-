@@ -12,11 +12,11 @@ Coverage: both pages' pending clear, HTTP/network/JSON failure and recovery, ove
 
 No screenshot baselines are generated or accepted automatically. A red layout check is a finding; do not relax it or edit reporting source to get green without separate review.
 
-The isolated package pins @playwright/test and the official Microsoft Playwright image to 1.63.0. Local registry access was denied, so no local npm install/browser run was performed. CI generates its install lock from the exact package pin; a committed lock must be added after its actual bytes are available, not fabricated. No npm lifecycle scripts run.
+The isolated package pins @playwright/test and the official Microsoft Playwright image to 1.63.0. Local registry access was denied, so no local npm install/browser run was performed. The committed lock is the actual npm-generated output from GitHub Actions run 37078587551 (official npm registry); CI uses npm ci and verifies the lock remains unchanged. No npm lifecycle scripts run.
 
 Run only in an approved isolated environment:
 - From repo root: node qa/reporting-browser/verify-source.mjs
 - Run existing npm check/test/simulation and the 20 acceptance / 19 request-state cases.
-- In qa/reporting-browser: npm install --ignore-scripts --no-audit --no-fund; npm test
+- In qa/reporting-browser: npm ci --ignore-scripts --no-audit --no-fund; npm test
 
 Artifacts, when explicitly authorized, are capped at 25 MiB and retained for one day. Reports include browser version, dimensions, source hashes, commit/tree identities, network audit and screenshots. Uploaded evidence is synthetic only.

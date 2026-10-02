@@ -82,7 +82,8 @@ export const test = base.extend({
         await route.continue();
       } else {
         denied.push(req.method() + ' ' + req.url());
-        expectedResourceError(req.url(), 'net::ERR_BLOCKED_BY_CLIENT');
+        // Chromium 153 (pinned image) reports this exact diagnostic for our route.abort guard probes.
+        expectedResourceError(req.url(), 'net::ERR_BLOCKED_BY_CLIENT.Inspector');
         await route.abort('blockedbyclient');
       }
     });
