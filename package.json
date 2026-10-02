@@ -28,7 +28,7 @@
   "dependencies": {
     "dotenv": "17.4.2",
     "express": "5.2.1",
-    "openai": "7.17.0",
+    "openai": "7.25.0",
     "stripe": "22.6.2",
     "ws": "8.21.3",
     "pg": "8.23.0"
