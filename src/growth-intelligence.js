@@ -1,3 +1,5 @@
+import { customerResultSnapshot } from "./customer-results-scope.js";
+
 function hoursSince(value, nowMs) {
   const ms = new Date(value || 0).getTime();
   return Number.isFinite(ms) && ms > 0 ? Math.max(0, (nowMs - ms) / 3600000) : 0;
@@ -32,13 +34,14 @@ function sourceLabel(opportunity) {
 }
 
 export async function revenueLeakRadar(store, tenantId, { now = new Date() } = {}) {
-  const data = await store.snapshot();
+  const { data, coverage, ambiguousAttributionIds } = customerResultSnapshot(await store.snapshot(), tenantId);
   const nowMs = now.getTime();
   const opportunities = Object.values(data.opportunities || {})
     .filter(item => item.tenantId === tenantId && item.status !== "closed");
   const actions = Object.values(data.actions || {})
     .filter(item => item.tenantId === tenantId);
-  const attribution = data.attribution || {};
+  const attribution = Object.fromEntries(Object.entries(data.attribution || {})
+    .filter(([, item]) => !item.tenantId || item.tenantId === tenantId));
 
   const leaks = [];
   for (const opportunity of opportunities) {
@@ -59,7 +62,7 @@ export async function revenueLeakRadar(store, tenantId, { now = new Date() } = {
     const operationalFailure = failedActions.length > 0 || overdueActions.length > 0;
     if (!stale && !operationalFailure) continue;
 
-    const value = Number(
+    const value = ambiguousAttributionIds.has(opportunity.id) ? null : Number(
       attribution[opportunity.id]?.estimatedOpportunityValue ??
       opportunity.estimatedOpportunityValue ??
       0
@@ -97,11 +100,13 @@ export async function revenueLeakRadar(store, tenantId, { now = new Date() } = {
   );
 
   return {
+    dataCoverage: coverage,
     generatedAt: now.toISOString(),
     tenantId,
     openOpportunities: opportunities.length,
     leakCount: leaks.length,
-    estimatedValueAtRisk: leaks.reduce((sum, item) => sum + item.estimatedOpportunityValue, 0),
+    estimatedValueAtRisk: leaks.some(item => item.estimatedOpportunityValue === null)
+      ? null : leaks.reduce((sum, item) => sum + item.estimatedOpportunityValue, 0),
     overdueActionCount: leaks.reduce((sum, item) => sum + item.overdueActions, 0),
     failedActionCount: leaks.reduce((sum, item) => sum + item.failedActions, 0),
     leaks,
@@ -110,30 +115,53 @@ export async function revenueLeakRadar(store, tenantId, { now = new Date() } = {
 }
 
 export async function ownerDailyBrief(store, tenantId, { now = new Date(), callActivity = null } = {}) {
-  const data = await store.snapshot();
+  const { data, coverage } = customerResultSnapshot(await store.snapshot(), tenantId);
   const nowMs = now.getTime();
   const sinceMs = nowMs - 24 * 3600000;
+  const timestampMs = value => {
+    if (typeof value !== "number" && (typeof value !== "string" || !value.trim())) return NaN;
+    return new Date(value).getTime();
+  };
+  const inWindow = value => {
+    const timestamp = timestampMs(value);
+    return Number.isFinite(timestamp) && timestamp >= sinceMs && timestamp <= nowMs;
+  };
   const opportunities = Object.values(data.opportunities || {}).filter(item => item.tenantId === tenantId);
-  const recent = opportunities.filter(item => new Date(item.createdAt || 0).getTime() >= sinceMs);
-  const recovered = recent.filter(item => item.recovered);
+  const recent = opportunities.filter(item => inWindow(item.createdAt));
+  // Recovery is an outcome in this window, not a cohort of newly created leads.
+  // Legacy records without a recovery timestamp cannot establish when it happened.
+  const recovered = opportunities.filter(item => item.recovered && inWindow(item.recoveredAt));
+  const undatedRecovered = opportunities.filter(item =>
+    item.recovered && !Number.isFinite(timestampMs(item.recoveredAt))
+  );
   const attribution = Object.values(data.attribution || {}).filter(item =>
-    item.tenantId === tenantId || opportunities.some(opp => opp.id === item.opportunityId)
+    item.tenantId === tenantId || (!item.tenantId && opportunities.some(opp => opp.id === item.opportunityId))
   );
   const confirmedLast24h = attribution
-    .filter(item => new Date(item.confirmedAt || 0).getTime() >= sinceMs)
+    .filter(item => inWindow(item.confirmedAt))
     .reduce((sum, item) => sum + Number(item.confirmedRevenue || 0), 0);
   const leaks = await revenueLeakRadar(store, tenantId, { now });
   const memberships = await membershipRadar(store, tenantId, { now });
   const reviews = await reviewRadar(store, tenantId);
 
   return {
+    dataCoverage: coverage,
     generatedAt: now.toISOString(),
     windowHours: 24,
     newOpportunities: recent.length,
-    recoveredOpportunities: recovered.length,
-    confirmedRevenue: confirmedLast24h,
+    recoveredOpportunities: undatedRecovered.length ? null : recovered.length,
+    recoveryEvidence: {
+      status: undatedRecovered.length ? "unavailable" : "available",
+      timestampField: "recoveredAt",
+      knownRecoveredOpportunities: recovered.length,
+      undatedRecoveredOpportunities: undatedRecovered.length,
+      reason: undatedRecovered.length ? "missing_or_invalid_recovery_timestamp" : null,
+    },
+    confirmedRevenue: coverage.duplicateAttributionOpportunities ? null : confirmedLast24h,
     callsHandled: Number(callActivity?.callsHandled || 0),
     humanTransfers: Number(callActivity?.humanTransfers || 0),
+    humanTransfersMeaning: "initiated_not_completed",
+    callActivityCoverage: callActivity?.dataCoverage || null,
     spamScreened: Number(callActivity?.spamScreened || 0),
     knowledgeGaps: Number(callActivity?.knowledgeGaps || 0),
     membershipRenewalsDue: memberships.renewalCount,
@@ -293,7 +321,7 @@ export async function cancellationBackfillCandidates(store, tenantId, cancellati
 }
 
 export async function reviewRadar(store, tenantId) {
-  const data = await store.snapshot();
+  const { data, coverage } = customerResultSnapshot(await store.snapshot(), tenantId);
   const jobs = Object.values(data.opportunities || {})
     .filter(item => item.tenantId === tenantId && item.type === "job_completed" && item.status !== "closed");
 
@@ -319,6 +347,7 @@ export async function reviewRadar(store, tenantId) {
   }
 
   return {
+    dataCoverage: coverage,
     tenantId,
     eligibleCount: eligible.length,
     needsReviewCount: needsReview.length,
@@ -329,7 +358,7 @@ export async function reviewRadar(store, tenantId) {
 }
 
 export async function membershipRadar(store, tenantId, { now = new Date() } = {}) {
-  const data = await store.snapshot();
+  const { data, coverage } = customerResultSnapshot(await store.snapshot(), tenantId);
   const nowMs = now.getTime();
   const items = Object.values(data.opportunities || {})
     .filter(item => item.tenantId === tenantId && item.type === "membership_renewal_due" && item.status !== "closed")
@@ -356,6 +385,7 @@ export async function membershipRadar(store, tenantId, { now = new Date() } = {}
     });
 
   return {
+    dataCoverage: coverage,
     tenantId,
     renewalCount: items.length,
     renewals: items,

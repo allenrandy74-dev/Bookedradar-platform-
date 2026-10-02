@@ -18,24 +18,26 @@ main{max-width:1180px;margin:auto;padding:28px 18px 60px}.top{display:flex;justi
 <div class="controls"><input id="tenant" value="demo-hvac" placeholder="Tenant ID"><input id="token" type="password" placeholder="Admin token"><button id="load">Refresh</button></div>
 <section class="grid">
 <div class="card"><div class="label">New opportunities · 24h</div><div class="value" id="newOpp">—</div></div>
-<div class="card"><div class="label">Recovered · 24h</div><div class="value accent" id="recovered">—</div></div>
+<div class="card"><div class="label">Recovered · 24h</div><div class="value accent" id="recovered">—</div><div class="muted" id="recoveryNote"></div></div>
 <div class="card"><div class="label">Confirmed revenue · 24h</div><div class="value accent" id="revenue">—</div></div>
 <div class="card"><div class="label">Open revenue leaks</div><div class="value" id="leaks">—</div></div>
 <div class="card"><div class="label">Calls handled</div><div class="value" id="calls">—</div></div>
-<div class="card"><div class="label">Human transfers</div><div class="value" id="transfers">—</div></div>
+<div class="card"><div class="label">Transfers initiated</div><div class="value" id="transfers">—</div></div>
 <div class="card"><div class="label">Knowledge gaps</div><div class="value" id="gaps">—</div></div>
 <div class="card"><div class="label">Membership renewals</div><div class="value" id="memberships">—</div></div>
 <div class="card"><div class="label">Review-ready jobs</div><div class="value" id="reviews">—</div></div>
 <div class="card"><div class="label">Estimated value at risk</div><div class="value" id="risk">—</div></div>
 <div class="card full"><div class="label">Top attention items</div><div id="attention" class="attention empty">No attention items loaded.</div></div>
 </section>
+<p class="muted" id="coverage"></p>
+<p class="muted">Transfers initiated does not establish a completed human connection.</p>
 <div class="links"><a href="/dashboard/radarproof-dashboard.html">RadarProof</a><a href="/dashboard/call-history.html">Call History</a><a href="/dashboard/radartrust.html">RadarTrust</a></div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 $("token").value=sessionStorage.getItem("br_admin_token")||"";
 $("tenant").value=sessionStorage.getItem("br_tenant")||$("tenant").value;
-const money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
+const money=n=>n==null||!Number.isFinite(Number(n))?"Unavailable":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 async function load(){
  const tenant=$("tenant").value.trim(),token=$("token").value.trim();sessionStorage.setItem("br_tenant",tenant);sessionStorage.setItem("br_admin_token",token);
@@ -43,7 +45,9 @@ async function load(){
  try{
   const r=await fetch("/api/v1/owner-brief?tenant="+encodeURIComponent(tenant),{cache:"no-store",headers:token?{Authorization:"Bearer "+token}:{}});
   if(!r.ok)throw new Error();const {brief}=await r.json();
-  newOpp.textContent=brief.newOpportunities;recovered.textContent=brief.recoveredOpportunities;revenue.textContent=money(brief.confirmedRevenue);
+  newOpp.textContent=brief.newOpportunities;recovered.textContent=brief.recoveredOpportunities??"Unavailable";revenue.textContent=money(brief.confirmedRevenue);
+  coverage.textContent=brief.dataCoverage?.notice||"Synthetic marker coverage is unavailable; historical test exclusion has not been verified.";
+  recoveryNote.textContent=brief.recoveryEvidence?.status==="unavailable"?"Some recovery dates are missing or invalid.":"";
   leaks.textContent=brief.openRevenueLeaks;calls.textContent=brief.callsHandled;transfers.textContent=brief.humanTransfers;gaps.textContent=brief.knowledgeGaps;memberships.textContent=brief.membershipRenewalsDue;reviews.textContent=brief.reviewEligibleJobs;risk.textContent=money(brief.estimatedValueAtRisk);
   const items=brief.topAttentionItems||[];attention.className=items.length?"attention":"attention empty";
   attention.innerHTML=items.length?items.map(x=>'<div class="item"><span class="pill '+esc(x.priority)+'">'+esc(x.priority)+'</span><div><b>'+esc(x.type.replaceAll("_"," "))+'</b><div class="muted">'+esc(x.serviceType||x.source)+' · '+esc(x.ageHours)+'h open</div><div>'+esc(x.recommendedNextAction)+'</div></div><div class="money">'+money(x.estimatedOpportunityValue)+'</div></div>').join(""):"No current revenue-leak items need attention.";
