@@ -31,7 +31,15 @@ export const test = base.extend({
     for (const d of Object.values(definitions)) pages['/dashboard/' + d.file] = await fs.readFile(root + 'public/' + d.file);
     const requests = [], allowed = [], denied = [], serverUnexpected = [], errors = [];
     let expectedDenied = [], abortNext = false;
-    const injectedNetworkFailures = [];
+    const injectedNetworkFailures = [], consoleErrors = [], expectedConsoleFailures = [];
+    page.on('console', message => {
+      if (message.type() === 'error') consoleErrors.push({ text: message.text(), location: message.location() });
+    });
+    // Only Chromium's exact resource-loading diagnostic for an explicitly injected
+    // failure is allowed. Application console errors and all other diagnostics fail.
+    function expectedResourceError(url, detail) {
+      expectedConsoleFailures.push({ url, text: 'Failed to load resource: ' + detail });
+    }
     page.on('pageerror', e => errors.push(e.message));
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://127.0.0.1');
@@ -44,9 +52,8 @@ export const test = base.extend({
           /^Bearer qa-[a-z-]+$/.test(req.headers.authorization || '')) {
         requests.push({
           url: req.url, authorization: req.headers.authorization,
-          reply(data, status = 200) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); },
+          reply(data, status = 200) { if (status >= 400) expectedResourceError(origin + req.url, 'the server responded with a status of ' + status + ' (' + http.STATUS_CODES[status] + ')'); res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); },
           invalid() { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{ invalid synthetic JSON'); },
-          fail() { req.socket.destroy(); },
           startJSON() { res.writeHead(200, { 'Content-Type': 'application/json' }); res.flushHeaders(); res.write(' '); },
           finishJSON(data) { res.end(JSON.stringify(data)); }
         });
@@ -69,12 +76,13 @@ export const test = base.extend({
         if (api && abortNext) {
           abortNext = false;
           requests.push({ url: url.pathname + url.search, authorization: req.headers().authorization,
-            async fail() { injectedNetworkFailures.push(req.url()); await route.abort('failed'); } });
+            async fail() { injectedNetworkFailures.push(req.url()); expectedResourceError(req.url(), 'net::ERR_FAILED'); await route.abort('failed'); } });
           return;
         }
         await route.continue();
       } else {
         denied.push(req.method() + ' ' + req.url());
+        expectedResourceError(req.url(), 'net::ERR_BLOCKED_BY_CLIENT');
         await route.abort('blockedbyclient');
       }
     });
@@ -107,10 +115,13 @@ export const test = base.extend({
     try { await use(qa); }
     finally {
       if (info.status !== info.expectedStatus && !page.isClosed()) await qa.screenshot('failure-state');
+      const unexpectedConsoleErrors = consoleErrors.filter(e => !expectedConsoleFailures.some(expected => expected.url === e.location.url && expected.text === e.text));
+      console.log('QA_BROWSER_EVIDENCE', JSON.stringify({ test: info.title, browser: browser.version(), viewport: page.viewportSize(), allowed: allowed.length, denied: denied.length, consoleErrors, unexpectedConsoleErrors }));
       await info.attach('network-and-source-evidence', { body: Buffer.from(JSON.stringify({
         browser: browser.version(), viewport: page.viewportSize(), commit: process.env.QA_COMMIT || 'local-uncommitted',
         sourceSHA256: Object.fromEntries(Object.entries(pages).map(([p, bytes]) => [p, crypto.createHash('sha256').update(bytes).digest('hex')])),
-        allowed, denied, expectedDenied, injectedNetworkFailures, serverUnexpected, pageErrors: errors
+        requests: requests.map(({ url, authorization }, index) => ({ index, url, syntheticAuth: authorization?.startsWith('Bearer qa-') })),
+        allowed, denied, expectedDenied, injectedNetworkFailures, serverUnexpected, consoleErrors, expectedConsoleFailures, unexpectedConsoleErrors, pageErrors: errors
       }, null, 2)), contentType: 'application/json' });
       await context.close();
       server.closeAllConnections();
@@ -118,6 +129,7 @@ export const test = base.extend({
       expect(denied.sort(), 'unexpected requests must fail closed').toEqual(expectedDenied.sort());
       expect(serverUnexpected).toEqual([]);
       expect(errors).toEqual([]);
+      expect(unexpectedConsoleErrors, 'unexpected browser console errors').toEqual([]);
     }
   }
 });
