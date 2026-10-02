@@ -1,0 +1,34 @@
+{
+  "main": "1e6a5dcf54296080536ee61b3755f9e1d58165de",
+  "reporting": "bce649cb1bc06983b7b7fdfe08ad69eefb829bdc",
+  "mergeBase": "21e74ccdddeade9f71aecc29a6b69c5a9703f7a0",
+  "reportingFiles": {
+    "public/owner-brief.html": "c1b29ad8c8e70a27057652734a1a9d8b25664f99",
+    "public/radarproof-dashboard.html": "e997aebd09a836741f2d951c9cbbfbfb12fb9ba9",
+    "src/call-history.js": "fbb110867744a4ec892e559fa2309abf60ae7dac",
+    "src/customer-results-scope.js": "1fa9fbc1065702459ecd42474a0caca89d602b1b",
+    "src/growth-intelligence.js": "6cb6b563124e5c7ce1d0a554592f465cf3e08438",
+    "src/proof-pilot-control.js": "1d5bf2fc9c25cc24881473880701af25dc38ee67",
+    "src/recovery/radarproof.js": "506247b17042272949f552ae1eef6c557f45b51b",
+    "test/customer-results-acceptance.test.js": "103e6c979d7f5c67bc3a9e5724cb31bda8909219",
+    "test/customer-results-display.test.js": "9bfa703d448c2dc59951cb61772f3a0c56b18d86",
+    "test/customer-results-metrics.test.js": "9f0b55bb37229a52352e4c9cb0fbfa26e9a92690",
+    "test/customer-results-requests.test.js": "ed1c527f77382e4c5b18f248a7975f1bbfaca719",
+    "test/customer-results-scope.test.js": "9ed1e23e6a682ebcb3cc9a855b2cd4c93971029b",
+    "test/dashboard-script.test.js": "6093c0319e83c65aea73c67a45a1f6fad5b279fe",
+    "test/fixtures/customer-results-cases.js": "689ac99942618259bbc884437b1da7343a2b575a",
+    "test/fixtures/dashboard-script.js": "1db03552989d14a140f9673cc9b2ec3648459df1",
+    "test/growth-intelligence.test.js": "45ae92ba37508818e7c86941000bd2dd91314768"
+  },
+  "mainFiles": {
+    "website/src/audit.html": "2e9ced7017f91bf4b8affcc9ecff10d3ebabe0d1",
+    "website/src/audit.js": "c218bf0af00b1ad87905c3af64778b9bf5c24e3f",
+    "website/src/index.html": "e0319b662c318a773ccb40ca104d33f2c5cdfc06",
+    "website/src/quick-start.html": "8bb32b2a237c89be50ce0142f16fbfc617ef275e",
+    "website/src/styles.css": "e339856b0a9f3f3f2991b99dd3b022a71d576196",
+    "website/src/terms.html": "8345f3fe5f07c4d9728402a3fd708bcc888ec193",
+    "website/test-site.py": "7bd09681ca10328a398a274587f7677043392abc"
+  },
+  "integration": "6145686215dd79e0f700f6d7a18d2564a79532b1",
+  "integrationTree": "10e0247d50262c7e644dab25725ca3a9bcae405c"
+}

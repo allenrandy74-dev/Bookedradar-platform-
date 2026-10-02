@@ -1,0 +1,82 @@
+name: Reporting browser QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'qa/reporting-browser/**'
+      - '.github/workflows/reporting-browser-qa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reporting-browser-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  reporting-browser:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+      - name: Verify combined source provenance
+        run: node qa/reporting-browser/verify-source.mjs
+      - name: Install existing dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Combined syntax checks
+        run: npm run check
+      - name: Combined reporting and request-state cases
+        run: node --test test/customer-results-acceptance.test.js test/customer-results-requests.test.js
+      - name: Combined ordinary suite
+        run: npm test
+      - name: Combined deterministic simulation
+        run: npm run simulate
+        env:
+          SIM_SCENARIOS: '200'
+      - name: Install exact official Playwright package without lifecycle scripts
+        working-directory: qa/reporting-browser
+        run: npm install --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+      - name: Pull pinned official browser image
+        run: |
+          docker pull mcr.microsoft.com/playwright:v1.63.0-noble
+          docker image inspect mcr.microsoft.com/playwright:v1.63.0-noble --format '{{json .RepoDigests}}' > qa/reporting-browser/evidence/browser-image.json
+      - name: Browser tests with no external network interface
+        env:
+          QA_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          docker run --rm --network none --cap-drop ALL --shm-size=256m \
+            -e CI=true -e QA_COMMIT \
+            -v "$GITHUB_WORKSPACE:/work" -w /work/qa/reporting-browser \
+            mcr.microsoft.com/playwright:v1.63.0-noble npm test
+      - name: Bound evidence size
+        if: always()
+        id: evidence
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const root = 'qa/reporting-browser/evidence';
+          function size(path) { const s=fs.statSync(path); return s.isDirectory()?fs.readdirSync(path).reduce((n,p)=>n+size(path+'/'+p),0):s.size; }
+          const bytes = fs.existsSync(root) ? size(root) : 0;
+          console.log('Evidence bytes:', bytes);
+          if (bytes > 25 * 1024 * 1024) throw new Error('Evidence exceeds authorized 25 MiB ceiling; do not upload');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ready=' + (bytes > 0) + '\n');
+          NODE
+      # Upload is intentionally disabled until artifact-storage allowance/overage is approved.
+      - name: Upload synthetic evidence (disabled pending cost approval)
+        if: ${{ false }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reporting-browser-${{ github.event.pull_request.head.sha }}
+          path: qa/reporting-browser/evidence/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 9
