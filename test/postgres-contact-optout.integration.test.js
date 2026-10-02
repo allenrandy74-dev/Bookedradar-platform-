@@ -46,8 +46,10 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       const unrelated = await seed(engine, otherPhone);
       await seed(otherEngine);
       const foreignBefore = await otherStore.snapshot();
+      const claims = await store.claimDueActions({ now: new Date(), workerId: 'synthetic', limit: 50 });
+      const claim = claims.find(action => action.contactKey === first.opportunity.contactKey);
+      assert.ok(claim, 'exercise cancellation of a target-contact claim regardless of due-time ties');
       const before = await store.snapshot();
-      const [claim] = await store.claimDueActions({ now: new Date(), workerId: 'synthetic', limit: 1 });
       const event = { type: 'contact_opted_out', idempotencyKey: 'shared-stop-key', opportunityId: first.opportunity.id };
       const results = await Promise.all(Array.from({ length: 30 }, () => engine.ingest(event)));
       assert.equal(results.filter(result => !result.duplicate).length, 1);
@@ -72,21 +74,56 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       assert.equal((await engine.ingest(event)).duplicate, true);
     });
 
-    await t.test('contact-only opt-out covers sibling opportunities and tenant-scopes identical replay keys', async () => {
+    await t.test('contact-only opt-out isolates the same provider message ID using production tenant-qualified keys', async () => {
       const { store, otherStore, engine, otherEngine, seed } = await fixture();
       const first = await seed();
       const sibling = await seed();
       const other = await seed(otherEngine);
-      const event = { type: 'contact_opted_out', idempotencyKey: 'same-source-id', contactKey: phone };
+      const messageSid = `SM${'a'.repeat(32)}`;
+      // Match the signed Twilio STOP route. recovery_events.idempotency_key is
+      // globally unique; the source supplies the tenant-qualified receipt key.
+      const eventFor = tenantId => ({ type: 'contact_opted_out',
+        idempotencyKey: `twilio-optout:${tenantId}:${messageSid}`,
+        contactKey: `${tenantId}:${phone}`, contact: { phone }, source: 'twilio_sms' });
+      const foreignBefore = await otherStore.snapshot();
+      const event = eventFor(store.tenantId);
       const result = await engine.ingest(event);
       assert.equal(result.cancelledActions, first.actions.length + sibling.actions.length);
       assert.equal(result.opportunity, undefined);
       assert.equal((await store.getOpportunity(first.opportunity.id)).status, 'open');
-      assert.equal((await otherStore.getContact(other.opportunity.contactKey)).suppressed, undefined);
-      const foreignResult = await otherEngine.ingest(event);
+      assert.deepEqual(await otherStore.snapshot(), foreignBefore);
+      const firstTenantAfter = await store.snapshot();
+      const foreignEvent = eventFor(otherStore.tenantId);
+      const foreignResult = await otherEngine.ingest(foreignEvent);
       assert.equal(foreignResult.duplicate, undefined);
       assert.equal(foreignResult.cancelledActions, other.actions.length);
       assert.equal((await otherStore.getContact(other.opportunity.contactKey)).suppressed, true);
+      assert.deepEqual(await store.snapshot(), firstTenantAfter);
+      assert.equal((await engine.ingest(event)).duplicate, true);
+      assert.equal((await otherEngine.ingest(foreignEvent)).duplicate, true);
+      assert.equal((await store.snapshot()).events.filter(item => item.type === 'contact_opted_out').length, 1);
+      assert.equal((await otherStore.snapshot()).events.filter(item => item.type === 'contact_opted_out').length, 1);
+    });
+
+    await t.test('reusing a globally unique raw receipt key fails atomically without cross-tenant suppression', async () => {
+      const { store, otherStore, engine, otherEngine, seed } = await fixture();
+      await seed();
+      const foreign = await seed(otherEngine);
+      const event = { type: 'contact_opted_out', idempotencyKey: 'unqualified-shared-source-id',
+        contactKey: phone, contact: { phone }, source: 'twilio_sms' };
+      await engine.ingest(event);
+      const firstBefore = await store.snapshot();
+      const foreignBefore = await otherStore.snapshot();
+      await assert.rejects(otherEngine.ingest(event), error => {
+        assert.equal(error.code, '23505');
+        assert.equal(error.constraint, 'recovery_events_idempotency_key_key');
+        return true;
+      });
+      assert.deepEqual(await store.snapshot(), firstBefore);
+      assert.deepEqual(await otherStore.snapshot(), foreignBefore);
+      assert.equal((await otherStore.getContact(foreign.opportunity.contactKey)).suppressed, undefined);
+      assert.equal(await recipientSuppressed(otherStore, otherStore.tenantId, { phone }), false);
+      assert.ok(foreign.actions.every(action => foreignBefore.actions[action.id].status === 'pending'));
     });
 
     await t.test('invalid identities, cross-tenant targets and conflicting replays leave no receipt or mutations', async () => {
