@@ -1,3 +1,4 @@
+import { customerResultCalls } from "./customer-results-scope.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -292,8 +293,10 @@ export class CallHistoryStore {
 
   async stats(tenantId) {
     await this.load();
-    const calls = Object.values(this.data.calls).filter(call => call.tenantId === tenantId);
+    const { calls, coverage } = customerResultCalls(Object.values(this.data.calls).filter(call => call.tenantId === tenantId));
     return {
+      dataCoverage: coverage,
+      humanTransfersMeaning: "initiated_not_completed",
       callsHandled: calls.length,
       humanTransfers: calls.filter(call => call.transferred).length,
       spamScreened: calls.filter(call => call.spamEnded).length,
