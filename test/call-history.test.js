@@ -19,3 +19,11 @@ test("call history is tenant-isolated, searchable and redacts obvious sensitive 
   assert.doesNotMatch(call.transcript[0].text, /123-45-6789/);
   assert.equal(await store.get("b", "call-a"), null);
 });
+
+
+test('pilot history window excludes exact end and later calls from every numerator',async()=>{
+ const store=new CallHistoryStore('/unused');store.loaded=true;
+ store.data.calls={before:{tenantId:'t',startedAt:99,transferred:true},inside:{tenantId:'t',startedAt:100,transferred:true,leadSummary:{serviceType:'repair',callback:'***',urgency:'routine',preferredWindow:'tomorrow'}},end:{tenantId:'t',startedAt:200,transferred:true},other:{tenantId:'other',startedAt:150,transferred:true}};
+ const result=await store.statsSince('t',100,200);
+ assert.equal(result.callsHandled,1);assert.equal(result.humanTransfers,1);assert.equal(result.incompleteCalls,0);assert.equal(result.firstUsefulLeadAt,100);
+});

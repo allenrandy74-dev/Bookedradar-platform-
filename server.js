@@ -31,6 +31,7 @@ import {
 import { createWixContact, createWixFollowupTask, createWixInquiryNotes } from "./src/wix.js";
 import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey, proofPilotTaskLead } from "./src/proof-pilot.js";
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
+import { enforceProofPilotAdmission, readProofPilotSnapshot, preparePilotCall } from "./src/proof-pilot-admission.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
@@ -70,6 +71,8 @@ import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js"
 import { deploymentPlan } from "./src/onboarding/deployment-plan.js";
 import { tenantReadiness } from "./src/onboarding/readiness.js";
 import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
+import { queueSmsReply } from "./src/sms-reply-queue.js";
+import { queueCallerText } from "./src/caller-text-queue.js";
 import {
   WebChatStore,
   allowedWebChatOrigin,
@@ -838,6 +841,7 @@ function recordCallMilestone(callId, event, fields = {}) {
 }
 
 async function executeTool({
+  toolCallId,
   name,
   args,
   callId,
@@ -1054,26 +1058,13 @@ async function executeTool({
     if (!features.callerTexting || tenant?.integrations?.sms?.enabled !== true || !adapters.sms) {
       return { ok: false, sent: false, reason: "caller_texting_not_ready" };
     }
-    const existing = await state.getCall(callId);
-    const to = String(existing?.lastLead?.callback_number || callerNumber || "").trim();
-    if (!/^\+[1-9]\d{7,14}$/.test(to)) {
-      return { ok: false, sent: false, reason: "confirmed_callback_required" };
-    }
-    const contact = await recoveryStore.getContact(`${tenant.tenantId}:${to}`);
-    if (contact?.optedOut || contact?.suppressed) {
-      return { ok: false, sent: false, reason: "contact_suppressed" };
-    }
-    const content = String(args?.content || "").trim().slice(0, 480);
-    if (!content) return { ok: false, sent: false, reason: "message_required" };
-    const result = await adapters.sms.send({ contact: { phone: to }, content });
-    console.log(JSON.stringify({
-      event: "caller_text.sent",
-      tenant_id: tenant.tenantId,
-      call_id: callId,
-      to: maskPhone(to),
-      provider: result?.provider || null,
-    }));
-    return { ok: true, sent: true, provider: result?.provider || "sms" };
+    const store = typeof recoveryStore.forTenant === "function"
+      ? recoveryStore.forTenant(tenant.tenantId) : null;
+    const result = await queueCallerText({ tenant, store, state, callId, toolCallId, content: args?.content,
+      callerRequested: args?.caller_requested_text, confirmedCallbackNumber: args?.confirmed_callback_number });
+    return { ok: Boolean(result.queued || (result.duplicate && ["pending", "processing", "dispatching", "completed"].includes(result.status))),
+      sent: false, ...result,
+      message: "Queue status is not delivery confirmation. Do not tell the caller a text was delivered." };
   }
 
   if (name === "end_call") {
@@ -1289,6 +1280,7 @@ async function attachSideband({
       try {
         output = await executeTool({
           name: toolCall.name,
+          toolCallId: dedupeKey,
           args,
           callId,
           callerNumber,
@@ -1416,52 +1408,70 @@ async function handleIncomingCall(event) {
     return;
   }
 
-  await state.patchCall(callId, {
-    tenantId: tenant.tenantId,
-    acceptedAt: Date.now(),
-    callerHintMasked: maskPhone(callerNumber),
-    dialedNumberMasked: maskPhone(dialedNumber),
+  const pilotAdmission = await enforceProofPilotAdmission({
+    tenant, callId, pool: postgresStores?.pool,
+    callerMasked: maskPhone(callerNumber), dialedMasked: maskPhone(dialedNumber),
+    reject: args => rejectRealtimeCall({ apiKey: OPENAI_API_KEY, ...args }),
+    end: id => callLifecycle.end(id),
+    log: fields => console.log(JSON.stringify(fields)),
   });
-  await callHistory.start(callId, {
-    tenantId: tenant.tenantId,
-    callerMasked: maskPhone(callerNumber),
-    dialedMasked: maskPhone(dialedNumber),
+  if (pilotAdmission.handled) return;
+
+  const acceptanceOptions = await preparePilotCall({
+    pilotEnabled: tenant?.commercial?.proofPilot?.enabled === true,
+    reject: () => rejectRealtimeCall({ apiKey: OPENAI_API_KEY, callId,
+      statusCode: [486, 503].includes(tenant.commercial.proofPilot.fallbackRejectStatusCode)
+        ? tenant.commercial.proofPilot.fallbackRejectStatusCode : 503 }),
+    setup: async () => {
+      await state.patchCall(callId, {
+        tenantId: tenant.tenantId,
+        acceptedAt: Date.now(),
+        callerHintMasked: maskPhone(callerNumber),
+        dialedNumberMasked: maskPhone(dialedNumber),
+      });
+      await callHistory.start(callId, {
+        tenantId: tenant.tenantId,
+        callerMasked: maskPhone(callerNumber),
+        dialedMasked: maskPhone(dialedNumber),
+      });
+    
+      const businessContext = localBusinessContext(tenant);
+      const returningCaller = await returningCallerContext({
+        store: recoveryStore,
+        tenant,
+        callerNumber,
+      });
+      const instructions = buildOperatorInstructions({
+        ...operatorRulesForTenant(tenant),
+        companyName: tenant.businessName,
+        companyTrade: tenant.trade,
+        serviceArea: Array.isArray(tenant.serviceArea)
+          ? tenant.serviceArea.join(", ")
+          : tenant.serviceArea,
+        callerNumber,
+        bookingMode: tenant?.policies?.bookingMode || "confirm_only",
+        quotePrices: Boolean(tenant?.policies?.quotePrices),
+        highValueThreshold: Number(tenant?.economics?.highValueThreshold || 0),
+        services: tenant?.services || [],
+        localTime: businessContext.localTime,
+        businessHoursText: businessContext.businessHoursText,
+        timeZone: tenant?.timeZone || "America/Chicago",
+        featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
+        assistantDisclosure: Boolean(tenant?.policies?.assistantDisclosure),
+      });
+      return {
+        apiKey: OPENAI_API_KEY,
+        callId,
+        model: tenant?.integrations?.phone?.model || OPENAI_REALTIME_MODEL,
+        instructions,
+        voice: tenant?.integrations?.phone?.voice || OPENAI_VOICE,
+        tools: toolsForTenant(tools, tenant),
+        inputTranscription: inputTranscriptionForTenant(tenant),
+      };
+    },
   });
 
-  const businessContext = localBusinessContext(tenant);
-  const returningCaller = await returningCallerContext({
-    store: recoveryStore,
-    tenant,
-    callerNumber,
-  });
-  const instructions = buildOperatorInstructions({
-    ...operatorRulesForTenant(tenant),
-    companyName: tenant.businessName,
-    companyTrade: tenant.trade,
-    serviceArea: Array.isArray(tenant.serviceArea)
-      ? tenant.serviceArea.join(", ")
-      : tenant.serviceArea,
-    callerNumber,
-    bookingMode: tenant?.policies?.bookingMode || "confirm_only",
-    quotePrices: Boolean(tenant?.policies?.quotePrices),
-    highValueThreshold: Number(tenant?.economics?.highValueThreshold || 0),
-    services: tenant?.services || [],
-    localTime: businessContext.localTime,
-    businessHoursText: businessContext.businessHoursText,
-    timeZone: tenant?.timeZone || "America/Chicago",
-    featureGuidance: competitiveFeatureGuidance(tenant, { returningCaller }),
-    assistantDisclosure: Boolean(tenant?.policies?.assistantDisclosure),
-  });
-
-  await acceptRealtimeCall({
-    apiKey: OPENAI_API_KEY,
-    callId,
-    model: tenant?.integrations?.phone?.model || OPENAI_REALTIME_MODEL,
-    instructions,
-    voice: tenant?.integrations?.phone?.voice || OPENAI_VOICE,
-    tools: toolsForTenant(tools, tenant),
-    inputTranscription: inputTranscriptionForTenant(tenant),
-  });
+  await acceptRealtimeCall(acceptanceOptions);
 
   const acceptanceMs = Date.now() - receivedAt;
   recordCallMilestone(callId, "call.accepted", { latencyMs: acceptanceMs });
@@ -1787,7 +1797,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
     let opportunity = await latestOpenOpportunityForContact(tenant.tenantId, contactKey);
     if (opportunity) {
       const result = await engine.ingest({
-        idempotencyKey: `twilio-reply:${tenant.tenantId}:${messageSid || Date.now()}`,
+        idempotencyKey: `twilio-message:${tenant.tenantId}:${messageSid || Date.now()}`,
         type: "customer_replied",
         opportunityId: opportunity.id,
         source: "twilio_sms",
@@ -1798,7 +1808,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
       opportunity = result.opportunity || opportunity;
     } else {
       const result = await engine.ingest({
-        idempotencyKey: `twilio-new:${tenant.tenantId}:${messageSid || Date.now()}`,
+        idempotencyKey: `twilio-message:${tenant.tenantId}:${messageSid || Date.now()}`,
         type: "phone_lead",
         source: "twilio_sms",
         serviceType: "SMS inquiry",
@@ -1810,23 +1820,22 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
 
     const { adapters } = dispatcherFor(tenant);
     if (smsConversationEnabled(tenant) && adapters.sms && openai && opportunity) {
-      const contact = await recoveryStore.getContact(contactKey);
       try {
-        const reply = await generateSmsReply({
-          client: openai,
-          model: SMS_RESPONSE_MODEL,
-          tenant,
-          opportunity,
-          contact,
-          customerText: text,
+        const store = typeof recoveryStore.forTenant === "function"
+          ? recoveryStore.forTenant(tenant.tenantId) : null;
+        const result = await queueSmsReply({
+          tenant, store, messageSid, contactKey, opportunity, recipient: from,
+          generate: contact => generateSmsReply({
+            client: openai, model: SMS_RESPONSE_MODEL, tenant,
+            opportunity, contact, customerText: text,
+          }),
         });
-        await adapters.sms.send({ contact: { phone: from }, content: reply });
         console.log(JSON.stringify({
-          event: "sms.conversation_reply",
+          event: "sms.conversation_reply_queued",
           tenant_id: tenant.tenantId,
           opportunity_id: opportunity.id,
-          to: maskPhone(from),
-          provider: "twilio",
+          queued: result.queued,
+          reason: result.reason || (result.duplicate ? "duplicate" : null),
         }));
       } catch (error) {
         console.error(JSON.stringify({
@@ -1835,6 +1844,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
           opportunity_id: opportunity.id,
           message: String(error?.message || error).slice(0, 200),
         }));
+        return res.status(503).send("SMS reply queue unavailable");
       }
     }
 
@@ -2183,35 +2193,45 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
     const tenant = req.bookedRadarTenant;
     const config = tenant?.commercial?.proofPilot || {};
     const startMs = Date.parse(config.startAt || "") || 0;
-    const callStats = await callHistory.statsSince(tenant.tenantId, startMs);
-    const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs });
-    const failedActions = await recoveryStore.failedActions(tenant.tenantId);
-    const criticalFailures = failedActions.filter(action =>
+    const candidateEnd = startMs + Number(config.durationDays ?? 14) * 86400000;
+    const endMs = config.enabled === true && Number.isFinite(candidateEnd) ? candidateEnd : Infinity;
+    const callStats = await callHistory.statsSince(tenant.tenantId, startMs, endMs);
+    const proof = await radarProof(recoveryStore, tenant.tenantId, { sinceMs: startMs, untilMs: endMs });
+    const snapshot = config.enabled === true
+      ? await readProofPilotSnapshot(postgresStores?.pool, { tenantId: tenant.tenantId, config }) : null;
+    const failedActions = snapshot ? [] : await recoveryStore.failedActions(tenant.tenantId);
+    const criticalFailures = snapshot?.criticalFailures ?? failedActions.filter(action =>
       ["human_alert", "human_task"].includes(String(action.channel || "")) ||
       String(action.lastError || "").toLowerCase().includes("transfer")
     ).length;
-    const status = proofPilotStatus(config, {
-      callsHandled: callStats.callsHandled,
-      criticalFailures,
-      firstValueAt: callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "",
-    });
+    const callsHandled = snapshot?.callsHandled ?? callStats.callsHandled;
+    const unresolvedBookings = snapshot?.unresolvedBookings || 0;
+    const firstValueAt = callStats.firstUsefulLeadAt ? new Date(callStats.firstUsefulLeadAt).toISOString() : "";
+    const status = snapshot ? { ...snapshot.status, firstValueAt: firstValueAt || null }
+      : proofPilotStatus(config, { callsHandled, criticalFailures, firstValueAt });
     const scorecard = proofPilotScorecard({
       status: status.status,
-      callsHandled: callStats.callsHandled,
+      callsHandled,
       qualifiedOpportunities: proof.opportunitiesCaptured,
       humanTransfers: callStats.humanTransfers,
       incompleteCalls: callStats.incompleteCalls,
       recoveredOpportunities: proof.recoveredOpportunities,
       confirmedRevenue: proof.confirmedRevenue,
       criticalFailures,
-      firstValueAt: status.firstValueAt,
+      unresolvedBookings,
+      firstValueAt,
     });
+    if (snapshot && !snapshot.verified) {
+      scorecard.criticalFailures = null;
+      scorecard.unresolvedBookings = null;
+    }
     return res.json({
       ok: true,
       tenantId: tenant.tenantId,
       status,
       scorecard,
       proof,
+      safety: snapshot ? { verified: snapshot.verified === true, criticalActionFailures: snapshot.criticalActionFailures ?? null, criticalVoiceFailures: snapshot.criticalVoiceFailures ?? null, unresolvedBookings: snapshot.unresolvedBookings ?? null } : null,
       guardrail: status.status === "ACTIVE" || status.status === "SCHEDULED"
         ? "PILOT_WITHIN_APPROVED_SCOPE"
         : "DO_NOT_EXPAND_OR_CONTINUE_PILOT_TRAFFIC_UNTIL_REVIEWED",
@@ -2668,4 +2688,5 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
 

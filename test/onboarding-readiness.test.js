@@ -29,11 +29,22 @@ function baseTenant() {
   };
 }
 
-test("complete confirm-only tenant is pilot ready", () => {
+test("complete confirm-only tenant passes configuration readiness", () => {
   const result = tenantReadiness(baseTenant(), { env: {} });
   assert.equal(result.ready, true);
   assert.equal(result.status, "READY");
   assert.equal(result.blockers.length, 0);
+  assert.equal(result.assessmentScope, "configuration_only");
+});
+
+test("missing or blank service profile cannot inherit the default Recover package", () => {
+  for (const profile of [undefined, null, "", "   ", 0]) {
+    const tenant = baseTenant();
+    tenant.commercial.serviceProfile = profile;
+    const result = tenantReadiness(tenant, { env: {} });
+    assert.equal(result.ready, false);
+    assert.ok(result.blockers.some(item => item.code === "service_profile"));
+  }
 });
 
 test("approved Proof Pilot cannot activate without its customer-specific safety rule", () => {
@@ -47,14 +58,17 @@ test("approved Proof Pilot cannot activate without its customer-specific safety 
     customerApprovedScope: true,
     baselineDocumented: true,
     acceptancePassed: true,
+    carrierFallbackAccepted: true,
+    fallbackRejectStatusCode: 486,
+    fallbackAcceptanceReference: "synthetic-carrier-test",
   };
   tenant.escalation.safetyRule = " ";
-  const blocked = tenantReadiness(tenant, { env: {} });
+  const blocked = tenantReadiness(tenant, { env: { BOOKEDRADAR_STORAGE_BACKEND: "postgres" } });
   assert.equal(blocked.ready, false);
   assert.deepEqual(blocked.blockers.map(item => item.code), ["safety_rule"]);
 
   tenant.escalation.safetyRule = "Use the customer's approved emergency guidance and human escalation.";
-  assert.equal(tenantReadiness(tenant, { env: {} }).status, "READY");
+  assert.equal(tenantReadiness(tenant, { env: { BOOKEDRADAR_STORAGE_BACKEND: "postgres" } }).status, "READY");
 
   // Non-pilot drafts retain the existing warning while setup is being prepared.
   tenant.commercial.proofPilot.enabled = false;

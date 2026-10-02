@@ -13,7 +13,7 @@ test('fenced Wix dispatch does not internally retry an ambiguous provider failur
 });
 test('SMS and email providers receive bounded abort signals with no send loop',async t=>{
   let calls=0;
-  t.mock.method(globalThis,'fetch',async(_url,options)=>{calls++;assert.ok(options.signal instanceof AbortSignal);return new Response('{"sid":"synthetic","id":"synthetic"}',{status:200});});
+  t.mock.method(globalThis,'fetch',async(_url,options)=>{calls++;assert.ok(options.signal instanceof AbortSignal);return new Response(JSON.stringify({sid:'SM'+'1'.repeat(32),status:'queued',id:'synthetic',accepted:true}),{status:200});});
   const context={contact:{phone:'+14095550111',email:'synthetic@example.invalid'},content:'Synthetic',tenant:{tenantId:'t1',businessName:'Synthetic'},action:{id:'a',opportunityId:'o'}};
   await new TwilioSmsAdapter({accountSid:'synthetic',authToken:'synthetic',fromNumber:'+14095550112'}).send(context);
   await new EmailWebhookAdapter({url:'https://example.invalid'}).send(context);
