@@ -12,9 +12,10 @@ for (const kind of Object.keys(definitions)) {
   for (const mode of ['http', 'network', 'json']) {
     test(kind + ': ' + mode + ' failure after success clears old results and recovers', async ({ qa }) => {
       await qa.open(kind); await qa.loaded(kind);
+      if (mode === 'network') qa.failNextRequest();
       await qa.refresh(kind); const req = await qa.request(1); await qa.cleared(kind);
       if (mode === 'http') req.reply({}, 503);
-      if (mode === 'network') req.fail();
+      if (mode === 'network') await req.fail();
       if (mode === 'json') req.invalid();
       await expect(qa.page.locator('#status')).toHaveText(kind === 'owner' ? 'Unavailable' : 'Data unavailable');
       await qa.cleared(kind); await qa.screenshot(kind + '-' + mode + '-failure');
@@ -36,7 +37,9 @@ for (const kind of Object.keys(definitions)) {
         new MutationObserver(() => window.qaMoneyHistory.push(document.querySelector(selector).textContent))
           .observe(document.querySelector(selector), { childList: true, subtree: true, characterData: true });
       }, d.money);
-      const finished = qa.page.waitForEvent('requestfinished', { predicate: r => r.url().includes(d.endpoint) });
+      const finished = oldResult === 'failure'
+        ? qa.page.waitForResponse(r => r.url().includes(d.endpoint) && r.status() === 503)
+        : qa.page.waitForEvent('requestfinished', { predicate: r => r.url().includes(d.endpoint) });
       if (oldResult === 'success') older.reply(payload(kind, 111));
       if (oldResult === 'failure') older.reply({}, 503);
       if (oldResult === 'delayed-json') older.finishJSON(payload(kind, 111));

@@ -30,7 +30,8 @@ export const test = base.extend({
     const pages = {};
     for (const d of Object.values(definitions)) pages['/dashboard/' + d.file] = await fs.readFile(root + 'public/' + d.file);
     const requests = [], allowed = [], denied = [], serverUnexpected = [], errors = [];
-    let expectedDenied = [];
+    let expectedDenied = [], abortNext = false;
+    const injectedNetworkFailures = [];
     page.on('pageerror', e => errors.push(e.message));
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://127.0.0.1');
@@ -65,6 +66,12 @@ export const test = base.extend({
       const favicon = url.pathname === '/favicon.ico';
       if (url.origin === origin && req.method() === 'GET' && (document || api || favicon)) {
         allowed.push({ method: req.method(), path: url.pathname, tenant: url.searchParams.get('tenant') });
+        if (api && abortNext) {
+          abortNext = false;
+          requests.push({ url: url.pathname + url.search, authorization: req.headers().authorization,
+            async fail() { injectedNetworkFailures.push(req.url()); await route.abort('failed'); } });
+          return;
+        }
         await route.continue();
       } else {
         denied.push(req.method() + ' ' + req.url());
@@ -80,6 +87,7 @@ export const test = base.extend({
     await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
     const qa = {
       page, origin, requests, denied,
+      failNextRequest() { abortNext = true; },
       expectDenied(values) { expectedDenied = values; },
       async open(kind, tenant = 'qa-a') { await page.goto(origin + '/dashboard/' + definitions[kind].file + '?tenant=' + tenant, { waitUntil: 'domcontentloaded' }); },
       async request(n) { await expect.poll(() => requests.length).toBeGreaterThan(n); return requests[n]; },
@@ -102,7 +110,7 @@ export const test = base.extend({
       await info.attach('network-and-source-evidence', { body: Buffer.from(JSON.stringify({
         browser: browser.version(), viewport: page.viewportSize(), commit: process.env.QA_COMMIT || 'local-uncommitted',
         sourceSHA256: Object.fromEntries(Object.entries(pages).map(([p, bytes]) => [p, crypto.createHash('sha256').update(bytes).digest('hex')])),
-        allowed, denied, expectedDenied, serverUnexpected, pageErrors: errors
+        allowed, denied, expectedDenied, injectedNetworkFailures, serverUnexpected, pageErrors: errors
       }, null, 2)), contentType: 'application/json' });
       await context.close();
       server.closeAllConnections();
