@@ -80,9 +80,10 @@ jobs:
           if (bytes > 25 * 1024 * 1024) throw new Error('Evidence exceeds authorized 25 MiB ceiling; do not upload');
           fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ready=' + (bytes > 0) + '\n');
           NODE
-      # Upload is intentionally disabled until artifact-storage allowance/overage is approved.
-      - name: Upload synthetic evidence (disabled pending cost approval)
-        if: ${{ false }}
+      # One owner-authorized acceptance upload only: PR94, workflow run 6, first attempt.
+      # Future runs and retries cannot create additional paid storage.
+      - name: Upload one authorized synthetic acceptance artifact
+        if: ${{ !cancelled() && steps.evidence.outputs.ready == 'true' && github.event.pull_request.number == 94 && github.run_number == 6 && github.run_attempt == 1 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reporting-browser-${{ github.event.pull_request.head.sha }}

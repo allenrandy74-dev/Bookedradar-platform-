@@ -19,4 +19,4 @@ Run only in an approved isolated environment:
 - Run existing npm check/test/simulation and the 20 acceptance / 19 request-state cases.
 - In qa/reporting-browser: npm ci --ignore-scripts --no-audit --no-fund; npm test
 
-Artifacts, when explicitly authorized, are capped at 25 MiB and retained for one day. Reports include browser version, dimensions, source hashes, commit/tree identities, network audit and screenshots. Uploaded evidence is synthetic only.
+The owner authorized one acceptance artifact capped at 25 MiB, one-day retention, and US$0.01 incremental storage. Upload is gated to PR94 / workflow run number 6 / first attempt only; future runs and retries do not upload. No account billing settings are changed. Reports include browser version, dimensions, source hashes, commit/tree identities, network audit and screenshots. Uploaded evidence is synthetic only.
