@@ -83,7 +83,7 @@ export class ActionDispatcher {
         if (this.resolveContact) contact = await this.resolveContact({ action, contact, opportunity });
         const content =
           ["sms", "email"].includes(action.channel)
-            ? renderTemplate(action.template, { contact, tenant: this.tenant, opportunity })
+            ? renderActionContent(action, { contact, tenant: this.tenant, opportunity })
             : null;
 
         const result = await adapter.send({
@@ -140,7 +140,7 @@ export class ActionDispatcher {
     }
     if (this.resolveContact) contact = await this.resolveContact({ action,contact,opportunity });
     const content = ["sms","email"].includes(action.channel)
-      ? renderTemplate(action.template,{contact,tenant:this.tenant,opportunity}) : null;
+      ? renderActionContent(action,{contact,tenant:this.tenant,opportunity}) : null;
     // Persist send intent before any provider request. Never automatically send
     // again after an ambiguous outcome or a failed completion write.
     await this.store.beginDispatch(action.id,action);
@@ -156,4 +156,11 @@ export class ActionDispatcher {
     const completed = await finish({ status:"completed",completedAt:new Date().toISOString(),providerResult:result || null });
     return { action:completed,dispatched:true,result };
   }
+}
+
+
+function renderActionContent(action, context) {
+  if (action.template !== 'inbound_sms_reply') return renderTemplate(action.template, context);
+  if (action.channel !== 'sms' || action.purpose !== 'transactional' || typeof action.content !== 'string' || !action.content.trim() || action.content.length > 600) throw new Error('sms_reply_content_invalid');
+  return action.content;
 }

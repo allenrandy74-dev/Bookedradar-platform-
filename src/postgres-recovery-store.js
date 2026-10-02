@@ -1,3 +1,4 @@
+import { persistSmsReply } from './sms-reply-queue.js';
 import { RecoveryStore } from './recovery/store.js';
 import { RecoveryEngine } from './recovery/engine.js';
 import { stableHash } from './postgres-migration-audit.js';
@@ -88,6 +89,14 @@ export class PostgresRecoveryStore {
   ingest(event, tenant) {
     if (tenant?.tenantId !== this.tenantId || (event.tenantId && event.tenantId !== this.tenantId)) throw new Error('recovery_tenant_conflict');
     return this.#transaction(store => new RecoveryEngine({ store, tenant }).ingest({ ...event,tenantId:this.tenantId }));
+  }
+  smsReplyQueued(messageSid) {
+    const key = `sms-reply:${this.tenantId}:${messageSid}`;
+    return this.#transaction(store => Boolean(store.data.eventKeys[key]), false);
+  }
+  queueSmsReplyOnce(request, tenant) {
+    if (tenant?.tenantId !== this.tenantId) throw new Error('sms_reply_tenant_mismatch');
+    return this.#transaction(store => persistSmsReply(store, tenant, request));
   }
   markRecovered(id, options, tenant) {
     if (tenant?.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
@@ -188,3 +197,4 @@ export class PostgresRecoveryStore {
   }
   cancelPendingActions(id, options) { return this.#transaction(store => store.cancelPendingActions(id, options)); }
 }
+

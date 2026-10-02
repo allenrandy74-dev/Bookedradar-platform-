@@ -70,6 +70,7 @@ import { prepareOnboardingFromWixSubmission } from "./src/onboarding/prepare.js"
 import { deploymentPlan } from "./src/onboarding/deployment-plan.js";
 import { tenantReadiness } from "./src/onboarding/readiness.js";
 import { generateSmsReply, smsConversationEnabled } from "./src/sms-conversation.js";
+import { queueSmsReply } from "./src/sms-reply-queue.js";
 import {
   WebChatStore,
   allowedWebChatOrigin,
@@ -1787,7 +1788,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
     let opportunity = await latestOpenOpportunityForContact(tenant.tenantId, contactKey);
     if (opportunity) {
       const result = await engine.ingest({
-        idempotencyKey: `twilio-reply:${tenant.tenantId}:${messageSid || Date.now()}`,
+        idempotencyKey: `twilio-message:${tenant.tenantId}:${messageSid || Date.now()}`,
         type: "customer_replied",
         opportunityId: opportunity.id,
         source: "twilio_sms",
@@ -1798,7 +1799,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
       opportunity = result.opportunity || opportunity;
     } else {
       const result = await engine.ingest({
-        idempotencyKey: `twilio-new:${tenant.tenantId}:${messageSid || Date.now()}`,
+        idempotencyKey: `twilio-message:${tenant.tenantId}:${messageSid || Date.now()}`,
         type: "phone_lead",
         source: "twilio_sms",
         serviceType: "SMS inquiry",
@@ -1810,23 +1811,22 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
 
     const { adapters } = dispatcherFor(tenant);
     if (smsConversationEnabled(tenant) && adapters.sms && openai && opportunity) {
-      const contact = await recoveryStore.getContact(contactKey);
       try {
-        const reply = await generateSmsReply({
-          client: openai,
-          model: SMS_RESPONSE_MODEL,
-          tenant,
-          opportunity,
-          contact,
-          customerText: text,
+        const store = typeof recoveryStore.forTenant === "function"
+          ? recoveryStore.forTenant(tenant.tenantId) : null;
+        const result = await queueSmsReply({
+          tenant, store, messageSid, contactKey, opportunity,
+          generate: contact => generateSmsReply({
+            client: openai, model: SMS_RESPONSE_MODEL, tenant,
+            opportunity, contact, customerText: text,
+          }),
         });
-        await adapters.sms.send({ contact: { phone: from }, content: reply });
         console.log(JSON.stringify({
-          event: "sms.conversation_reply",
+          event: "sms.conversation_reply_queued",
           tenant_id: tenant.tenantId,
           opportunity_id: opportunity.id,
-          to: maskPhone(from),
-          provider: "twilio",
+          queued: result.queued,
+          reason: result.reason || (result.duplicate ? "duplicate" : null),
         }));
       } catch (error) {
         console.error(JSON.stringify({
@@ -1835,6 +1835,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
           opportunity_id: opportunity.id,
           message: String(error?.message || error).slice(0, 200),
         }));
+        return res.status(503).send("SMS reply queue unavailable");
       }
     }
 
@@ -2668,4 +2669,5 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
 
