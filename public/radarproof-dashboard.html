@@ -51,8 +51,21 @@ document.getElementById("saveToken").onclick=()=>{
 };
 const money=n=>n==null||!Number.isFinite(Number(n))?"Unavailable":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
 const pct=n=>n==null||!Number.isFinite(Number(n))?"Unavailable":new Intl.NumberFormat("en-US",{style:"percent",maximumFractionDigits:1}).format(Number(n||0));
+let requestVersion=0;
+function clearResults(){
+  for(const id of ["captured","recovered","estimated","confirmed","callsHandled","humanTransfers","spamScreened","callsWithTranscript","knowledgeGaps","rate","pending"])document.getElementById(id).textContent="Unavailable";
+  document.getElementById("blocked").textContent="";
+  document.getElementById("disclaimer").textContent="RadarProof data is unavailable.";
+  document.getElementById("coverage").textContent="Data unavailable; synthetic marker coverage has not been verified.";
+  const sources=document.getElementById("sources");sources.className="empty";sources.textContent="RadarProof data is unavailable.";
+}
+function invalidateResults(){requestVersion++;clearResults();document.getElementById("status").textContent="Refresh required";}
+tokenInput.oninput=invalidateResults;
 async function load(){
+  if(tokenInput.value.trim()!==(sessionStorage.getItem("br_admin_token")||"")){invalidateResults();return;}
+  const requestId=++requestVersion;clearResults();
   const status=document.getElementById("status");
+  status.textContent="Loading…";
   try{
     const tenant=new URLSearchParams(location.search).get("tenant")||"";
     const endpoint="/api/v1/radarproof"+(tenant?("?tenant="+encodeURIComponent(tenant)):"");
@@ -62,7 +75,7 @@ async function load(){
       headers:adminToken?{Authorization:`Bearer ${adminToken}`}:{},
     });
     if(!r.ok)throw new Error("HTTP "+r.status);
-    const {report}=await r.json();
+    const {report}=await r.json();if(requestId!==requestVersion)return;
     captured.textContent=report.opportunitiesCaptured;
     recovered.textContent=report.recoveredOpportunities;
     estimated.textContent=money(report.estimatedRecoveredValue);
@@ -82,8 +95,9 @@ async function load(){
     sources.innerHTML=entries.length?entries.map(([name,x])=>`<div class="source"><span>${name}</span><span>${x.recovered}/${x.opportunities} recovered</span><span>${money(x.estimatedValue)}</span></div>`).join(""):"No opportunities have been recorded yet.";
     status.textContent="Live";
   }catch(e){
+    if(requestId!==requestVersion)return;
+    clearResults();
     status.textContent="Data unavailable";
-    disclaimer.textContent="RadarProof will populate after the BookedRadar backend is deployed and receiving real opportunity events.";
   }
 }
 load();

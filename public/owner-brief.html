@@ -39,12 +39,21 @@ $("token").value=sessionStorage.getItem("br_admin_token")||"";
 $("tenant").value=sessionStorage.getItem("br_tenant")||$("tenant").value;
 const money=n=>n==null||!Number.isFinite(Number(n))?"Unavailable":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(n||0));
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+let requestVersion=0;
+function clearResults(){
+ for(const id of ["newOpp","recovered","revenue","leaks","calls","transfers","gaps","memberships","reviews","risk"])$(id).textContent="Unavailable";
+ $("recoveryNote").textContent="";$("coverage").textContent="Data unavailable; synthetic marker coverage has not been verified.";
+ $("attention").className="attention empty";$("attention").textContent="Owner Brief data is unavailable.";
+}
+function invalidateResults(){requestVersion++;clearResults();$("status").textContent="Refresh required";}
+$("tenant").oninput=invalidateResults;$("token").oninput=invalidateResults;
 async function load(){
+ const requestId=++requestVersion;clearResults();
  const tenant=$("tenant").value.trim(),token=$("token").value.trim();sessionStorage.setItem("br_tenant",tenant);sessionStorage.setItem("br_admin_token",token);
  $("status").textContent="Loading…";
  try{
   const r=await fetch("/api/v1/owner-brief?tenant="+encodeURIComponent(tenant),{cache:"no-store",headers:token?{Authorization:"Bearer "+token}:{}});
-  if(!r.ok)throw new Error();const {brief}=await r.json();
+  if(!r.ok)throw new Error();const {brief}=await r.json();if(requestId!==requestVersion)return;
   newOpp.textContent=brief.newOpportunities;recovered.textContent=brief.recoveredOpportunities??"Unavailable";revenue.textContent=money(brief.confirmedRevenue);
   coverage.textContent=brief.dataCoverage?.notice||"Synthetic marker coverage is unavailable; historical test exclusion has not been verified.";
   recoveryNote.textContent=brief.recoveryEvidence?.status==="unavailable"?"Some recovery dates are missing or invalid.":"";
@@ -52,7 +61,7 @@ async function load(){
   const items=brief.topAttentionItems||[];attention.className=items.length?"attention":"attention empty";
   attention.innerHTML=items.length?items.map(x=>'<div class="item"><span class="pill '+esc(x.priority)+'">'+esc(x.priority)+'</span><div><b>'+esc(x.type.replaceAll("_"," "))+'</b><div class="muted">'+esc(x.serviceType||x.source)+' · '+esc(x.ageHours)+'h open</div><div>'+esc(x.recommendedNextAction)+'</div></div><div class="money">'+money(x.estimatedOpportunityValue)+'</div></div>').join(""):"No current revenue-leak items need attention.";
   $("status").textContent="Live";
- }catch{$("status").textContent="Unavailable";attention.className="attention empty";attention.textContent="Owner Brief data is unavailable."}
+ }catch{if(requestId!==requestVersion)return;clearResults();$("status").textContent="Unavailable";}
 }
 $("load").onclick=load;load();
 </script></body></html>
