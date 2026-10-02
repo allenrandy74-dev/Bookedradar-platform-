@@ -90,7 +90,7 @@ export function competitiveFeatureGuidance(tenant = {}, { returningCaller = "" }
 
   if (features.callerTexting && tenant?.integrations?.sms?.enabled === true) {
     guidance.push(
-      "IN-CALL TEXTING: If the caller asks you to text approved transactional information such as a scheduling link, directions, or a business-provided resource, you may use send_caller_text. Confirm the callback number first. Never use this tool for marketing, unsolicited promotions, passwords, payment-card data, or invented information."
+      "IN-CALL TEXTING: If the caller asks you to text approved transactional information such as a scheduling link, directions, or a business-provided resource, you may use send_caller_text. Obtain the caller’s explicit request and confirm the callback number aloud first; supply both required confirmation fields. Caller ID alone is not confirmation. A queued result is not sent or delivered; say the message is queued rather than promising delivery. Never use this tool for marketing, unsolicited promotions, passwords, payment-card data, or invented information."
     );
   }
 
@@ -115,16 +115,18 @@ export const knowledgeGapTool = {
 export const sendCallerTextTool = {
   type: "function",
   name: "send_caller_text",
-  description: "Send approved transactional information to the current caller by SMS when the tenant SMS channel is enabled.",
+  description: "Queue caller-requested approved transactional information for SMS. A queued result does not confirm sending or delivery.",
   parameters: {
     type: "object",
     properties: {
+      caller_requested_text: { type: "boolean", description: "Must be true only when the caller explicitly requested this transactional text." },
+      confirmed_callback_number: { type: "string", description: "E.164 recipient number explicitly confirmed with the caller during this conversation; never infer confirmation from caller ID." },
       content: {
         type: "string",
-        description: "Short approved transactional message requested or useful in the current service conversation. Never include sensitive payment data or marketing.",
+        description: "Short approved transactional message explicitly requested by the caller in the current service conversation. Never include sensitive payment data or marketing.",
       },
     },
-    required: ["content"],
+    required: ["content", "caller_requested_text", "confirmed_callback_number"],
     additionalProperties: false,
   },
 };
