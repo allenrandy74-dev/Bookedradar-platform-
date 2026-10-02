@@ -1,8 +1,8 @@
 # Isolated reporting browser QA
 
-Test-only integration of the exact commits in source-manifest.json. Main and PR92 remain unchanged. This draft is not release authority.
+Draft integration of the exact commits in source-manifest.json, plus the owner's two approved button foreground fixes. Main and PR92 remain unchanged. This draft is not release authority.
 
-The workflow runs actual, byte-preserved public/owner-brief.html and public/radarproof-dashboard.html in Chromium. A test-owned HTTP server binds only to 127.0.0.1 and returns synthetic JSON. Native fetch and Response.json are unchanged. Slow JSON is tested with a flushed response header and an unfinished body, not a replaced networking adapter.
+The workflow runs actual public/owner-brief.html and public/radarproof-dashboard.html; only the two exact foreground-color additions recorded in the manifest differ from PR92 in Chromium. A test-owned HTTP server binds only to 127.0.0.1 and returns synthetic JSON. Native fetch and Response.json are unchanged. Slow JSON is tested with a flushed response header and an unfinished body, not a replaced networking adapter.
 
 Before navigation, context-wide routing permits only GET of the two exact dashboard paths, favicon, and the two synthetic API paths on that server's exact origin. APIs require a qa- tenant and qa- token. Every other request is aborted and fails teardown. All WebSockets are closed; service workers and downloads are disabled. Guard probes use reserved .invalid domains and a blocked loopback POST, never production. Source pages have no remote assets. The browser test process runs in the official Playwright container with Docker --network none (loopback only), in addition to Chromium background-networking reduction and DNS denial. No production network interface is available during browser tests. Dependency setup and artifact upload occur outside that container; this does not certify all setup-phase runner traffic.
 
@@ -19,4 +19,4 @@ Run only in an approved isolated environment:
 - Run existing npm check/test/simulation and the 20 acceptance / 19 request-state cases.
 - In qa/reporting-browser: npm ci --ignore-scripts --no-audit --no-fund; npm test
 
-The owner authorized one acceptance artifact capped at 25 MiB, one-day retention, and US$0.01 incremental storage. Upload is gated to PR94 / workflow run number 6 / first attempt only; future runs and retries do not upload. No account billing settings are changed. Reports include browser version, dimensions, source hashes, commit/tree identities, network audit and screenshots. Uploaded evidence is synthetic only.
+The owner approved the two foreground fixes and final proof within the existing aggregate 25 MiB / one-day / US$0.01 allowance. Prior artifact 11257927301 (10,298,576 bytes) is preserved. The final lossless ZIP plus a 65,536-byte outer-container reserve must fit the remaining 15,915,824 bytes. Upload is gated to PR94 / workflow run number 7 / first attempt only. Future runs and retries do not upload; no billing settings change. Reports include browser version, dimensions, source hashes, commit/tree identities, network audit and screenshots. Uploaded evidence is synthetic only.

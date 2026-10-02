@@ -30,5 +30,15 @@
     "website/test-site.py": "7bd09681ca10328a398a274587f7677043392abc"
   },
   "integration": "6145686215dd79e0f700f6d7a18d2564a79532b1",
-  "integrationTree": "10e0247d50262c7e644dab25725ca3a9bcae405c"
+  "integrationTree": "10e0247d50262c7e644dab25725ca3a9bcae405c",
+  "approvedStyleChanges": {
+    "public/owner-brief.html": {
+      "before": ".controls button{background:var(--accent);",
+      "after": ".controls button{color:var(--bg);background:var(--accent);"
+    },
+    "public/radarproof-dashboard.html": {
+      "before": "id=\"saveToken\" style=\"background:var(--accent);",
+      "after": "id=\"saveToken\" style=\"color:var(--bg);background:var(--accent);"
+    }
+  }
 }

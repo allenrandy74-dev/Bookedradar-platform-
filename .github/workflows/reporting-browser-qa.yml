@@ -67,27 +67,18 @@ jobs:
             -e CI=true -e QA_COMMIT \
             -v "$GITHUB_WORKSPACE:/work" -w /work/qa/reporting-browser \
             mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 npm test
-      - name: Bound evidence size
+      - name: Package proof within remaining aggregate storage allowance
         if: always()
         id: evidence
-        run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const root = 'qa/reporting-browser/evidence';
-          function size(path) { const s=fs.statSync(path); return s.isDirectory()?fs.readdirSync(path).reduce((n,p)=>n+size(path+'/'+p),0):s.size; }
-          const bytes = fs.existsSync(root) ? size(root) : 0;
-          console.log('Evidence bytes:', bytes);
-          if (bytes > 25 * 1024 * 1024) throw new Error('Evidence exceeds authorized 25 MiB ceiling; do not upload');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ready=' + (bytes > 0) + '\n');
-          NODE
-      # One owner-authorized acceptance upload only: PR94, workflow run 6, first attempt.
+        run: python3 qa/reporting-browser/package-evidence.py
+      # One owner-authorized acceptance upload only: PR94, workflow run 7, first attempt; preserve the prior artifact.
       # Future runs and retries cannot create additional paid storage.
-      - name: Upload one authorized synthetic acceptance artifact
-        if: ${{ !cancelled() && steps.evidence.outputs.ready == 'true' && github.event.pull_request.number == 94 && github.run_number == 6 && github.run_attempt == 1 }}
+      - name: Upload one authorized final contrast proof
+        if: ${{ success() && steps.evidence.outputs.ready == 'true' && github.event.pull_request.number == 94 && github.run_number == 7 && github.run_attempt == 1 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reporting-browser-${{ github.event.pull_request.head.sha }}
-          path: qa/reporting-browser/evidence/
+          path: qa/reporting-browser/final-proof.zip
           retention-days: 1
           if-no-files-found: error
-          compression-level: 9
+          compression-level: 0

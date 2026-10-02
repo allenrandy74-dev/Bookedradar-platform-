@@ -3,6 +3,20 @@ for (const kind of ['owner', 'radar']) for (const width of [320, 375, 390, 1440]
   test(kind + ': layout and keyboard at ' + width + ' CSS px', async ({ qa }, info) => {
     await qa.page.setViewportSize({ width, height: 1000 });
     await qa.open(kind); await qa.loaded(kind);
+    const contrast = await qa.page.locator(kind === 'owner' ? '#load' : '#saveToken').evaluate(el => {
+      const style = getComputedStyle(el);
+      const rgb = color => color.match(/[0-9.]+/g).slice(0, 3).map(Number);
+      const luminance = color => rgb(color).map(channel => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const text = luminance(style.color), background = luminance(style.backgroundColor);
+      return { foreground: style.color, background: style.backgroundColor,
+        ratio: (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05) };
+    });
+    await info.attach('button-contrast', { body: Buffer.from(JSON.stringify(contrast, null, 2)), contentType: 'application/json' });
+    console.log('BUTTON_CONTRAST', JSON.stringify({ kind, width, ...contrast }));
+    expect(contrast.ratio, 'normal-size button labels require at least 4.5:1').toBeGreaterThanOrEqual(4.5);
     await qa.screenshot(kind + '-' + width + '-success');
     // Geometric checks supplement, rather than replace, human pixel review.
     const issues = await qa.page.evaluate(() => {
