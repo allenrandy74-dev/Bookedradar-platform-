@@ -1,5 +1,8 @@
+import { actionAllowed } from './recovery/compliance.js';
+import { persistCallerText } from './caller-text-queue.js';
+import { persistSmsReply } from './sms-reply-queue.js';
 import { RecoveryStore } from './recovery/store.js';
-import { RecoveryEngine } from './recovery/engine.js';
+import { RecoveryEngine, recipientSuppressed } from './recovery/engine.js';
 import { stableHash } from './postgres-migration-audit.js';
 
 export const RECOVERY_TABLES = [
@@ -89,6 +92,18 @@ export class PostgresRecoveryStore {
     if (tenant?.tenantId !== this.tenantId || (event.tenantId && event.tenantId !== this.tenantId)) throw new Error('recovery_tenant_conflict');
     return this.#transaction(store => new RecoveryEngine({ store, tenant }).ingest({ ...event,tenantId:this.tenantId }));
   }
+  queueCallerTextOnce(request, tenant) {
+    if (tenant?.tenantId !== this.tenantId) throw new Error('caller_text_tenant_mismatch');
+    return this.#transaction(store => persistCallerText(store, tenant, request));
+  }
+  smsReplyQueued(messageSid) {
+    const key = `sms-reply:${this.tenantId}:${messageSid}`;
+    return this.#transaction(store => Boolean(store.data.eventKeys[key]), false);
+  }
+  queueSmsReplyOnce(request, tenant) {
+    if (tenant?.tenantId !== this.tenantId) throw new Error('sms_reply_tenant_mismatch');
+    return this.#transaction(store => persistSmsReply(store, tenant, request));
+  }
   markRecovered(id, options, tenant) {
     if (tenant?.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
     return this.#transaction(store => new RecoveryEngine({store,tenant}).markRecovered(id,options));
@@ -147,13 +162,31 @@ export class PostgresRecoveryStore {
       return store.patchAction(actionId, { ...patch,claimedBy:null,claimedAt:null,claimExpiresAt:null });
     });
   }
-  beginDispatch(actionId, claim, now = new Date()) {
+  beginDispatch(actionId, claim, now = new Date(), tenant = null) {
     return this.#transaction(async store => {
       const current = store.data.actions[actionId];
       if (!current || current.status !== 'processing' || current.claimedBy !== claim?.claimedBy || current.claimedAt !== claim?.claimedAt || current.claimExpiresAt !== claim?.claimExpiresAt || !(new Date(current.claimExpiresAt) > now)) throw new Error('stale_recovery_claim');
+      let dispatchContact = null;
+      if (tenant) {
+        if (tenant.tenantId !== this.tenantId) throw new Error('dispatch_tenant_mismatch');
+        const contact = await store.getContact(current.contactKey);
+        const opportunity = await store.getOpportunity(current.opportunityId);
+        const decision = actionAllowed({ action: current, opportunity, contact, tenant, now });
+        if (await recipientSuppressed(store, this.tenantId, contact)) {
+          decision.allowed = false; decision.reason = 'contact_suppressed';
+        }
+        if (current.expectedRecipient && current.expectedRecipient !== contact?.phone) {
+          decision.allowed = false; decision.reason = 'sms_recipient_changed';
+        }
+        if (!decision.allowed) return store.patchAction(actionId, { status: 'blocked',
+          blockedReason: decision.reason, completedAt: now.toISOString(),
+          claimedBy: null, claimedAt: null, claimExpiresAt: null });
+        dispatchContact = contact;
+      }
       // Expired processing claims are reclaimable. A dispatching action is not:
       // a provider may already have accepted it even if the process disappears.
-      return store.patchAction(actionId, { status:'dispatching',dispatchStartedAt:now.toISOString() });
+      const intent = await store.patchAction(actionId, { status:'dispatching',dispatchStartedAt:now.toISOString() });
+      return { ...intent, dispatchContact };
     });
   }
   reconciliationActions() {
@@ -188,3 +221,4 @@ export class PostgresRecoveryStore {
   }
   cancelPendingActions(id, options) { return this.#transaction(store => store.cancelPendingActions(id, options)); }
 }
+
