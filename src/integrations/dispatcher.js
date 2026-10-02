@@ -49,7 +49,7 @@ export class ActionDispatcher {
       const opportunity = await this.store.getOpportunity(action.opportunityId);
       let contact = await this.store.getContact(action.contactKey);
 
-      const decision = actionAllowed({
+      const decision = dispatchAllowed({
         action,
         opportunity,
         contact,
@@ -83,7 +83,7 @@ export class ActionDispatcher {
         if (this.resolveContact) contact = await this.resolveContact({ action, contact, opportunity });
         const content =
           ["sms", "email"].includes(action.channel)
-            ? renderTemplate(action.template, { contact, tenant: this.tenant, opportunity })
+            ? renderActionContent(action, { contact, tenant: this.tenant, opportunity })
             : null;
 
         const result = await adapter.send({
@@ -130,7 +130,7 @@ export class ActionDispatcher {
     const finish = patch => this.store.finishClaim(action.id, action, patch);
     const opportunity = await this.store.getOpportunity(action.opportunityId);
     let contact = await this.store.getContact(action.contactKey);
-    const decision = actionAllowed({ action, opportunity, contact, tenant:this.tenant, now });
+    const decision = dispatchAllowed({ action, opportunity, contact, tenant:this.tenant, now });
     if (!decision.allowed) {
       const blocked = await finish({ status:"blocked",blockedReason:decision.reason,completedAt:new Date().toISOString() });
       return { action:blocked,dispatched:false };
@@ -141,14 +141,27 @@ export class ActionDispatcher {
       return { action:deferred,dispatched:false,deferred:true };
     }
     if (this.resolveContact) contact = await this.resolveContact({ action,contact,opportunity });
-    const content = ["sms","email"].includes(action.channel)
-      ? renderTemplate(action.template,{contact,tenant:this.tenant,opportunity}) : null;
+    let content = ["sms","email"].includes(action.channel)
+      ? renderActionContent(action,{contact,tenant:this.tenant,opportunity}) : null;
     // Persist send intent before any provider request. Never automatically send
     // again after an ambiguous outcome or a failed completion write.
-    await this.store.beginDispatch(action.id,action);
+    const intent = await this.store.beginDispatch(action.id, action, new Date(), this.tenant);
+    if (intent?.status === 'blocked') return { action: intent, dispatched: false };
+    // Bind this queued SMS to its caller-confirmed recipient, not a stale
+    // contact snapshot read before the transactional send-intent check.
+    const { dispatchContact, ...fencedAction } = intent || {};
+    const dispatchAction = intent?.status === 'dispatching' ? fencedAction : action;
+    if (dispatchContact && ['sms', 'email'].includes(dispatchAction.channel)) {
+      contact = dispatchContact;
+      content = renderActionContent(dispatchAction, { contact, tenant: this.tenant, opportunity });
+    }
+    if (dispatchAction.expectedRecipient && dispatchAction.channel === 'sms') {
+      contact = { ...contact, phone: dispatchAction.expectedRecipient };
+      content = renderActionContent(dispatchAction, { contact, tenant: this.tenant, opportunity });
+    }
     let result;
     try {
-      result = await adapter.send({ action,contact,opportunity,tenant:this.tenant,content,deliveryPolicy:"single_attempt" });
+      result = await adapter.send({ action:dispatchAction,contact,opportunity,tenant:this.tenant,content,deliveryPolicy:"single_attempt" });
     } catch (error) {
       const uncertain = await finish({ status:"reconciliation_required",failedAt:new Date().toISOString(),lastError:String(error?.message || error).slice(0,500) });
       return { action:uncertain,dispatched:false,reconciliationRequired:true,error:uncertain.lastError };
@@ -158,4 +171,21 @@ export class ActionDispatcher {
     const completed = await finish({ status:"completed",completedAt:new Date().toISOString(),providerResult:result || null });
     return { action:completed,dispatched:true,result };
   }
+}
+
+
+function renderActionContent(action, context) {
+  if (!['inbound_sms_reply', 'caller_text'].includes(action.template)) return renderTemplate(action.template, context);
+  if (action.channel !== 'sms' || action.purpose !== 'transactional' || typeof action.content !== 'string' || !action.content.trim() || action.content.length > 600) throw new Error('sms_reply_content_invalid');
+  return action.content;
+}
+
+function dispatchAllowed(input) {
+  const { action } = input;
+  if (['inbound_sms_reply', 'caller_text'].includes(action.template)) {
+    const validRecipient = typeof action.expectedRecipient === 'string' && /^\+[1-9]\d{7,14}$/.test(action.expectedRecipient);
+    const validAttestation = action.template !== 'caller_text' || (action.callerRequested === true && action.confirmedCallbackNumber === action.expectedRecipient);
+    if (!validRecipient || !validAttestation) return { allowed: false, reason: 'sms_confirmation_binding_required' };
+  }
+  return actionAllowed(input);
 }
