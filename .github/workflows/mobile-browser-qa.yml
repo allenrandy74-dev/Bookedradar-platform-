@@ -56,10 +56,10 @@ jobs:
         if: always()
         id: evidence
         run: python3 qa/mobile-browser/package-evidence.py
-      # Disabled for diagnostics. Before one authorized upload, gate this to the
-      # exact approved PR, workflow run number and first attempt. No automatic retry.
+      # One owner-authorized proof upload: PR95, run 3, first attempt only.
+      # Diagnostics and every later run/attempt cannot add paid artifact storage.
       - name: Upload one approved proof only
-        if: ${{ false }}
+        if: ${{ success() && steps.evidence.outputs.ready == 'true' && github.event.pull_request.number == 95 && github.run_number == 3 && github.run_attempt == 1 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mobile-browser-${{ github.event.pull_request.head.sha }}
