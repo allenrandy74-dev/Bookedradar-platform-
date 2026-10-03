@@ -1,3 +1,5 @@
+import { customerResultSnapshot } from "../customer-results-scope.js";
+
 function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -8,7 +10,7 @@ function median(values) {
 }
 
 export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = Infinity } = {}) {
-  const data = await store.snapshot();
+  const { data, coverage } = customerResultSnapshot(await store.snapshot(), tenantId);
   const inWindow = (item) => {
     if (!sinceMs && untilMs === Infinity) return true;
     const ts = Date.parse(item?.createdAt || item?.updatedAt || item?.at || "");
@@ -17,8 +19,10 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = 
   const opportunities = Object.values(data.opportunities)
     .filter((item) => (!tenantId || item.tenantId === tenantId) && inWindow(item));
   const opportunityIds = new Set(opportunities.map((item) => item.id));
+  const allOpportunityIds = new Set(Object.values(data.opportunities).map(item => item.id));
   const attribution = Object.values(data.attribution)
-    .filter((item) => (!tenantId || item.tenantId === tenantId || opportunityIds.has(item.opportunityId)))
+    .filter((item) => (!tenantId || item.tenantId === tenantId || (!item.tenantId && opportunityIds.has(item.opportunityId))))
+    .filter((item) => allOpportunityIds.has(item.opportunityId))
     .filter((item) => opportunityIds.has(item.opportunityId) || inWindow(item));
   const actions = Object.values(data.actions)
     .filter((item) => (!tenantId || item.tenantId === tenantId) && inWindow(item));
@@ -31,7 +35,8 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = 
     (sum, item) => sum + Number(item.estimatedOpportunityValue || 0),
     0
   );
-  const recovered = attribution.filter((item) => item.recovered);
+  const recovered = attribution.filter((item) => item.recovered === true && opportunityIds.has(item.opportunityId));
+  const recoveredIds = new Set(recovered.map(item => item.opportunityId));
   const estimatedRecoveredValue = recovered.reduce(
     (sum, item) =>
       sum +
@@ -49,27 +54,30 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = 
     bySource[source] ??= { opportunities: 0, recovered: 0, estimatedValue: 0 };
     bySource[source].opportunities += 1;
     bySource[source].estimatedValue += Number(opp.estimatedOpportunityValue || 0);
-    if (opp.recovered) bySource[source].recovered += 1;
+    if (recoveredIds.has(opp.id)) bySource[source].recovered += 1;
   }
 
   const responseLatencies = data.events
     .filter((event) => (!tenantId || event.tenantId === tenantId) &&
       inWindow({ at: event.occurredAt || event.at || event.createdAt || event.updatedAt }))
-    .filter((event) => Number.isFinite(Number(event.responseLatencySeconds)))
-    .map((event) => Number(event.responseLatencySeconds));
+    .filter((event) => typeof event.responseLatencySeconds === "number" &&
+      Number.isFinite(event.responseLatencySeconds) && event.responseLatencySeconds >= 0)
+    .map((event) => event.responseLatencySeconds);
 
   return {
+    dataCoverage: coverage,
+    humanTransfersMeaning: "initiated_not_completed",
     generatedAt: new Date().toISOString(),
     windowStart: sinceMs ? new Date(Number(sinceMs)).toISOString() : null,
     windowEnd: Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null,
-    outcomeScope: "Window activity plus later evidence linked to opportunities captured in this window.",
+    outcomeScope: "Window activity plus later evidence linked to opportunities captured in this window. Recovery counts and rate use unique captured opportunities; orphan attribution is excluded.",
     opportunitiesCaptured: opportunities.length,
-    recoveredOpportunities: recovered.length,
+    recoveredOpportunities: recoveredIds.size,
     recoveryRate:
-      opportunities.length ? recovered.length / opportunities.length : null,
-    estimatedOpportunityValue,
-    estimatedRecoveredValue,
-    confirmedRevenue,
+      opportunities.length ? recoveredIds.size / opportunities.length : null,
+    estimatedOpportunityValue: coverage.duplicateAttributionOpportunities ? null : estimatedOpportunityValue,
+    estimatedRecoveredValue: coverage.duplicateAttributionOpportunities ? null : estimatedRecoveredValue,
+    confirmedRevenue: coverage.duplicateAttributionOpportunities ? null : confirmedRevenue,
     pendingActions: actions.filter((a) => a.status === "pending").length,
     blockedActions: actions.filter((a) => a.status === "blocked").length,
     medianResponseSeconds: median(responseLatencies),
@@ -78,4 +86,3 @@ export async function radarProof(store, tenantId = "", { sinceMs = 0, untilMs = 
       "Estimated opportunity and recovered values are diagnostic estimates, not confirmed revenue. Confirmed revenue is reported separately only when explicitly supplied by a source system or authorized user.",
   };
 }
-

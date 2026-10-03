@@ -39,7 +39,8 @@ test("Revenue Leak Radar flags stale open value but not closed opportunities", a
 
 test("Owner Daily Brief combines activity and attention items", async()=>{
   const {store,engine}=await fixture();
-  await engine.ingest({idempotencyKey:"a",occurredAt:"2026-09-24T16:00:00Z",type:"web_lead",contact:{email:"a@example.com"}});
+  const created=await engine.ingest({idempotencyKey:"a",occurredAt:"2026-09-24T16:00:00Z",type:"web_lead",contact:{email:"a@example.com"}});
+  await store.patchOpportunity(created.opportunity.id,{createdAt:"2026-09-24T16:00:00Z"});
   const brief=await ownerDailyBrief(store,"t1",{now:new Date("2026-09-24T18:00:00Z"),callActivity:{callsHandled:4,humanTransfers:1}});
   assert.equal(brief.newOpportunities,1);
   assert.equal(brief.callsHandled,4);

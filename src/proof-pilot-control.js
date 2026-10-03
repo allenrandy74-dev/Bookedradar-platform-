@@ -127,7 +127,7 @@ export function proofPilotScorecard({
     humanTransfers: Number(humanTransfers || 0),
     incompleteCalls: Number(incompleteCalls || 0),
     recoveredOpportunities: Number(recoveredOpportunities || 0),
-    confirmedRevenue: Number(confirmedRevenue || 0),
+    confirmedRevenue: confirmedRevenue === null ? null : Number(confirmedRevenue || 0),
     criticalFailures: Number(criticalFailures || 0),
     unresolvedBookings: Number(unresolvedBookings || 0),
     firstValueAt: firstValueAt || null,
