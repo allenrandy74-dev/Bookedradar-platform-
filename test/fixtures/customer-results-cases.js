@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../../src/json-file-transaction.js";
 import { extractFixtureScript } from './dashboard-script.js';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
@@ -9,6 +10,7 @@ const root=path.resolve(inputRoot);
 const {ownerDailyBrief,revenueLeakRadar,membershipRadar,reviewRadar}=await import(pathToFileURL(root+'/src/growth-intelligence.js'));
 const {radarProof}=await import(pathToFileURL(root+'/src/recovery/radarproof.js'));
 const {CallHistoryStore}=await import(pathToFileURL(root+'/src/call-history.js'));
+
 const now=new Date('2026-10-02T12:00:00Z'), recent='2026-10-02T10:00:00Z', old='2026-09-01T00:00:00Z';
 const rows=[];
 function record(id,metric,expected,actual,evidence){let matches=true;try{assert.deepEqual(actual,expected)}catch{matches=false} rows.push({id,metric,status:matches?'supported':'incorrect_or_unavailable',expected,actual,evidence});}
@@ -49,7 +51,7 @@ s=store({}, {}, {}, [{tenantId:'t1',occurredAt:recent,responseLatencySeconds:5},
 p=await radarProof(s,'t1',{sinceMs:Date.parse('2026-10-01T12:00:00Z'),untilMs:now.getTime()});record('latency_scope','RadarProof median response seconds',5,p.medianResponseSeconds,'PR88 existing tenant/window filter retained unchanged');
 s=store({}, {}, {}, [{tenantId:'t1',occurredAt:recent,responseLatencySeconds:null},{tenantId:'t1',occurredAt:recent,responseLatencySeconds:-10}]);
 p=await radarProof(s,'t1'); record('invalid_latency','RadarProof latency needs valid non-negative numeric evidence',null,p.medianResponseSeconds,'Null coerces to zero and negative duration accepted; neither establishes response latency');
-const calls=new CallHistoryStore('/tmp/not-written-results.json');calls.loaded=true;
+const calls=new CallHistoryStore('/tmp/not-written-results.json');useJsonMemoryView(calls);
 calls.data.calls={failed:{callId:'failed',tenantId:'t1',startedAt:now.getTime(),endedAt:now.getTime(),transferred:true,milestones:{'transfer.initiated':{count:1},'transfer.failed':{count:1}},transcript:[{text:'Synthetic fixture turn'}],knowledgeGaps:[{question:'Synthetic fixture gap'}]},other:{callId:'other',tenantId:'t2',transferred:true},spam:{callId:'spam',tenantId:'t1',startedAt:now.getTime(),spamEnded:true}};
 const stats=await calls.stats('t1');
 record('call_activity_scope','Calls recorded, spam flags, transcript presence, recorded knowledge gaps',[2,1,1,1],[stats.callsHandled,stats.spamScreened,stats.callsWithTranscript,stats.knowledgeGaps],'Tenant-filtered retained call records; no success/voice-quality inference');

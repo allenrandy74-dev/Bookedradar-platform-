@@ -1,5 +1,5 @@
 import { createPostgresPool,postgresHealth } from './postgres-runtime.js';
-import { PostgresCallStateStore,PostgresWebhookStore } from './postgres-state-store.js';
+import { PostgresCallStateStore,PostgresWebhookStore,PostgresAttemptStore } from './postgres-state-store.js';
 import { PostgresCallHistoryStore } from './postgres-call-history.js';
 import { PostgresRecoveryStore,readRecovery } from './postgres-recovery-store.js';
 import { PostgresWebChatStore,PostgresTransferStore,PostgresGrowthMetricsStore } from './postgres-aux-stores.js';
@@ -7,6 +7,7 @@ import { PostgresLeadStore } from './postgres-lead-store.js';
 import { PostgresBillingStore } from './billing/postgres-store.js';
 import { persistPostgresVoiceLead,persistPostgresChatTurn } from './postgres-intake-workflows.js';
 import { CallHistoryStore } from './call-history.js';
+import { useJsonMemoryView } from './json-file-transaction.js';
 
 const LOCALHOSTS = new Set(['localhost','127.0.0.1','[::1]']);
 
@@ -118,7 +119,8 @@ export async function createPostgresServerStores(config) {
   }
   const callOwner=id=>owner('call_control_state','call_id',id);
   const webhook=new PostgresWebhookStore(pool);
-  const state={load:noop,hasInquiryReceipt:id=>webhook.hasInquiryReceipt(id),markInquiryOnce:id=>webhook.markInquiryOnce(id),markWebhookOnce:id=>webhook.markWebhookOnce(id),releaseWebhook:id=>webhook.releaseWebhook(id),
+  const attempts=new PostgresAttemptStore(pool);
+  const state={claimAttempt:(key,intent)=>attempts.claimAttempt(key,intent),finishAttempt:(key,patch)=>attempts.finishAttempt(key,patch),load:noop,hasInquiryReceipt:id=>webhook.hasInquiryReceipt(id),markInquiryOnce:id=>webhook.markInquiryOnce(id),markWebhookOnce:id=>webhook.markWebhookOnce(id),releaseWebhook:id=>webhook.releaseWebhook(id),
     getCall:async id=>{const tenant=await callOwner(id);return tenant ? new PostgresCallStateStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await callOwner(id);return new PostgresCallStateStore(pool,tenant).patchCall(id,patch);}};
   const callHistory={load:noop,get:(tenant,id)=>new PostgresCallHistoryStore(pool,tenant).get(id),start:(id,args)=>new PostgresCallHistoryStore(pool,args.tenantId).start(id,args)};
@@ -129,7 +131,7 @@ export async function createPostgresServerStores(config) {
   callHistory.operationalSummary=async options=>{
     if (!options?.tenantId) {
       const {rows}=await pool.query('SELECT call_id,payload FROM bookedradar.voice_calls');
-      const view=new CallHistoryStore('/unused/report.json');view.loaded=true;view.data={calls:Object.fromEntries(rows.map(r=>[r.call_id,r.payload]))};
+      const view=new CallHistoryStore('/unused/report.json');useJsonMemoryView(view);view.loaded=true;view.data={calls:Object.fromEntries(rows.map(r=>[r.call_id,r.payload]))};
       return view.operationalSummary(options);
     }
     return new PostgresCallHistoryStore(pool,options.tenantId).operationalSummary(options);

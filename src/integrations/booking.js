@@ -1,4 +1,5 @@
 export class BookingAdapter {
+  get supportsLiveBooking() { return false; }
   async findAvailability(_request) {
     throw new Error("Booking adapter not implemented");
   }

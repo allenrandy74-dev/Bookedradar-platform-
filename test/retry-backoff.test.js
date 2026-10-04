@@ -6,7 +6,7 @@ import path from "node:path";
 import { RecoveryStore } from "../src/recovery/store.js";
 import { ActionDispatcher } from "../src/integrations/dispatcher.js";
 
-test("failed dispatch is rescheduled with backoff before final failure", async () => {
+test("ambiguous provider failure requires reconciliation instead of automatic backoff", async () => {
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),"br-backoff-"));
   const store=new RecoveryStore(path.join(dir,"state.json"));
   const dueAt=new Date(Date.now()-1000).toISOString();
@@ -16,7 +16,9 @@ test("failed dispatch is rescheduled with backoff before final failure", async (
   const tenant={tenantId:"t1",businessName:"T1",timeZone:"America/Chicago",policies:{maxDispatchAttempts:3,retryBaseMinutes:.01,sms:{allowTransactionalWhenInbound:true}}};
   const dispatcher=new ActionDispatcher({store,tenant,adapters:{sms:{send:async()=>{throw new Error("provider down")}}}});
   const first=await dispatcher.runOnce({limit:10});
-  assert.equal(first[0].action.status,"pending");
-  assert.equal(first[0].action.attempts,1);
-  assert.ok(new Date(first[0].action.dueAt).getTime()>Date.now());
+  assert.equal(first[0].action.status,"reconciliation_required");
+  assert.equal(first[0].dispatched,false);
+  assert.equal(first[0].reconciliationRequired,true);
+  assert.deepEqual(await dispatcher.runOnce({now:new Date(Date.now()+3600000)}),[]);
+  await fs.rm(dir,{recursive:true,force:true});
 });

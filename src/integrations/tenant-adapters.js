@@ -115,6 +115,7 @@ export function bookingAdapterForTenant(tenant, {
     const clientSecret = calendar.clientSecret || tenantSecret(tenant, "GOOGLE_CALENDAR_CLIENT_SECRET", env);
     const refreshToken = calendar.refreshToken || tenantSecret(tenant, "GOOGLE_CALENDAR_REFRESH_TOKEN", env);
     const calendarId = calendar.calendarId || tenantSecret(tenant, "GOOGLE_CALENDAR_ID", env) || "primary";
+    if (!clientId || !clientSecret || !refreshToken || !calendarId) return new ConfirmOnlyBookingAdapter();
     const adapter = new GoogleCalendarBookingAdapter({
       clientId,
       clientSecret,

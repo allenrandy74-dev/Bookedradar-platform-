@@ -1,4 +1,5 @@
 import { BookingAdapter } from "./booking.js";
+import { unsupportedBookingAuthority } from "./booking-authority.js";
 
 function clean(value, max = 500) {
   return String(value ?? "").trim().slice(0, max);
@@ -6,6 +7,13 @@ function clean(value, max = 500) {
 
 function iso(value) {
   const text = clean(value, 80);
+  // Calendar timeZone does not disambiguate a JavaScript local-time parse.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(text)) return "";
+  const [year, month, day] = text.slice(0, 10).split("-").map(Number);
+  const calendarDate = new Date(0);
+  calendarDate.setUTCFullYear(year, month - 1, day);
+  if (calendarDate.getUTCFullYear() !== year || calendarDate.getUTCMonth() !== month - 1 || calendarDate.getUTCDate() !== day ||
+      Number(text.slice(11, 13)) > 23 || Number(text.slice(14, 16)) > 59 || Number(text.slice(17, 19)) > 59) return "";
   const ms = Date.parse(text);
   return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
 }
@@ -22,6 +30,12 @@ function overlap(start, end, busy) {
     const s = new Date(item.start).getTime(), e = new Date(item.end).getTime();
     return a < e && b > s;
   });
+}
+
+function rejectUnsupportedBuffers(request) {
+  for (const key of ["bufferBeforeMinutes", "bufferAfterMinutes", "buffer_before_minutes", "buffer_after_minutes"]) {
+    if (request[key] !== undefined && request[key] !== 0) throw new Error("unsupported_booking_buffer");
+  }
 }
 
 export class GoogleCalendarBookingAdapter extends BookingAdapter {
@@ -87,7 +101,12 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
     });
     const text = await response.text();
     let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch {}
+    try { data = text ? JSON.parse(text) : {}; } catch {
+      throw new Error("google_calendar_invalid_response");
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("google_calendar_invalid_response");
+    }
     if (!response.ok) {
       const error = new Error(`google_calendar_request_failed:${response.status}`);
       error.status = response.status;
@@ -97,6 +116,7 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
   }
 
   async findAvailability(request = {}) {
+    rejectUnsupportedBuffers(request);
     const timeMin = iso(request.windowStart || request.window_start);
     const timeMax = iso(request.windowEnd || request.window_end);
     if (!timeMin || !timeMax) {
@@ -123,7 +143,14 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
         items: [{ id: this.calendarId }],
       }),
     });
-    const busy = data?.calendars?.[this.calendarId]?.busy || [];
+    const calendar = data?.calendars?.[this.calendarId];
+    if (!calendar || typeof calendar !== "object" ||
+        (calendar.errors !== undefined && (!Array.isArray(calendar.errors) || calendar.errors.length)) ||
+        !Array.isArray(calendar.busy)) throw new Error("google_calendar_availability_unknown");
+    const busy = calendar.busy;
+    if (busy.some(item => !item || !iso(item.start) || !iso(item.end) || Date.parse(item.end) <= Date.parse(item.start))) {
+      throw new Error("google_calendar_availability_unknown");
+    }
     const stepMs = this.slotIncrementMinutes * 60_000;
     const durationMs = duration * 60_000;
     const slots = [];
@@ -146,11 +173,12 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
       calendarProvider: "google",
       timeZone: this.timeZone,
       slots,
-      message: slots.length ? "Live availability checked." : "No open slots found in that window.",
+      message: slots.length ? "Calendar availability checked; these slots are not reserved. The team must confirm any appointment request." : "No open slots found in that window.",
     };
   }
 
   async createBooking(request = {}) {
+    rejectUnsupportedBuffers(request);
     const encoded = clean(request.slot, 200);
     let start = iso(request.slotStart || request.slot_start);
     let end = iso(request.slotEnd || request.slot_end);
@@ -160,54 +188,11 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
     }
     if (!start || !end || new Date(end) <= new Date(start)) throw new Error("invalid_booking_slot");
 
-    // Re-check free/busy immediately before writing to reduce double-book risk.
-    const availability = await this.findAvailability({
-      windowStart: start,
-      windowEnd: end,
-      durationMinutes: Math.round((new Date(end) - new Date(start)) / 60000),
-    });
-    if (!availability.slots.some(slot => slot.start === start && slot.end === end)) {
-      return { mode: "live_booking", confirmed: false, reason: "slot_no_longer_available" };
-    }
-
-    const name = clean(request.name, 120) || "Customer";
-    const serviceType = clean(request.serviceType || request.service_type, 180) || "Service request";
-    const callback = clean(request.callbackNumber || request.callback_number, 60);
-    const address = clean(request.serviceAddress || request.service_address, 240);
-    const city = clean(request.city, 120);
-    const notes = clean(request.notes, 1200);
-    const description = [
-      callback ? `Callback: ${callback}` : "",
-      address ? `Service address: ${address}${city ? `, ${city}` : ""}` : city ? `City: ${city}` : "",
-      notes ? `Notes: ${notes}` : "",
-      request.callId ? `BookedRadar call: ${clean(request.callId,160)}` : "",
-    ].filter(Boolean).join("\n");
-
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.calendarId)}/events`;
-    const event = await this.request(url, {
-      method: "POST",
-      body: JSON.stringify({
-        summary: `${serviceType} — ${name}`,
-        description,
-        location: [address, city].filter(Boolean).join(", "),
-        start: { dateTime: start, timeZone: this.timeZone },
-        end: { dateTime: end, timeZone: this.timeZone },
-        extendedProperties: {
-          private: {
-            bookedradar_tenant_id: clean(request.tenantId,100),
-            bookedradar_source: "ai_phone_operator",
-          },
-        },
-      }),
-    });
-    return {
-      mode: "live_booking",
-      confirmed: Boolean(event?.id),
-      bookingId: event?.id || null,
-      slot: encoded || `${start}|${end}`,
-      start,
-      end,
-      calendarProvider: "google",
-    };
+    // A successful freeBusy read does not reserve this interval. Neither a
+    // process-local map nor an application database lock excludes external
+    // Calendar writers, and an insert timeout cannot safely be retried after a
+    // restart. Until a supported authoritative reservation/reconciliation
+    // protocol exists, no direct provider write is permitted.
+    return unsupportedBookingAuthority("google");
   }
 }

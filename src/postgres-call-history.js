@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "./json-file-transaction.js";
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CallHistoryStore } from './call-history.js';
@@ -6,6 +7,7 @@ import { CallHistoryStore } from './call-history.js';
 // process-wide cache. Every mutation gets a fresh view under a database row lock.
 function view(calls = Object.create(null)) {
   const store = new CallHistoryStore('/unused/postgres-call-history.json');
+  useJsonMemoryView(store);
   store.loaded = true;
   store.data = { calls };
   store.persist = async () => {};

@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -15,10 +16,10 @@ import { queueSmsReply, persistSmsReply } from '../src/sms-reply-queue.js';
 test('signed inbound HTTP webhook queues once, rejects impostors and preserves STOP/HELP',async()=>{
   const source=await fs.readFile(new URL('../server.js',import.meta.url),'utf8');
   const route=source.slice(source.indexOf('app.post("/twilio/sms"'),source.indexOf('app.get("/api/v1/actions/due"'));
-  const raw=new RecoveryStore('/tmp/sms-webhook-unused.json');raw.loaded=true;raw.persist=async()=>{};
+  const raw=new RecoveryStore('/tmp/sms-webhook-unused.json');useJsonMemoryView(raw);raw.persist=async()=>{};
   const tenant={tenantId:'synthetic',commercial:{dispatchMode:'live'},features:{twoWaySms:true},integrations:{sms:{enabled:true,type:'twilio',accountSid:'AC'+'1'.repeat(32),authToken:'synthetic-only',fromNumber:'+14095550101'}}};
   const engine=new RecoveryEngine({store:raw,tenant});let serial=Promise.resolve(),generated=0,sends=0;
-  const store={tenantId:'synthetic',getContact:key=>raw.getContact(key),smsReplyQueued:async sid=>Boolean(raw.data.eventKeys[`sms-reply:synthetic:${sid}`]),queueSmsReplyOnce(req,t){const next=serial.then(()=>persistSmsReply(raw,t,req));serial=next.catch(()=>{});return next;}};
+  const store={tenantId:'synthetic',getContact:key=>raw.getContact(key),smsReplyQueued:async sid=>raw.hasEventKey(`sms-reply:synthetic:${sid}`, "synthetic"),queueSmsReplyOnce(req,t){const next=serial.then(()=>persistSmsReply(raw,t,req));serial=next.catch(()=>{});return next;}};
   const app=express(),server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const base=`http://127.0.0.1:${server.address().port}`,url=base+'/twilio/sms?tenant=synthetic';
   const prior=process.env.DISPATCH_ENABLED;process.env.DISPATCH_ENABLED='true';

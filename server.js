@@ -510,11 +510,13 @@ const warmTransfer = createWarmTransfer({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const guardedTransfer = createTransferController({
+  store: state,
   relay: warmTransfer,
   refer: ({ targetUri, callId }) => referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri }),
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const transferCompanion = createTransferCompanion({
+  store: state,
   config: { accountSid: TWILIO_ACCOUNT_SID, authToken: TWILIO_AUTH_TOKEN,
     fromNumber: TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID },
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),

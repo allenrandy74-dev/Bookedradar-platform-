@@ -86,3 +86,12 @@ test("business guidance is isolated to the selected tenant", async () => {
   assert.equal(a.safetyRule, "Business A rule");
   assert.deepEqual(b, { safetyRule: "", urgentDefinition: "", businessInstructions: "" });
 });
+
+test('live-booking configuration gives advisory-only, owner-confirmed guidance while authority is unavailable',async()=>{
+  const {buildOperatorInstructions}=await import('../src/operator.js');
+  const prompt=buildOperatorInstructions({companyName:'Synthetic',companyTrade:'HVAC',serviceArea:'Test',bookingMode:'live_booking'});
+  assert.match(prompt,/automatic booking is currently unavailable/);
+  assert.match(prompt,/Calendar slots are not reserved/);
+  assert.match(prompt,/Do not call book_appointment/);
+  assert.match(prompt,/only say details were captured after capture_lead succeeds/);
+});

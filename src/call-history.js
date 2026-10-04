@@ -1,3 +1,4 @@
+import { transactionalJsonStore, immutableOwnership } from "./json-file-transaction.js";
 import { customerResultCalls } from "./customer-results-scope.js";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,7 +19,6 @@ export class CallHistoryStore {
     this.retentionDays = Number(retentionDays) || 30;
     this.data = { calls: {} };
     this.loaded = false;
-    this.writeChain = Promise.resolve();
   }
 
   async load() {
@@ -35,16 +35,10 @@ export class CallHistoryStore {
     await this.prune();
   }
 
-  async persist() {
-    await this.load();
-    const temp = `${this.filePath}.tmp`;
-    const body = JSON.stringify(this.data, null, 2);
-    this.writeChain = this.writeChain.then(async () => {
-      await fs.writeFile(temp, body, "utf8");
-      await fs.rename(temp, this.filePath);
-    });
-    return this.writeChain;
-  }
+  // Replaced by transactionalJsonStore during module initialization. Keeping
+  // persistence unavailable until that wrapper is installed prevents accidental
+  // reintroduction of unfenced cached-snapshot writes.
+  async persist() { throw new Error("transactional_json_initialization_required"); }
 
   async prune(now = Date.now()) {
     await this.loadWithoutPrune();
@@ -75,6 +69,7 @@ export class CallHistoryStore {
 
   async start(callId, { tenantId, callerMasked = "", dialedMasked = "" } = {}) {
     await this.load();
+    immutableOwnership(this.data.calls[callId], { tenantId: clean(tenantId, 120) }, ["tenantId"]);
     const now = Date.now();
     this.data.calls[callId] = {
       ...(this.data.calls[callId] || {}),
@@ -136,6 +131,7 @@ export class CallHistoryStore {
     const call = this.data.calls[callId];
     if (!call) return null;
     const now = Date.now();
+    immutableOwnership(call, patch, ["tenantId", "callId"]);
     Object.assign(call, {
       ...patch,
       endedAt: patch.endedAt || now,
@@ -312,3 +308,5 @@ export class CallHistoryStore {
   }
 }
 
+
+transactionalJsonStore(CallHistoryStore, "data");

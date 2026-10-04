@@ -2,6 +2,7 @@ import { createPostgresPool } from "./postgres-runtime.js";
 
 const EXPECTED_TABLES = [
   "webhook_receipts",
+  "provider_attempt_receipts",
   "call_control_state",
   "voice_calls",
   "call_turns",

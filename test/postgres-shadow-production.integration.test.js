@@ -8,6 +8,9 @@ import { runPostgresShadowMigration } from "../scripts/postgres-shadow-migrate.m
 import { loadMigrationSnapshot } from "../scripts/postgres-migration-audit.mjs";
 import { auditPostgresMigrationSnapshot } from "../src/postgres-migration-audit.js";
 import { PostgresRecoveryStore } from "../src/postgres-recovery-store.js";
+import { RecoveryStore } from "../src/recovery/store.js";
+import { RecoveryEngine } from "../src/recovery/engine.js";
+import { readPostgresSnapshot } from "../src/postgres-full-export.js";
 
 const connectionString = process.env.POSTGRES_TEST_URL;
 
@@ -205,8 +208,8 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.equal(result.contentReconciliation.ok, true);
     assert.equal(result.contentReconciliation.sourceContentHash, result.contentReconciliation.postgresContentHash);
     assert.notEqual(result.contentReconciliation.rawSourceContentHash, result.contentReconciliation.rawPostgresContentHash);
-    assert.deepEqual(result.contentReconciliation.sourceNormalizations, ["webChat:null_to_empty_store"]);
-    assert.deepEqual(result.contentReconciliation.postgresNormalizations, []);
+    assert.deepEqual(result.contentReconciliation.sourceNormalizations, ["recovery.eventKeys:tenant_scoped", "webChat:null_to_empty_store"]);
+    assert.deepEqual(result.contentReconciliation.postgresNormalizations, ["recovery.eventKeyFormat:remove_format_marker"]);
 
     const eventOrder = await pool.query(
       "SELECT event_id,source_sequence FROM bookedradar.recovery_events ORDER BY source_sequence,event_id"
@@ -215,6 +218,23 @@ test("real Postgres: audited production-style snapshot imports and reconciles ex
     assert.deepEqual(eventOrder.rows.map(row => Number(row.source_sequence)), [0,1]);
 
     const recoveryStore = new PostgresRecoveryStore(pool, tenant);
+    // A preserved alias is a durable receipt, not merely hash-equivalent metadata.
+    const config = { tenantId: tenant, businessName: "Synthetic HVAC", timeZone: "UTC" };
+    const replay = { type: "phone_lead", idempotencyKey: "manual-explicit-key", contact: { phone: "+12025550101" } };
+    const prior = await recoveryStore.snapshot();
+    assert.equal((await new RecoveryEngine({ store: recoveryStore, tenant: config }).ingest(replay)).duplicate, true);
+    assert.equal((await recoveryStore.snapshot()).events.length, prior.events.length);
+    const exported = await readPostgresSnapshot(pool);
+    assert.equal(exported.recovery.eventKeyFormat, "tenant_scoped_v1");
+    const jsonFile = path.join(root, "roundtrip-recovery.json");
+    await fs.writeFile(jsonFile, JSON.stringify(exported.recovery));
+    const restoredJson = new RecoveryStore(jsonFile);
+    assert.equal(await restoredJson.hasEventKey("manual-explicit-key", tenant), true);
+    assert.equal((await new RecoveryEngine({ store: restoredJson, tenant: config }).ingest(replay)).duplicate, true);
+    const afterJson = await restoredJson.snapshot();
+    assert.equal(afterJson.events.length, prior.events.length);
+    assert.deepEqual(Object.keys(afterJson.opportunities), Object.keys(prior.opportunities));
+    assert.equal(Object.keys(afterJson.eventKeys).length, Object.keys(prior.eventKeys).length);
     await recoveryStore.ingest({
       id:"evt-runtime",
       idempotencyKey:"evt-runtime-key",

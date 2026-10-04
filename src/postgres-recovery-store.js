@@ -1,8 +1,10 @@
-import { actionAllowed } from './recovery/compliance.js';
+import { randomUUID } from 'node:crypto';
+import { useJsonMemoryView } from "./json-file-transaction.js";
+import { dispatchAllowed } from './recovery/dispatch-policy.js';
 import { persistCallerText } from './caller-text-queue.js';
 import { persistSmsReply } from './sms-reply-queue.js';
 import { RecoveryStore } from './recovery/store.js';
-import { RecoveryEngine, recipientSuppressed } from './recovery/engine.js';
+import { RecoveryEngine, recipientSuppressed, validateRecoveryEvent } from './recovery/engine.js';
 import { stableHash } from './postgres-migration-audit.js';
 
 export const RECOVERY_TABLES = [
@@ -14,7 +16,7 @@ export const RECOVERY_TABLES = [
 ];
 
 export async function readRecovery(client, tenantId = null) {
-  const data = { contacts:{}, opportunities:{}, events:[], eventKeys:{}, actions:{}, attribution:{} };
+  const data = { contacts:{}, opportunities:{}, events:[], eventKeys:{}, eventKeyFormat:'tenant_scoped_v1', actions:{}, attribution:{} };
   for (const [key,table,pk] of RECOVERY_TABLES) {
     const order = key === 'events' ? 'source_sequence NULLS LAST,event_id' : pk;
     const { rows } = await client.query(`SELECT ${pk} AS id,payload FROM bookedradar.${table}${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY ${order}`, tenantId === null ? [] : [tenantId]);
@@ -24,10 +26,10 @@ export async function readRecovery(client, tenantId = null) {
     }
   }
   const keyRows = await client.query(
-    `SELECT event_key,event_id FROM bookedradar.recovery_event_keys${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY event_key`,
+    `SELECT tenant_id,event_key,event_id FROM bookedradar.recovery_event_keys${tenantId === null ? '' : ' WHERE tenant_id=$1'} ORDER BY event_key`,
     tenantId === null ? [] : [tenantId]
   );
-  for (const row of keyRows.rows) data.eventKeys[row.event_key] = row.event_id;
+  for (const row of keyRows.rows) data.eventKeys[JSON.stringify([row.tenant_id ?? tenantId, row.event_key])] = row.event_id;
   return data;
 }
 
@@ -44,8 +46,16 @@ export class PostgresRecoveryStore {
       await client.query("SET LOCAL statement_timeout='15s'");
       if (write) await client.query("SELECT pg_advisory_xact_lock(hashtext('br_recovery'),hashtext($1))", [this.tenantId]);
       const store = new RecoveryStore('/unused/recovery.json');
+      useJsonMemoryView(store);
       store.loaded = true; store.persist = async () => {};
       store.data = await readRecovery(client, this.tenantId);
+      // The WHERE tenant_id=$1 query establishes legacy event ownership even
+      // when its JSON payload predates tenantId. Normalize only this internal
+      // view; full-platform exports retain the original stored payload.
+      store.data.events = store.data.events.map(event => {
+        if (event.tenantId && event.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
+        return event.tenantId ? event : { ...event,tenantId:this.tenantId };
+      });
       const before = structuredClone(store.data);
       const result = structuredClone(await fn(store));
       if (write) for (const [key,table,pk,fields] of RECOVERY_TABLES) {
@@ -77,9 +87,11 @@ export class PostgresRecoveryStore {
         const eventIds = new Set(store.data.events.map(e => e.id));
         for (const [eventKey,eventId] of Object.entries(store.data.eventKeys || {})) {
           if (!eventIds.has(eventId)) continue;
+          let rawEventKey = eventKey;
+          try { const scoped = JSON.parse(eventKey); if (Array.isArray(scoped) && scoped[0] === this.tenantId && typeof scoped[1] === 'string') rawEventKey = scoped[1]; } catch {}
           await client.query(
             'INSERT INTO bookedradar.recovery_event_keys(tenant_id,event_key,event_id) VALUES($1,$2,$3) ON CONFLICT(tenant_id,event_key) DO UPDATE SET event_id=EXCLUDED.event_id',
-            [this.tenantId,eventKey,eventId]
+            [this.tenantId,rawEventKey,eventId]
           );
         }
       }
@@ -87,10 +99,23 @@ export class PostgresRecoveryStore {
     } catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
     finally { client.release(); }
   }
-  // Persist an entire engine ingestion, not just its first event receipt.
+  // Ordinary ingestion is atomic. STOP has a durable safety boundary: commit
+  // suppression and the identity-bound receipt before cancellable cleanup.
   ingest(event, tenant) {
-    if (tenant?.tenantId !== this.tenantId || (event.tenantId && event.tenantId !== this.tenantId)) throw new Error('recovery_tenant_conflict');
-    return this.#transaction(store => new RecoveryEngine({ store, tenant }).ingest({ ...event,tenantId:this.tenantId }));
+    if (tenant?.tenantId !== this.tenantId || event?.tenantId && event.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
+    return this.#ingestValidated(event, tenant);
+  }
+  async #ingestValidated(event, tenant) {
+    event = validateRecoveryEvent(event, tenant);
+    if (tenant?.tenantId !== this.tenantId || event.tenantId !== this.tenantId) throw new Error('recovery_tenant_conflict');
+    if (event.type !== 'contact_opted_out') return this.#transaction(store => new RecoveryEngine({ store, tenant }).ingestLocal(event));
+    if (this.pool.requiresOuterCommit) throw new Error('optout_requires_top_level_transaction');
+    if (!event.id && !event.idempotencyKey) event = { ...event,id:`evt_${randomUUID()}` };
+    const prepared = await this.#transaction(store => new RecoveryEngine({store,tenant}).ingestContactOptOut(event,{prepareOnly:true}));
+    const completed = await this.#transaction(store => new RecoveryEngine({store,tenant}).ingestContactOptOut(event));
+    if (!prepared.event.duplicate) delete completed.duplicate;
+    completed.event = prepared.event;
+    return completed;
   }
   queueCallerTextOnce(request, tenant) {
     if (tenant?.tenantId !== this.tenantId) throw new Error('caller_text_tenant_mismatch');
@@ -98,7 +123,7 @@ export class PostgresRecoveryStore {
   }
   smsReplyQueued(messageSid) {
     const key = `sms-reply:${this.tenantId}:${messageSid}`;
-    return this.#transaction(store => Boolean(store.data.eventKeys[key]), false);
+    return this.#transaction(store => store.hasEventKey(key, this.tenantId), false);
   }
   queueSmsReplyOnce(request, tenant) {
     if (tenant?.tenantId !== this.tenantId) throw new Error('sms_reply_tenant_mismatch');
@@ -141,7 +166,7 @@ export class PostgresRecoveryStore {
     return this.#transaction(async store=>{
       const audit=store.data.events.filter(e=>e.type==='action_reconciled' && new Date(e.occurredAt).getTime()>=now.getTime()-actionRetentionDays*86400000);
       const result=await store.prune({now,eventRetentionDays,actionRetentionDays});
-      for(const event of audit)if(!store.data.events.some(e=>e.id===event.id)){store.data.events.push(event);store.data.eventKeys[event.idempotencyKey || event.id]=event.id;result.deletedEvents--;}
+      for(const event of audit)if(!store.data.events.some(e=>e.id===event.id)){store.data.events.push(event);store.data.eventKeys[JSON.stringify([this.tenantId,event.idempotencyKey || event.id])]=event.id;result.deletedEvents--;}
       return result;
     });
   }
@@ -166,12 +191,13 @@ export class PostgresRecoveryStore {
     return this.#transaction(async store => {
       const current = store.data.actions[actionId];
       if (!current || current.status !== 'processing' || current.claimedBy !== claim?.claimedBy || current.claimedAt !== claim?.claimedAt || current.claimExpiresAt !== claim?.claimExpiresAt || !(new Date(current.claimExpiresAt) > now)) throw new Error('stale_recovery_claim');
+      if (!tenant || tenant.tenantId !== this.tenantId) throw new Error('dispatch_tenant_mismatch');
       let dispatchContact = null;
-      if (tenant) {
-        if (tenant.tenantId !== this.tenantId) throw new Error('dispatch_tenant_mismatch');
+      {
+
         const contact = await store.getContact(current.contactKey);
         const opportunity = await store.getOpportunity(current.opportunityId);
-        const decision = actionAllowed({ action: current, opportunity, contact, tenant, now });
+        const decision = dispatchAllowed({ action: current, opportunity, contact, tenant, now });
         if (await recipientSuppressed(store, this.tenantId, contact)) {
           decision.allowed = false; decision.reason = 'contact_suppressed';
         }

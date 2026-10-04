@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -68,7 +69,7 @@ test('candidate: completed CRM capture with unavailable receipt storage retains 
   assert.equal(f.receipts.has('synthetic-inquiry'),true);assert.equal((await f.request()).status,409);assert.equal(f.contactCalls,1);
 });
 test('candidate: receipt reads are read-only and expire after 24h in both stores',async()=>{
-  const store=new JsonStateStore('/unused');store.loaded=true;
+  const store=new JsonStateStore('/unused');useJsonMemoryView(store);
   store.state.processedWebhooks={fresh:Date.now(),expired:Date.now()-25*3600000};
   assert.equal(await store.hasInquiryReceipt('fresh'),true);assert.equal(await store.hasInquiryReceipt('expired'),false);assert.equal(await store.hasInquiryReceipt('missing'),false);
   const calls=[];const pg=new PostgresWebhookStore({query:async(sql,args)=>{calls.push({sql,args});return {rows:args[0]==='fresh'?[{}]:[]};}});
@@ -77,7 +78,7 @@ test('candidate: receipt reads are read-only and expire after 24h in both stores
 });
 
 test('candidate: expired JSON inquiry reservation is reclaimed without changing voice-webhook behavior',async()=>{
-  const s=new JsonStateStore('/unused');s.loaded=true;s.persist=async()=>{};
+  const s=new JsonStateStore('/unused');useJsonMemoryView(s);s.persist=async()=>{};
   const old=Date.now()-25*3600000;
   s.state.processedWebhooks={inquiry:old,'inquiry:completed':old,'voice-old':old};
   assert.equal(await s.hasInquiryReceipt('inquiry:completed'),false);

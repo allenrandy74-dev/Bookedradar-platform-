@@ -88,6 +88,7 @@ export function diagnoseMigrationDifference(sourceSnapshot = {}, postgresSnapsho
     transfersWhole: storeStats(source.transfers, postgres.transfers),
     growthMetricsWhole: storeStats(source.growthMetrics, postgres.growthMetrics),
     stateProcessedWebhooks: mapStats(source.state?.processedWebhooks, postgres.state?.processedWebhooks),
+    stateAttempts: mapStats(source.state?.attempts, postgres.state?.attempts),
     stateCalls: mapStats(source.state?.calls, postgres.state?.calls),
     callHistoryCalls: mapStats(source.callHistory?.calls, postgres.callHistory?.calls),
     leads: arrayStats(source.leads, postgres.leads),

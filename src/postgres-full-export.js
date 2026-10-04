@@ -19,8 +19,9 @@ export async function readPostgresSnapshot(client) {
   const counts={}; let updatedAt=null;
   for (const r of growth) { const n=Number(r.count); if (!Number.isSafeInteger(n)) throw new Error('metric_precision_limit'); counts[r.metric_key]=n; const at=r.updated_at ? new Date(r.updated_at).toISOString() : null; if (at && (!updatedAt || at>updatedAt)) updatedAt=at; }
   const billing=await read('SELECT mode,payload FROM bookedradar.billing_state ORDER BY mode');
+  const attempts=map(await read('SELECT attempt_key,payload FROM bookedradar.provider_attempt_receipts ORDER BY attempt_key'),'attempt_key');
   return {
-    state:{ processedWebhooks:Object.fromEntries((await read('SELECT webhook_id,received_at FROM bookedradar.webhook_receipts')).map(r=>[r.webhook_id,new Date(r.received_at).getTime()])),calls:map(await read('SELECT call_id,payload FROM bookedradar.call_control_state'),'call_id') },
+    state:{ ...(Object.keys(attempts).length ? {attempts} : {}), processedWebhooks:Object.fromEntries((await read('SELECT webhook_id,received_at FROM bookedradar.webhook_receipts')).map(r=>[r.webhook_id,new Date(r.received_at).getTime()])),calls:map(await read('SELECT call_id,payload FROM bookedradar.call_control_state'),'call_id') },
     callHistory:{ calls:map(calls,'call_id') },
     leads:(await read('SELECT payload FROM bookedradar.lead_captures ORDER BY lead_id')).map(r=>r.payload),
     recovery:await readRecovery(client),

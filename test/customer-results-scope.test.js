@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -95,7 +96,7 @@ test('Latency rejects coercible nonnumbers and negatives while preserving genuin
 });
 
 test('Customer call reporting excludes marked records but operational/admission counters stay unchanged', async () => {
-  const calls = new CallHistoryStore('/unused'); calls.loaded = true;
+  const calls = new CallHistoryStore('/unused'); useJsonMemoryView(calls);
   calls.data.calls = {
     real: { tenantId: 't1', startedAt: now.getTime(), transferred: true },
     marked: { tenantId: 't1', startedAt: now.getTime(), synthetic: true, transferred: true },

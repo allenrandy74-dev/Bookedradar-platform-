@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import { CallHistoryStore } from "../src/call-history.js";
 
 test("call history is tenant-isolated, searchable and redacts obvious sensitive numbers", async () => {
@@ -22,7 +23,7 @@ test("call history is tenant-isolated, searchable and redacts obvious sensitive 
 
 
 test('pilot history window excludes exact end and later calls from every numerator',async()=>{
- const store=new CallHistoryStore('/unused');store.loaded=true;
+ const store=useJsonMemoryView(new CallHistoryStore('/unused'));
  store.data.calls={before:{tenantId:'t',startedAt:99,transferred:true},inside:{tenantId:'t',startedAt:100,transferred:true,leadSummary:{serviceType:'repair',callback:'***',urgency:'routine',preferredWindow:'tomorrow'}},end:{tenantId:'t',startedAt:200,transferred:true},other:{tenantId:'other',startedAt:150,transferred:true}};
  const result=await store.statsSince('t',100,200);
  assert.equal(result.callsHandled,1);assert.equal(result.humanTransfers,1);assert.equal(result.incompleteCalls,0);assert.equal(result.firstUsefulLeadAt,100);
