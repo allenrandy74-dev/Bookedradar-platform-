@@ -1,3 +1,4 @@
+import { verifyPostgresReleaseSchema } from './postgres-schema-inspection.js';
 import { createPostgresPool,postgresHealth } from './postgres-runtime.js';
 import { PostgresCallStateStore,PostgresWebhookStore,PostgresAttemptStore } from './postgres-state-store.js';
 import { PostgresCallHistoryStore } from './postgres-call-history.js';
@@ -104,8 +105,10 @@ export async function verifyValidatedProductionMigration(pool,{migrationId,snaps
 export async function createPostgresServerStores(config) {
   const pool=createPostgresPool(config);
   let productionValidation=null;
+  let schemaValidation;
   try {
     await postgresHealth(pool);
+    schemaValidation=await verifyPostgresReleaseSchema(pool);
     if (config?.mode==='production') {
       productionValidation=await verifyValidatedProductionMigration(pool,config);
     }
@@ -159,7 +162,7 @@ export async function createPostgresServerStores(config) {
     update:async(id,patch,options)=>{const tenant=await owner('web_chat_sessions','session_id',id);return new PostgresWebChatStore(pool,tenant).update(id,patch,options);}};
   const transfers={load:noop,getCall:async id=>{const tenant=await owner('transfer_records','transfer_id',id);return tenant ? new PostgresTransferStore(pool,tenant).getCall(id) : null;},
     patchCall:async(id,patch)=>{const tenant=patch.tenantId || await owner('transfer_records','transfer_id',id);return new PostgresTransferStore(pool,tenant).patchCall(id,patch);}};
-  return {pool,mode:config?.mode || 'lab',productionValidation,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
+  return {pool,mode:config?.mode || 'lab',productionValidation,schemaValidation,state,callHistory,recovery,webChat,transfers,growth:new PostgresGrowthMetricsStore(pool),
     persistVoiceLead:args=>persistPostgresVoiceLead(pool,args),persistChatTurn:args=>persistPostgresChatTurn(pool,args),
     appendLead:lead=>new PostgresLeadStore(pool,lead.tenant_id).append(lead),
     billingStore:mode=>new PostgresBillingStore(pool,{mode}),close:()=>pool.end()};

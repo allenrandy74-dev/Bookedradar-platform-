@@ -52,3 +52,42 @@ test('real PostgreSQL: permanent provider intents fence concurrent claims and su
     assert.equal((await restored.claimAttempt('attempt',intent)).record.status,'uncertain');
   } finally {await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await pool.end();await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('real PostgreSQL: normal and watchdog transfers share one durable tenant/call owner', {skip:!connectionString},async()=>{
+  const url=new URL(connectionString);
+  assert.ok(['localhost','127.0.0.1','[::1]'].includes(url.hostname));
+  assert.equal(url.pathname,'/bookedradar_test');
+  const {Pool}=await import('pg');
+  const {createTransferController}=await import('../src/warm-transfer.js');
+  const pool=new Pool({connectionString,max:4});
+  const otherPool=new Pool({connectionString,max:4});
+  const schema=await fs.readFile(new URL('../db/postgres-schema.sql',import.meta.url),'utf8');
+  const refs=[];
+  const controller=client=>createTransferController({store:new PostgresAttemptStore(client),
+    relay:{preflight:()=>({ready:false,reason:'synthetic-disabled'})},
+    refer:async request=>refs.push(request),log(){},
+  });
+  try {
+    await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await pool.query(schema);
+    for(const firstKind of ['transfer','greeting_fallback']) {
+      const options={callId:`shared-${firstKind}`,tenant:{tenantId:'synthetic'},target:'+15555550101',kind:firstKind,prepare:async()=>({})};
+      let entered,release;
+      const barrier=new Promise(resolve=>{entered=resolve;});
+      const gate=new Promise(resolve=>{release=resolve;});
+      const winner=controller(pool)({...options,prepare:async()=>{entered();return gate;}});
+      try {
+        await barrier;
+        const competing={...options,kind:firstKind==='transfer'?'greeting_fallback':'transfer'};
+        assert.equal((await controller(otherPool)(competing)).reason,'transfer_intent_conflict');
+        release({});const result=await winner;assert.equal(result.status,'legacy_referred');
+        assert.deepEqual(await controller(otherPool)(options),result);
+        assert.equal((await controller(otherPool)(competing)).reason,'transfer_intent_conflict');
+        assert.equal(refs.filter(ref=>ref.callId===options.callId).length,1);
+        // Same call ID in another tenant retains its own authority.
+        assert.equal((await controller(otherPool)({...options,tenant:{tenantId:'synthetic-other'}})).status,'legacy_referred');
+        assert.equal(refs.filter(ref=>ref.callId===options.callId).length,2);
+      } finally {release({});await winner;}
+    }
+    assert.equal(refs.length,4);
+  } finally {await pool.query('DROP SCHEMA IF EXISTS bookedradar CASCADE');await otherPool.end();await pool.end();}
+});

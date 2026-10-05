@@ -238,3 +238,117 @@ test('transfer deadline mocks are restored after each fixture',()=>{
  assert.equal(globalThis.setTimeout,realSetTimeout);
  assert.equal(globalThis.clearTimeout,realClearTimeout);
 });
+
+const greetingInput = { ...input, kind:'greeting_fallback' };
+const announcementRelay = extra => ({
+ preflight:()=>({ready:true,reason:'configured'}),
+ start:async()=>({id:'announcement',targetUri:'sip:announcement@synthetic.invalid'}),
+ waitForEntry:async()=>true,
+ cancelPending:async()=>true,
+ ...extra,
+});
+for (const firstKind of ['transfer','greeting_fallback']) test(`${firstKind} claim excludes competing watchdog/normal intent across independent instances and reconstruction`,async t=>{
+ const f=await fixture(t);let refs=0;const entered=deferred(), release=deferred();
+ const first={...input,kind:firstKind,prepare:async()=>{entered.resolve();return release.promise;}};
+ const work=controller(f.store,async()=>refs++)(first);await completesWithin(entered.promise);
+ const second={...input,kind:firstKind==='transfer'?'greeting_fallback':'transfer'};
+ assert.equal((await controller(await f.build(),async()=>refs++)(second)).reason,'transfer_intent_conflict');
+ release.resolve({});assert.equal((await work).status,'legacy_referred');
+ assert.equal((await controller(await f.build(),async()=>refs++)(second)).reason,'transfer_intent_conflict');
+ assert.equal(refs,1);
+});
+test('same-process watchdog and normal kind conflict before preparation or provider I/O',async t=>{
+ const f=await fixture(t);let refs=0;const entered=deferred(),release=deferred();
+ const run=controller(f.store,async()=>refs++);
+ const work=run({...greetingInput,prepare:async()=>{entered.resolve();return release.promise;}});
+ await completesWithin(entered.promise);assert.equal((await run(input)).reason,'transfer_intent_conflict');
+ release.resolve({});await work;assert.equal(refs,1);
+});
+test('watchdog announcement works without human target and survives replay with truthful failed capture',async t=>{
+ const f=await fixture(t);let refs=0, starts=0, ends=0;
+ const relay=announcementRelay({start:async args=>{
+   starts++;assert.equal(args.kind,'greeting_fallback');assert.equal(args.leadSaved,false);
+   return {id:'announcement',targetUri:'sip:announcement@synthetic.invalid'};
+ }});
+ const run=store=>controller(store,async arg=>{refs++;assert.match(arg.targetUri,/^sip:/);},{relay,hangup:async()=>ends++});
+ const options={...greetingInput,target:'',prepare:async()=>{throw Error('synthetic capture failure');}};
+ const result=await run(f.store)(options);assert.equal(result.status,'announcement_started');assert.equal(result.lead_saved,false);
+ assert.deepEqual(await run(await f.build())(options),result);
+ await run(await f.build())({...options,tenant:{tenantId:'other'}});
+ assert.equal(starts,2);assert.equal(refs,2);assert.equal(ends,0);
+});
+test('watchdog known relay rejection revokes before human fallback without losing safe fallback',async t=>{
+ const f=await fixture(t);const effects=[];
+ const relay=announcementRelay({waitForEntry:async()=>false,cancelPending:async()=>{effects.push('revoke');return true;}});
+ const result=await controller(f.store,async arg=>effects.push(arg.targetUri),{relay})(greetingInput);
+ assert.equal(result.status,'legacy_referred');
+ assert.deepEqual(effects,['sip:announcement@synthetic.invalid','revoke',`tel:${input.target}`]);
+});
+test('watchdog unavailable destination ends silent call once under the shared durable claim',async t=>{
+ const f=await fixture(t);let refs=0,ends=0;
+ const run=store=>controller(store,async()=>refs++,{hangup:async()=>ends++});
+ const options={...greetingInput,target:''};
+ const result=await run(f.store)(options);assert.equal(result.status,'call_ended_no_audio');
+ assert.deepEqual(await run(await f.build())(options),result);
+ assert.equal(ends,1);assert.equal(refs,0);
+ assert.equal((await run(await f.build())(input)).reason,'transfer_intent_conflict');assert.equal(refs,0);
+});
+test('watchdog missing persistence and invalid identity cannot start relay, REFER, capture or hangup',async()=>{
+ let effects=0;
+ const run=store=>controller(store,async()=>effects++,{relay:announcementRelay({start:async()=>effects++}),hangup:async()=>effects++});
+ const options={...greetingInput,prepare:async()=>effects++};
+ assert.equal((await run(undefined)(options)).reason,'durable_transfer_store_required');
+ for(const patch of [{callId:''},{tenant:null},{tenant:{tenantId:''}},{kind:'unknown'}]) {
+   assert.equal((await run({claimAttempt:async()=>effects++,finishAttempt(){}})({...options,...patch})).reason,'invalid_transfer_identity');
+ }
+ assert.equal(effects,0);
+});
+test('watchdog delayed REFER acceptance after timeout never hangs up or replays after restart',async t=>{
+ const f=await fixture(t);let refs=0,ends=0;const entered=deferred(),release=deferred();
+ const run=store=>controller(store,async()=>{refs++;entered.resolve();return release.promise;},{hangup:async()=>ends++});
+ const work=run(f.store)(greetingInput);await completesWithin(entered.promise);f.expireDeadline();
+ const result=await completesWithin(work);assert.equal(result.status,'transfer_uncertain');
+ release.resolve();await nextTurn();
+ assert.deepEqual(await run(await f.build())(greetingInput),result);
+ assert.equal(refs,1);assert.equal(ends,0);
+});
+for(const step of ['claim','prepare','start','cancel','hangup']) test(`watchdog bounded ${step} stall and delayed acknowledgment cannot create duplicate fallback`,async t=>{
+ const f=await fixture(t);const entered=deferred(),release=deferred();let refs=0,ends=0,starts=0;
+ const stall=async()=>{entered.resolve();return release.promise;};
+ const store=step==='claim'?{claimAttempt:async(key,intent)=>{const receipt=await f.store.claimAttempt(key,intent);await stall();return receipt;},finishAttempt:f.store.finishAttempt.bind(f.store)}:f.store;
+ const relay=announcementRelay({
+   start:async()=>{starts++;if(step==='start')await stall();return {id:'announcement',targetUri:'sip:announcement@synthetic.invalid'};},
+   waitForEntry:async()=>step!=='cancel',cancelPending:step==='cancel'?stall:async()=>true,
+ });
+ const extra=step==='hangup'?{hangup:async()=>{ends++;await stall();}}:{relay,hangup:async()=>ends++};
+ const options={...greetingInput,...(step==='hangup'?{target:''}:{}),prepare:step==='prepare'?stall:async()=>({})};
+ const work=controller(store,async()=>refs++,extra)(options);
+ await completesWithin(entered.promise);f.expireDeadline();const result=await completesWithin(work);
+ if(step==='prepare') assert.equal(result.status,'announcement_started');
+ else assert.equal(result.status,'transfer_uncertain');
+ release.resolve(true);await nextTurn();
+ const before={refs,ends,starts};
+ await controller(await f.build(),async()=>refs++,extra)(options);
+ assert.deepEqual({refs,ends,starts},before);
+ if(['claim','start','hangup'].includes(step))assert.equal(refs,0);
+ if(step==='cancel')assert.equal(refs,1);
+});
+test('watchdog crash after provider acceptance before durable receipt remains fenced',async t=>{
+ const f=await fixture(t);let refs=0,ends=0;
+ const broken={claimAttempt:f.store.claimAttempt.bind(f.store),finishAttempt:async(key,patch)=>{
+   if(patch.phase?.endsWith('_accepted'))throw Error('synthetic crash');
+   return f.store.finishAttempt(key,patch);
+ }};
+ const extra={relay:announcementRelay(),hangup:async()=>ends++};
+ assert.equal((await controller(broken,async()=>refs++,extra)(greetingInput)).status,'transfer_uncertain');
+ await controller(await f.build(),async()=>refs++,extra)(greetingInput);
+ await controller(await f.build(),async()=>refs++,extra)(input);
+ assert.equal(refs,1);assert.equal(ends,0);
+});
+test('server watchdog has no transfer bypass and uses the normal controller authority',async()=>{
+ const {readFile}=await import('node:fs/promises');const source=await readFile(new URL('../server.js',import.meta.url),'utf8');
+ const watchdog=source.slice(source.indexOf('let fallbackStarted = false;'),source.indexOf('ws.on("open"'));
+ assert.match(watchdog,/await guardedTransfer\(/);assert.match(watchdog,/kind: "greeting_fallback"/);
+ assert.doesNotMatch(watchdog,/warmTransfer\.(start|failed)|referRealtimeCall\(|hangupRealtimeCall\(/);
+ assert.equal((source.match(/referRealtimeCall\(/g)||[]).length,1,'REFER is injected only into the shared controller');
+});

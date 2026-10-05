@@ -512,6 +512,7 @@ const warmTransfer = createWarmTransfer({
 const guardedTransfer = createTransferController({
   store: state,
   relay: warmTransfer,
+  hangup: ({ callId }) => hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId }),
   refer: ({ targetUri, callId }) => referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri }),
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
@@ -1174,30 +1175,16 @@ async function attachSideband({
       greetingTurns.release("greeting_fallback");
       fallbackStarted = true;
       send(ws, { type: "response.cancel" });
-      let leadSaved = false;
-      try {
-        await executeTool({ name: "capture_lead", args: { notes: "Greeting audio unavailable; follow-up needed." }, callId, callerNumber, tenant, syncCrm: false });
-        leadSaved = true;
-      } catch { voiceLog("greeting.lead_save_failed"); }
-      try {
-        if (warmTransfer.ready()) {
-          const transfer = await warmTransfer.start({ callId, tenant, leadSaved, kind: "greeting_fallback" });
-          try { await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: transfer.targetUri }); }
-          catch { await warmTransfer.failed(transfer.id); throw new Error("fallback_refer_failed"); }
-          ws.close();
-          return "twilio_announcement_requested";
-        }
-        const target = humanTransferTarget(tenant);
-        if (!/^\+[1-9]\d{7,14}$/.test(target)) throw new Error("no_fallback_target");
-        await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: `tel:${target}` });
-        ws.close();
-        return "legacy_human_transfer_requested";
-      } catch {
-        // Last resort: terminate a failed silent session instead of leaving it open.
-        try { await hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId }); }
-        finally { ws.close(); }
-        return "call_ended_no_audio";
-      }
+      // Share the same durable tenant/call claim as transfer_to_human. A
+      // timeout or conflicting owner must never launch a competing fallback.
+      const result = await guardedTransfer({
+        callId, tenant, target: humanTransferTarget(tenant), kind: "greeting_fallback",
+        prepare: () => executeTool({ name: "capture_lead", args: { notes: "Greeting audio unavailable; follow-up needed." }, callId, callerNumber, tenant, syncCrm: false }),
+      });
+      ws.close();
+      if (result.status === "announcement_started") return "twilio_announcement_requested";
+      if (result.status === "legacy_referred") return "legacy_human_transfer_requested";
+      return result.status || "transfer_uncertain";
     },
   });
 

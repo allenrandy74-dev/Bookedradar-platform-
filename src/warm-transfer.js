@@ -204,7 +204,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
 
 // REFER acceptance is not proof that Twilio reached the relay. Keep call control
 // until the signed entry callback arrives, or invalidate the relay before fallback.
-export function createTransferController({ relay, refer, store, log, timeoutMs = 8000 }) {
+export function createTransferController({ relay, refer, hangup, store, log, timeoutMs = 8000 }) {
   const calls = new Map();
   const stepTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, 8000) : 8000;
   async function bounded(work, { onTimeout } = {}) {
@@ -220,8 +220,10 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
       })]);
     } finally { clearTimeout(timer); }
   }
-  async function run({ callId, tenant, target, prepare, beforeRefer }, key, claimToken, intent) {
+  async function run({ callId, tenant, target, prepare, beforeRefer, kind }, key, claimToken, intent) {
     let persistenceFailed = false;
+    const greetingFallback = kind === 'greeting_fallback';
+    const relayStatus = greetingFallback ? 'announcement_started' : 'screening_started';
     async function persistedRefer(targetUri, phase, signal) {
       try { await store.finishAttempt(key, { ...intent, claimToken, status: 'pending', phase, targetUri }); }
       catch { persistenceFailed = true; throw new Error('transfer_persistence_uncertain'); }
@@ -251,17 +253,23 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
       } catch { emit('failed', { reason: 'late_relay_cleanup_uncertain' }); }
     }
     try {
-      if (!/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
+      if (!greetingFallback && !/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
       const check = relay.preflight();
-      emit('preflight', { ...check, fallback_ready: true });
-      lead = await bounded(prepare);
-      leadSaved = true;
+      emit('preflight', { ...check, fallback_ready: /^\+[1-9]\d{7,14}$/.test(target || '') });
+      try {
+        lead = await bounded(prepare);
+        leadSaved = true;
+      } catch (error) {
+        if (!greetingFallback) throw error;
+        // The announcement has a truthful unsaved-lead version as well.
+        emit('lead_save_failed');
+      }
       reason = check.reason;
       if (check.ready) {
         reason = 'relay_start_failed';
         transfer = await bounded(async signal => {
           try {
-            const ticket = await relay.start({ callId, tenant, target, lead, leadSaved, signal });
+            const ticket = await relay.start({ callId, tenant, target, lead, leadSaved, kind, signal });
             if (startTimedOut) await cleanupLateTicket(ticket);
             return ticket;
           } catch (error) {
@@ -276,7 +284,7 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
         await bounded(signal => persistedRefer(transfer.targetUri, 'relay_refer_intent', signal));
         emit('relay_referred');
         if (await bounded(signal => relay.waitForEntry(transfer.id, Math.max(100, timeoutMs - 100), { signal })) === true) {
-          return { ok: true, transferred: true, lead_saved: true, status: 'screening_started', transferId: transfer.id };
+          return { ok: true, transferred: true, lead_saved: leadSaved, status: relayStatus, transferId: transfer.id };
         }
         reason = 'relay_entry_timeout';
       }
@@ -294,10 +302,23 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
       try {
         const cancelled = await bounded(signal => relay.cancelPending(transfer.id, { signal }));
         if (cancelled === false) {
-          return { ok: true, transferred: true, lead_saved: leadSaved, status: 'screening_started', transferId: transfer.id };
+          return { ok: true, transferred: true, lead_saved: leadSaved, status: relayStatus, transferId: transfer.id };
         }
         if (cancelled !== true) return uncertain('relay_cancellation_uncertain');
       } catch { return uncertain('relay_cancellation_uncertain'); }
+    }
+    // Only the claimed owner, with no possible live relay, may end a silent
+    // greeting with no usable human destination. Replays cannot repeat this I/O.
+    if (greetingFallback && !/^\+[1-9]\d{7,14}$/.test(target || '')) {
+      if (!hangup) return uncertain('greeting_hangup_unavailable');
+      try {
+        await bounded(async signal => {
+          await store.finishAttempt(key, { ...intent, claimToken, status: 'pending', phase: 'hangup_intent' });
+          signal.throwIfAborted();
+          await hangup({ callId });
+        });
+        return { ok: true, transferred: false, lead_saved: leadSaved, status: 'call_ended_no_audio' };
+      } catch { return uncertain('greeting_hangup_uncertain'); }
     }
     // The companion owns its bounded SMS request and fixed ten-second window.
     // Do not apply the eight-second call-control timeout to that window.
@@ -312,24 +333,26 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
       return { ok: true, transferred: true, lead_saved: leadSaved, status: 'legacy_referred' };
     } catch {
       emit('failed', { reason: 'legacy_refer_failed' });
-      return { ok: false, transferred: false, lead_saved: leadSaved, reason: 'legacy_refer_failed' };
+      return { ok: false, transferred: false, lead_saved: leadSaved, status: 'transfer_uncertain', reason: 'legacy_refer_failed' };
     }
   }
   return options => {
-    const { callId, tenant, target } = options;
+    const { callId, tenant } = options;
+    const kind = options.kind ?? 'transfer';
+    const target = kind === 'greeting_fallback' && !options.target ? 'unavailable' : options.target;
     const unsupported = reason => ({ ok: false, transferred: false, lead_saved: false, status: 'transfer_uncertain', reason });
     if (!store?.claimAttempt || !store?.finishAttempt) return Promise.resolve(unsupported('durable_transfer_store_required'));
-    if (typeof callId !== 'string' || !callId || typeof tenant?.tenantId !== 'string' || !tenant.tenantId || typeof target !== 'string' || !/^\+[1-9]\d{7,14}$/.test(target || '')) {
+    if (typeof callId !== 'string' || !callId || typeof tenant?.tenantId !== 'string' || !tenant.tenantId || typeof target !== 'string' || !['transfer', 'greeting_fallback'].includes(kind) || (kind !== 'greeting_fallback' && !/^\+[1-9]\d{7,14}$/.test(target || ''))) {
       return Promise.resolve(unsupported('invalid_transfer_identity'));
     }
     // Bind the operation to the same snapshot as its durable claim, even if
     // caller-owned options are mutated while the store acknowledgment is pending.
-    const snapshot = { ...options, callId, target, tenant: { ...tenant } };
+    const snapshot = { ...options, callId, target, kind, tenant: { ...tenant } };
     const key = 'transfer:' + crypto.createHash('sha256').update(JSON.stringify([tenant.tenantId, callId])).digest('hex');
-    const intent = { tenantId: tenant.tenantId, callId, target, kind: 'transfer', fingerprint: target };
+    const intent = { tenantId: tenant.tenantId, callId, target, kind, fingerprint: target };
     if (calls.has(key)) {
       const existing = calls.get(key);
-      return existing.target === target ? existing.work : Promise.resolve(unsupported('transfer_intent_conflict'));
+      return existing.target === target && existing.kind === kind ? existing.work : Promise.resolve(unsupported('transfer_intent_conflict'));
     }
     const work = (async () => {
       try {
@@ -346,7 +369,7 @@ export function createTransferController({ relay, refer, store, log, timeoutMs =
         return unsupported(/conflict/.test(error?.message || '') ? 'transfer_intent_conflict' : 'transfer_persistence_uncertain');
       }
     })();
-    calls.set(key, { target, work });
+    calls.set(key, { target, kind, work });
     work.finally(() => {
       const timer = setTimeout(() => { if (calls.get(key)?.work === work) calls.delete(key); }, 60000);
       timer.unref?.();
