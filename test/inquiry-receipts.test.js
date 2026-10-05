@@ -8,7 +8,7 @@ import { PostgresWebhookStore } from '../src/postgres-state-store.js';
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 async function fixture(version, options = {}) {
   const source = await fs.readFile(new URL('../server.js', import.meta.url), 'utf8');
-  const marker = 'app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {';
+  const marker = 'routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {';
   const start = source.indexOf(marker) + marker.length;
   assert.ok(start >= marker.length);
   const body = source.slice(start, source.indexOf('\n});', start));

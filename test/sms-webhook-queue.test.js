@@ -1,3 +1,4 @@
+import { trackedRoutes } from '../src/tracked-routes.js';
 import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ import { queueSmsReply, persistSmsReply } from '../src/sms-reply-queue.js';
 // server.js startup tasks, load real credentials or contact external providers.
 test('signed inbound HTTP webhook queues once, rejects impostors and preserves STOP/HELP',async()=>{
   const source=await fs.readFile(new URL('../server.js',import.meta.url),'utf8');
-  const route=source.slice(source.indexOf('app.post("/twilio/sms"'),source.indexOf('app.get("/api/v1/actions/due"'));
+  const route=source.slice(source.indexOf('routes.post("/twilio/sms"'),source.indexOf('routes.get("/api/v1/actions/due"'));
   const raw=new RecoveryStore('/tmp/sms-webhook-unused.json');useJsonMemoryView(raw);raw.persist=async()=>{};
   const tenant={tenantId:'synthetic',commercial:{dispatchMode:'live'},features:{twoWaySms:true},integrations:{sms:{enabled:true,type:'twilio',accountSid:'AC'+'1'.repeat(32),authToken:'synthetic-only',fromNumber:'+14095550101'}}};
   const engine=new RecoveryEngine({store:raw,tenant});let serial=Promise.resolve(),generated=0,sends=0;
@@ -23,7 +24,7 @@ test('signed inbound HTTP webhook queues once, rejects impostors and preserves S
   const app=express(),server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const base=`http://127.0.0.1:${server.address().port}`,url=base+'/twilio/sms?tenant=synthetic';
   const prior=process.env.DISPATCH_ENABLED;process.env.DISPATCH_ENABLED='true';
-  const deps={app,express,registry:{get:id=>id===tenant.tenantId?tenant:null},tenantSecret:()=>'',SMS_PUBLIC_BASE_URL:base,VOICE_PUBLIC_BASE_URL:'',validTwilioSignature,isOptOutText,isSmsControlText,engineFor:()=>engine,
+  const deps={routes:trackedRoutes(app),express,registry:{get:id=>id===tenant.tenantId?tenant:null},tenantSecret:()=>'',SMS_PUBLIC_BASE_URL:base,VOICE_PUBLIC_BASE_URL:'',validTwilioSignature,isOptOutText,isSmsControlText,engineFor:()=>engine,
     latestOpenOpportunityForContact:async(t,k)=>Object.values(raw.data.opportunities).find(o=>o.tenantId===t&&o.contactKey===k&&o.status!=='closed'),
     dispatcherFor:()=>({adapters:{sms:{send:async()=>{sends++;throw Error('direct send forbidden');}}}}),smsConversationEnabled,
     recoveryStore:{forTenant:id=>id===tenant.tenantId?store:null},openai:{responses:{create:async()=>{generated++;return {output_text:'The team will confirm your preferred time.'};}}},SMS_RESPONSE_MODEL:'synthetic',generateSmsReply,queueSmsReply,maskPhone:()=>'',console:{log(){},error(){}}};

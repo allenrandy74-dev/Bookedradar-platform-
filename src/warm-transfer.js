@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import express from 'express';
+import { trackedRoutes } from './tracked-routes.js';
 
 const xml = value => String(value ?? '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
 const response = body => `<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`;
@@ -25,7 +26,7 @@ export function whisperText(tenant, lead = {}) {
     'Press 1 to accept the call. Press any other key to decline.';
 }
 
-export function createWarmTransfer({ store, registry, config, log, now = Date.now }) {
+export function createWarmTransfer({ store, registry, config, log, now = Date.now, trackWork = (_kind, run) => run() }) {
   const locks = new Map();
   const revoked = new Set();
   async function serialized(id, fn) {
@@ -85,6 +86,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     if (record) await emit(record, 'failed', { status: 'failed' });
   }
   const router = express.Router();
+  const routes = trackedRoutes(router, trackWork);
   router.use(express.urlencoded({ extended: false, limit: '32kb' }));
   router.use((req, res, next) => {
     if (!ready()) return res.sendStatus(503);
@@ -94,7 +96,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     })) return res.sendStatus(403);
     next();
   });
-  router.post('/entry', async (req, res) => {
+  routes.post('/entry', async (req, res) => {
     const match = String(req.body.To || '').match(/^sips?:br-([a-f0-9]{32})-([a-f0-9]{48})@/);
     if (!match || !sidValid(req.body.CallSid)) return res.sendStatus(403);
     await serialized(match[1], async () => {
@@ -121,7 +123,7 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
       res.type('text/xml').send(body);
     });
   });
-  router.post('/:id/:action', async (req, res) => serialized(req.params.id, async () => {
+  routes.post('/:id/:action', async (req, res) => serialized(req.params.id, async () => {
     let record = await store.getCall(req.params.id);
     if (!record || record.expiresAt < now()) return res.sendStatus(403);
     const action = req.params.action;
@@ -204,14 +206,14 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
 
 // REFER acceptance is not proof that Twilio reached the relay. Keep call control
 // until the signed entry callback arrives, or invalidate the relay before fallback.
-export function createTransferController({ relay, refer, hangup, store, log, timeoutMs = 8000 }) {
+export function createTransferController({ relay, refer, hangup, store, log, timeoutMs = 8000, trackWork = (_kind, run) => run() }) {
   const calls = new Map();
   const stepTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, 8000) : 8000;
   async function bounded(work, { onTimeout } = {}) {
     let timer;
     const abort = new AbortController();
     try {
-      return await Promise.race([Promise.resolve().then(() => work(abort.signal)), new Promise((_, reject) => {
+      return await Promise.race([trackWork('transfer_step', () => Promise.resolve().then(() => work(abort.signal))), new Promise((_, reject) => {
         timer = setTimeout(() => {
           onTimeout?.();
           abort.abort();

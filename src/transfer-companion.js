@@ -20,13 +20,13 @@ export function transferSummary(tenant, lead = {}, callerNumber = '') {
 // This is an internal human handoff notification, independent of customer campaigns.
 // Do not retry ambiguous SMS requests: a timeout must not produce duplicate texts.
 export function createTransferCompanion({ config, store, log, fetchImpl = fetch,
-  schedule = setTimeout, cancel = clearTimeout, now = () => performance.now(), smsTimeoutMs = 8000 }) {
+  schedule = setTimeout, cancel = clearTimeout, now = () => performance.now(), smsTimeoutMs = 8000, trackWork = (_kind, run) => run() }) {
   const persistenceTimeoutMs = Number.isFinite(smsTimeoutMs) && smsTimeoutMs > 0 ? Math.min(smsTimeoutMs, 8000) : 8000;
   async function persistBounded(work) {
     let timer;
     try {
       // Race the acknowledgment only. A late claim never resumes the sender.
-      return await Promise.race([Promise.resolve().then(work), new Promise((_, reject) => {
+      return await Promise.race([trackWork('transfer_sms_persistence', () => Promise.resolve().then(work)), new Promise((_, reject) => {
         timer = schedule(() => reject(new Error('sms_persistence_timeout')), persistenceTimeoutMs);
       })]);
     } finally { if (timer !== undefined) cancel(timer); }
@@ -65,7 +65,7 @@ export function createTransferCompanion({ config, store, log, fetchImpl = fetch,
     try {
       if (!configured(requestConfig)) { reason = 'sms_not_configured'; throw new Error(reason); }
       receipt = await Promise.race([
-        (async () => {
+        trackWork('transfer_sms_provider', async () => {
           const response = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(requestConfig.accountSid)}/Messages.json`, {
             method: 'POST', signal: abort.signal,
             headers: { Authorization: `Basic ${Buffer.from(`${requestConfig.accountSid}:${requestConfig.authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -75,7 +75,7 @@ export function createTransferCompanion({ config, store, log, fetchImpl = fetch,
           const result = await response.json();
           if (!/^SM[\da-f]{32}$/i.test(result.sid || '') || !['accepted', 'queued', 'sending', 'sent', 'delivered'].includes(result.status)) throw new Error('sms_request_failed');
           return { status: 'accepted', providerId: result.sid, acceptance: 'provider_accepted' };
-        })(),
+        }),
         new Promise((_, reject) => { timeout = schedule(() => {
           reason = 'sms_request_timeout'; abort.abort(); reject(new Error(reason));
         }, smsTimeoutMs); }),

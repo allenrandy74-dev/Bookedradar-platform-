@@ -69,7 +69,7 @@ test('dispatcher uses persisted reply rather than an unknown-template fallback',
 
 test('route retains STOP/control handling before queue and has no direct send',async()=>{
   const source=await fs.readFile(new URL('../server.js',import.meta.url),'utf8');
-  const route=source.slice(source.indexOf('app.post("/twilio/sms"'),source.indexOf('app.get("/api/v1/actions/due"'));
+  const route=source.slice(source.indexOf('routes.post("/twilio/sms"'),source.indexOf('routes.get("/api/v1/actions/due"'));
   assert.ok(route.indexOf('isOptOutText(text)')<route.indexOf('queueSmsReply({'));
   assert.ok(route.indexOf('isSmsControlText(text)')<route.indexOf('queueSmsReply({'));
   assert.doesNotMatch(route,/adapters\.sms\.send/);

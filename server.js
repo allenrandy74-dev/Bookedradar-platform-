@@ -1,5 +1,7 @@
 import { createPostSaveResponse } from "./src/post-save-response.js";
 import { createCallLifecycle } from "./src/call-lifecycle.js";
+import { trackedRoutes } from "./src/tracked-routes.js";
+import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import path from "node:path";
 import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from "./src/greeting-watchdog.js";
@@ -237,7 +239,17 @@ const postgresStartupRestoreDrill = await runStartupPostgresRestoreDrill({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 
+const callLifecycle = createCallLifecycle({
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
+  identity: { instance_id: process.env.RENDER_INSTANCE_ID, deploy_id: process.env.RENDER_DEPLOY_ID,
+    commit_id: process.env.RENDER_GIT_COMMIT, boot_id: randomUUID() },
+  finalize: () => postgresStores?.close(),
+  exit: code => process.exit(code),
+});
+const trackWork = (kind, operation) => callLifecycle.track(kind, operation);
+
 const app = express();
+const routes = trackedRoutes(app, trackWork);
 app.disable("x-powered-by");
 
 function securityHeaders(_req, res, next) {
@@ -381,8 +393,14 @@ const opsIncidentStore = postgresStores
   ? new PostgresOpsIncidentStore(postgresStores.pool)
   : null;
 let opsAlertCheckRunning = false;
+let opsInitialTimer = null, opsIntervalTimer = null;
 
-async function runOpsAlertCheck() {
+function runOpsAlertCheck() {
+  if (callLifecycle.isDraining()) return Promise.resolve();
+  return trackWork("ops_alert_check", performOpsAlertCheck);
+}
+
+async function performOpsAlertCheck() {
   if (
     OPS_ALERTS_ENABLED.toLowerCase() !== "true" ||
     !opsIncidentStore ||
@@ -396,6 +414,7 @@ async function runOpsAlertCheck() {
     const sinceMs = Date.now() - windowMinutes * 60 * 1000;
 
     for (const tenant of registry.list()) {
+      if (callLifecycle.isDraining()) break;
       const scopeKey = `tenant:${tenant.tenantId}`;
       const summary = await callHistory.operationalSummary({
         tenantId: tenant.tenantId,
@@ -457,8 +476,10 @@ async function runOpsAlertCheck() {
 
 if (OPS_ALERTS_ENABLED.toLowerCase() === "true") {
   const intervalMs = Math.min(Math.max(Number(OPS_ALERT_INTERVAL_MS) || 60000, 30000), 300000);
-  setTimeout(() => runOpsAlertCheck().catch(() => {}), 5000).unref();
-  setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs).unref();
+  opsInitialTimer = setTimeout(() => runOpsAlertCheck().catch(() => {}), 5000);
+  opsInitialTimer.unref();
+  opsIntervalTimer = setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs);
+  opsIntervalTimer.unref();
 }
 
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
@@ -466,6 +487,7 @@ let billing = null;
 try {
 billing = await createBilling({
   storeFactory: postgresStores?.billingStore,
+  trackWork,
   tenantExists: tenantId => Boolean(registry.get(tenantId)),
   tenantProfile: tenantId => registry.get(tenantId)?.commercial?.serviceProfile || "",
   defaultStateFile: path.join(
@@ -478,7 +500,7 @@ billing = await createBilling({
   console.error(JSON.stringify({ event: "billing.startup_failed", mode: billingMode,
     error: /^[a-z_]+$/.test(error?.message || "") ? error.message : "billing_initialization_failed" }));
 }
-app.post('/stripe/webhook', (req, res) => billing
+routes.post('/stripe/webhook', (req, res) => billing
   ? billing.webhook(req, res)
   : res.status(503).json({ ok: false, error: 'billing_unavailable' }));
 if (billing) app.use('/api/v1/billing', billing.api);
@@ -491,7 +513,7 @@ console.log(JSON.stringify({
   configured: billing?.configuredPackagePrices || null,
   validated: billing?.validatedPackagePrices || null,
 }));
-app.get('/billing/return', (req, res) => {
+routes.get('/billing/return', (req, res) => {
   const message = req.query.result === 'cancelled'
     ? 'Checkout was cancelled. No payment was submitted through this Checkout session.'
     : req.query.result === 'submitted'
@@ -503,13 +525,14 @@ app.get('/billing/return', (req, res) => {
 const transferStore = postgresStores?.transfers || new JsonStateStore(path.join(path.dirname(STATE_FILE), "voice-transfers.json"));
 await transferStore.load();
 const warmTransfer = createWarmTransfer({
-  store: transferStore, registry,
+  store: transferStore, registry, trackWork,
   config: { enabled: WARM_TRANSFER_ENABLED === "true", domain: WARM_TRANSFER_SIP_DOMAIN,
     baseUrl: VOICE_PUBLIC_BASE_URL, accountSid: TWILIO_ACCOUNT_SID,
     authToken: TWILIO_AUTH_TOKEN, callerId: TWILIO_VOICE_CALLER_ID },
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const guardedTransfer = createTransferController({
+  trackWork,
   store: state,
   relay: warmTransfer,
   hangup: ({ callId }) => hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId }),
@@ -517,6 +540,7 @@ const guardedTransfer = createTransferController({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const transferCompanion = createTransferCompanion({
+  trackWork,
   store: state,
   config: { accountSid: TWILIO_ACCOUNT_SID, authToken: TWILIO_AUTH_TOKEN,
     fromNumber: TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID },
@@ -827,14 +851,14 @@ function recordCallMilestone(callId, event, fields = {}) {
     fields.latencyMs ?? fields.elapsed_ms ?? fields.acceptance_ms;
   const reason =
     fields.reason ?? fields.outcome ?? fields.code ?? "";
-  void callHistory.mark(callId, event, {
+  void trackWork("call_milestone", () => callHistory.mark(callId, event, {
     at: Date.now(),
     ...(Number.isFinite(Number(latencyCandidate))
       ? { latencyMs: Number(latencyCandidate) }
       : {}),
     ...(reason ? { reason: String(reason).slice(0, 160) } : {}),
     ...(fields.ok === false ? { ok: false } : {}),
-  }).catch(() => {
+  })).catch(() => {
     console.error(JSON.stringify({
       event: "ops.milestone_write_failed",
       call_id: callId,
@@ -1127,15 +1151,6 @@ async function executeTool({
   return { ok: false, reason: `unknown_tool:${name}` };
 }
 
-const callLifecycle = createCallLifecycle({
-  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
-  exit: code => {
-    if (!postgresStores) return process.exit(code);
-    postgresStores.close()
-      .then(() => process.exit(code))
-      .catch(() => process.exit(code || 1));
-  },
-});
 
 async function attachSideband({
   callId,
@@ -1148,6 +1163,13 @@ async function attachSideband({
   );
 
   const handledToolCalls = new Set();
+  const pendingSidebandWork = new Set();
+  function trackSidebandWork(kind, operation) {
+    const work = trackWork(kind, operation);
+    pendingSidebandWork.add(work);
+    Promise.resolve(work).then(() => pendingSidebandWork.delete(work), () => pendingSidebandWork.delete(work));
+    return work;
+  }
   const trackedVoiceMilestones = new Set([
     "greeting.first_audio",
     "greeting.failed",
@@ -1171,7 +1193,7 @@ async function attachSideband({
   let fallbackStarted = false;
   const greeting = createGreetingWatchdog({
     businessName: tenant.businessName, send: event => send(ws, event), log: voiceLog,
-    fallback: async () => {
+    fallback: () => trackSidebandWork("greeting_fallback", async () => {
       greetingTurns.release("greeting_fallback");
       fallbackStarted = true;
       send(ws, { type: "response.cancel" });
@@ -1185,7 +1207,7 @@ async function attachSideband({
       if (result.status === "announcement_started") return "twilio_announcement_requested";
       if (result.status === "legacy_referred") return "legacy_human_transfer_requested";
       return result.status || "transfer_uncertain";
-    },
+    }),
   });
 
   ws.on("open", () => {
@@ -1195,137 +1217,141 @@ async function attachSideband({
     greeting.open();
   });
 
-  ws.on("message", async (raw) => {
-    let event;
-    try {
-      event = JSON.parse(raw.toString());
-    } catch {
-      return;
-    }
-
-    if (fallbackStarted) return;
-    openingAudio.event(event);
-    greetingTurns.event(event);
-    greeting.event(event);
-    transferHold.event(event);
-    conversationOutputGuard.event(event);
-    postSaveResponse.event(event);
-
-
-    if (event.type === "response.output_audio_transcript.done") {
-      if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
-        await callHistory.addTurn(callId, {
-          speaker: "assistant",
-          text: event.transcript || "",
-          itemId: event.item_id || "",
-        });
-      }
-      if (logTranscripts) {
-        console.log(JSON.stringify({
-          event: "assistant.transcript",
-          tenant_id: tenant.tenantId,
-          call_id: callId,
-          text: event.transcript || "",
-        }));
-      }
-      return;
-    }
-
-    if (event.type === "conversation.item.input_audio_transcription.completed") {
-      if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
-        await callHistory.addTurn(callId, {
-          speaker: "caller",
-          text: event.transcript || "",
-          itemId: event.item_id || "",
-        });
-      }
-      if (logTranscripts) {
-        console.log(JSON.stringify({
-          event: "caller.transcript",
-          tenant_id: tenant.tenantId,
-          call_id: callId,
-          text: event.transcript || "",
-        }));
-      }
-      return;
-    }
-
-    if (
-      event.type === "response.output_item.done" &&
-      event.item?.type === "function_call"
-    ) {
-      const toolCall = event.item;
-      const dedupeKey = toolCall.call_id || toolCall.id;
-      if (dedupeKey && handledToolCalls.has(dedupeKey)) return;
-      if (dedupeKey) handledToolCalls.add(dedupeKey);
-
-      let args = {};
+  ws.on("message", (raw) => {
+    trackSidebandWork("sideband_message", async () => {
+      let event;
       try {
-        args = JSON.parse(toolCall.arguments || "{}");
-      } catch {}
+        event = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
 
-      let output;
-      if (toolCall.name === "transfer_to_human") greetingTurns.release("human_transfer");
-      try {
-        output = await executeTool({
-          name: toolCall.name,
-          toolCallId: dedupeKey,
-          args,
-          callId,
-          callerNumber,
-          tenant,
-          transferHold,
+      if (fallbackStarted) return;
+      openingAudio.event(event);
+      greetingTurns.event(event);
+      greeting.event(event);
+      transferHold.event(event);
+      conversationOutputGuard.event(event);
+      postSaveResponse.event(event);
+
+
+      if (event.type === "response.output_audio_transcript.done") {
+        if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
+          await callHistory.addTurn(callId, {
+            speaker: "assistant",
+            text: event.transcript || "",
+            itemId: event.item_id || "",
+          });
+        }
+        if (logTranscripts) {
+          console.log(JSON.stringify({
+            event: "assistant.transcript",
+            tenant_id: tenant.tenantId,
+            call_id: callId,
+            text: event.transcript || "",
+          }));
+        }
+        return;
+      }
+
+      if (event.type === "conversation.item.input_audio_transcription.completed") {
+        if (competitiveFeaturesForTenant(tenant).transcriptHistory) {
+          await callHistory.addTurn(callId, {
+            speaker: "caller",
+            text: event.transcript || "",
+            itemId: event.item_id || "",
+          });
+        }
+        if (logTranscripts) {
+          console.log(JSON.stringify({
+            event: "caller.transcript",
+            tenant_id: tenant.tenantId,
+            call_id: callId,
+            text: event.transcript || "",
+          }));
+        }
+        return;
+      }
+
+      if (
+        event.type === "response.output_item.done" &&
+        event.item?.type === "function_call"
+      ) {
+        const toolCall = event.item;
+        const dedupeKey = toolCall.call_id || toolCall.id;
+        if (dedupeKey && handledToolCalls.has(dedupeKey)) return;
+        if (dedupeKey) handledToolCalls.add(dedupeKey);
+
+        let args = {};
+        try {
+          args = JSON.parse(toolCall.arguments || "{}");
+        } catch {}
+
+        let output;
+        if (toolCall.name === "transfer_to_human") greetingTurns.release("human_transfer");
+        try {
+          output = await executeTool({
+            name: toolCall.name,
+            toolCallId: dedupeKey,
+            args,
+            callId,
+            callerNumber,
+            tenant,
+            transferHold,
+          });
+        } catch (error) {
+          console.error(JSON.stringify({
+            event: "tool.error",
+            tenant_id: tenant.tenantId,
+            call_id: callId,
+            tool: toolCall.name,
+            message: "voice_tool_execution_failed",
+          }));
+          output = { ok: false, error: "tool_execution_failed" };
+        }
+
+        if (toolCall.name === "transfer_to_human" && output.transferred) {
+          transferHold.stop();
+          greeting.stop();
+          try { ws.close(); } catch {}
+          return;
+        }
+        if (toolCall.name === "end_call" && output.ended) {
+          greeting.stop();
+          try { ws.close(); } catch {}
+          return;
+        }
+        if (toolCall.name === "transfer_to_human") transferHold.stop({ restore: true });
+
+        send(ws, {
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: toolCall.call_id,
+            output: JSON.stringify(output),
+          },
         });
-      } catch (error) {
+        if (toolCall.name === "capture_lead") postSaveResponse.request(output?.captured === true);
+        else send(ws, { type: "response.create" });
+        return;
+      }
+
+      if (event.type === "error") {
+        recordCallMilestone(callId, "realtime.error", {
+          ok: false,
+          reason: event?.error?.code || "unknown",
+        });
         console.error(JSON.stringify({
-          event: "tool.error",
+          event: "realtime.error",
           tenant_id: tenant.tenantId,
           call_id: callId,
-          tool: toolCall.name,
-          message: "voice_tool_execution_failed",
+          detail: "realtime_request_failed",
+          code: event?.error?.code || "unknown",
         }));
-        output = { ok: false, error: "tool_execution_failed" };
       }
-
-      if (toolCall.name === "transfer_to_human" && output.transferred) {
-        transferHold.stop();
-        greeting.stop();
-        try { ws.close(); } catch {}
-        return;
-      }
-      if (toolCall.name === "end_call" && output.ended) {
-        greeting.stop();
-        try { ws.close(); } catch {}
-        return;
-      }
-      if (toolCall.name === "transfer_to_human") transferHold.stop({ restore: true });
-
-      send(ws, {
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: toolCall.call_id,
-          output: JSON.stringify(output),
-        },
-      });
-      if (toolCall.name === "capture_lead") postSaveResponse.request(output?.captured === true);
-      else send(ws, { type: "response.create" });
-      return;
-    }
-
-    if (event.type === "error") {
-      recordCallMilestone(callId, "realtime.error", {
-        ok: false,
-        reason: event?.error?.code || "unknown",
-      });
-      console.error(JSON.stringify({
-        event: "realtime.error",
-        tenant_id: tenant.tenantId,
-        call_id: callId,
-        detail: "realtime_request_failed",
-        code: event?.error?.code || "unknown",
-      }));
-    }
+    }).catch(() => {
+      console.error(JSON.stringify({ event: "sideband.handler_failed", call_id: callId }));
+    });
   });
 
   ws.on("error", (error) => {
@@ -1340,9 +1366,9 @@ async function attachSideband({
       message: "websocket_error",
     }));
   });
-  ws.on("close", () => callLifecycle.end(callId));
   ws.on("close", () => {
-    (async () => {
+    trackWork("call_finalization", async () => {
+      await Promise.allSettled([...pendingSidebandWork]);
       const call = await state.getCall(callId);
       const lead = call?.lastLead || null;
       await callHistory.finish(callId, {
@@ -1356,7 +1382,10 @@ async function attachSideband({
           preferredWindow: String(lead.preferred_window || "").slice(0, 180),
         } : null,
       });
-    })().catch(() => {});
+    }).catch(() => {
+      console.error(JSON.stringify({ event: "call.finalization_failed", call_id: callId }));
+    });
+    callLifecycle.end(callId);
     postSaveResponse.stop(); conversationOutputGuard.stop();
     openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop();
   });
@@ -1480,7 +1509,7 @@ async function handleIncomingCall(event) {
 const requireIngest = requireBearer(BOOKEDRADAR_INGEST_TOKEN, "ingest_token");
 const requireAdmin = requireBearer(BOOKEDRADAR_ADMIN_TOKEN, "admin_token");
 
-mountReconciliationRoutes(app, {
+mountReconciliationRoutes(routes, {
   requireAdmin,
   requireTenant,
   storeForTenant: tenantId => typeof recoveryStore.forTenant === "function"
@@ -1488,7 +1517,7 @@ mountReconciliationRoutes(app, {
     : recoveryStore.tenantId === tenantId ? recoveryStore : null,
 });
 
-app.post("/api/v1/events", requireIngest, requireTenant, async (req, res) => {
+routes.post("/api/v1/events", requireIngest, requireTenant, async (req, res) => {
   try {
     const event = req.body || {};
     if (!event.type) {
@@ -1516,7 +1545,7 @@ for (const kind of [
   "earlier-slot",
   "dormant",
 ]) {
-  app.post(`/api/v1/intake/${kind}`, requireIngest, requireTenant, async (req, res) => {
+  routes.post(`/api/v1/intake/${kind}`, requireIngest, requireTenant, async (req, res) => {
     try {
       const event = normalizeIntake(kind, req.body || {});
       const result = await engineFor(req.bookedRadarTenant).ingest(event);
@@ -1530,7 +1559,7 @@ for (const kind of [
   });
 }
 
-app.post("/api/v1/intake/reply", requireIngest, requireTenant, async (req, res) => {
+routes.post("/api/v1/intake/reply", requireIngest, requireTenant, async (req, res) => {
   try {
     const tenant = req.bookedRadarTenant;
     const body = req.body || {};
@@ -1606,7 +1635,7 @@ app.options("/api/v1/public/chat", (req, res) => {
   return tenant ? res.sendStatus(204) : res.sendStatus(403);
 });
 
-app.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res) => {
+routes.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res) => {
   const tenant = webChatCors(req, res);
   if (!tenant) return res.status(403).json({ ok: false, error: "chat_origin_not_allowed" });
   if (!openai) return res.status(503).json({ ok: false, error: "chat_ai_not_configured" });
@@ -1737,7 +1766,7 @@ app.post("/api/v1/public/chat", createRateLimiter({ max: 90 }), async (req, res)
   }
 });
 
-app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), async (req, res) => {
+routes.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), async (req, res) => {
   const emptyTwiml = () => res.type("text/xml").send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   try {
     const tenantId = String(req.query?.tenant || "").trim();
@@ -1847,7 +1876,7 @@ app.post("/twilio/sms", express.urlencoded({ extended: false, limit: "32kb" }), 
   }
 });
 
-app.get("/api/v1/actions/due", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/actions/due", requireAdmin, requireTenant, async (req, res) => {
   try {
     const tenant = req.bookedRadarTenant;
     const now = req.query.now ? new Date(String(req.query.now)) : new Date();
@@ -1872,7 +1901,7 @@ app.get("/api/v1/actions/due", requireAdmin, requireTenant, async (req, res) => 
   }
 });
 
-app.post("/api/v1/actions/:id/complete", requireAdmin, requireTenant, async (req, res) => {
+routes.post("/api/v1/actions/:id/complete", requireAdmin, requireTenant, async (req, res) => {
   try {
     const existing = (await recoveryStore.snapshot()).actions[req.params.id];
     if (!existing || existing.tenantId !== req.bookedRadarTenant.tenantId) {
@@ -1894,7 +1923,7 @@ app.post("/api/v1/actions/:id/complete", requireAdmin, requireTenant, async (req
   }
 });
 
-app.post("/api/v1/opportunities/:id/recovered", requireAdmin, requireTenant, async (req, res) => {
+routes.post("/api/v1/opportunities/:id/recovered", requireAdmin, requireTenant, async (req, res) => {
   try {
     const result = await engineFor(req.bookedRadarTenant).markRecovered(
       req.params.id,
@@ -1912,7 +1941,7 @@ app.post("/api/v1/opportunities/:id/recovered", requireAdmin, requireTenant, asy
   }
 });
 
-app.post("/api/v1/opportunities/:id/revenue", requireAdmin, requireTenant, async (req, res) => {
+routes.post("/api/v1/opportunities/:id/revenue", requireAdmin, requireTenant, async (req, res) => {
   try {
     const amount = Number(req.body?.amount);
     if (!Number.isFinite(amount) || amount < 0) {
@@ -1940,7 +1969,7 @@ app.post("/api/v1/opportunities/:id/revenue", requireAdmin, requireTenant, async
   }
 });
 
-app.post("/api/v1/contacts/:key/opt-out", requireAdmin, requireTenant, async (req, res) => {
+routes.post("/api/v1/contacts/:key/opt-out", requireAdmin, requireTenant, async (req, res) => {
   try {
     const result = await engineFor(req.bookedRadarTenant).ingest({
       idempotencyKey:
@@ -1957,7 +1986,7 @@ app.post("/api/v1/contacts/:key/opt-out", requireAdmin, requireTenant, async (re
   }
 });
 
-app.get("/api/v1/calls", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/calls", requireAdmin, requireTenant, async (req, res) => {
   const calls = await callHistory.list(req.bookedRadarTenant.tenantId, {
     q: req.query.q || "",
     limit: req.query.limit || 50,
@@ -1965,19 +1994,19 @@ app.get("/api/v1/calls", requireAdmin, requireTenant, async (req, res) => {
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, calls });
 });
 
-app.get("/api/v1/calls/:callId", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/calls/:callId", requireAdmin, requireTenant, async (req, res) => {
   const call = await callHistory.get(req.bookedRadarTenant.tenantId, req.params.callId);
   return call
     ? res.json({ ok: true, call })
     : res.status(404).json({ ok: false, error: "call_not_found" });
 });
 
-app.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/actions/failed", requireAdmin, requireTenant, async (req, res) => {
   const actions = await recoveryStore.failedActions(req.bookedRadarTenant.tenantId);
   return res.json({ ok: true, tenantId: req.bookedRadarTenant.tenantId, actions });
 });
 
-app.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, max: 60 }), express.text({ type: "text/plain", limit: "2kb" }), async (req, res) => {
+routes.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, max: 60 }), express.text({ type: "text/plain", limit: "2kb" }), async (req, res) => {
   let input = req.body || {};
   // Native Wix pages send a simple cross-origin beacon without credentials.
   if (typeof input === "string") {
@@ -1990,11 +2019,11 @@ app.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000, ma
   return res.status(202).json({ ok: true });
 });
 
-app.get("/api/v1/growth-metrics", requireAdmin, async (_req, res) => {
+routes.get("/api/v1/growth-metrics", requireAdmin, async (_req, res) => {
   return res.json({ ok: true, ...(await growthMetrics.summary()) });
 });
 
-app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
+routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
   const parsed = normalizeProofPilotInquiry(req.body || {});
   if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
   const crmTenant = registry.get("demo-hvac");
@@ -2064,7 +2093,7 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
   }
 });
 
-app.post("/api/v1/onboarding/prepare", requireAdmin, (req, res) => {
+routes.post("/api/v1/onboarding/prepare", requireAdmin, (req, res) => {
   try {
     const result = prepareOnboardingFromWixSubmission(req.body || {});
     return res.json({ ok: true, result });
@@ -2076,7 +2105,7 @@ app.post("/api/v1/onboarding/prepare", requireAdmin, (req, res) => {
   }
 });
 
-app.post("/api/v1/admin/prune", requireAdmin, async (_req, res) => {
+routes.post("/api/v1/admin/prune", requireAdmin, async (_req, res) => {
   try {
     const result = await recoveryStore.prune({
       eventRetentionDays: Number(RETENTION_DAYS),
@@ -2088,7 +2117,7 @@ app.post("/api/v1/admin/prune", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) => {
+routes.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) => {
   try {
     const tenant = req.bookedRadarTenant;
     const gate = dispatchGate(tenant, { DISPATCH_ENABLED });
@@ -2111,7 +2140,7 @@ app.post("/api/v1/dispatch/run", requireAdmin, requireTenant, async (req, res) =
   }
 });
 
-app.get("/api/v1/customers/search", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/customers/search", requireAdmin, requireTenant, async (req, res) => {
   try {
     const results = await searchCustomers(
       recoveryStore,
@@ -2125,7 +2154,7 @@ app.get("/api/v1/customers/search", requireAdmin, requireTenant, async (req, res
   }
 });
 
-app.get("/api/v1/customer-360", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/customer-360", requireAdmin, requireTenant, async (req, res) => {
   try {
     const profile = await customer360(
       recoveryStore,
@@ -2140,7 +2169,7 @@ app.get("/api/v1/customer-360", requireAdmin, requireTenant, async (req, res) =>
   }
 });
 
-app.get("/api/v1/membership-radar", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/membership-radar", requireAdmin, requireTenant, async (req, res) => {
   try {
     return res.json({
       ok: true,
@@ -2151,7 +2180,7 @@ app.get("/api/v1/membership-radar", requireAdmin, requireTenant, async (req, res
   }
 });
 
-app.get("/api/v1/review-radar", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/review-radar", requireAdmin, requireTenant, async (req, res) => {
   try {
     return res.json({
       ok: true,
@@ -2162,7 +2191,7 @@ app.get("/api/v1/review-radar", requireAdmin, requireTenant, async (req, res) =>
   }
 });
 
-app.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTenant, async (req, res) => {
   try {
     const report = await cancellationBackfillCandidates(
       recoveryStore,
@@ -2177,7 +2206,7 @@ app.get("/api/v1/opportunities/:id/backfill-candidates", requireAdmin, requireTe
   }
 });
 
-app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, res) => {
   try {
     const tenant = req.bookedRadarTenant;
     const config = tenant?.commercial?.proofPilot || {};
@@ -2230,7 +2259,7 @@ app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, r
   }
 });
 
-app.get("/api/v1/deployment-plan", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/deployment-plan", requireAdmin, requireTenant, async (req, res) => {
   try {
     const foundingPartner = String(req.query.founding || "true").toLowerCase() !== "false";
     return res.json({
@@ -2246,7 +2275,7 @@ app.get("/api/v1/deployment-plan", requireAdmin, requireTenant, async (req, res)
   }
 });
 
-app.get("/api/v1/revenue-leaks", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/revenue-leaks", requireAdmin, requireTenant, async (req, res) => {
   try {
     return res.json({
       ok: true,
@@ -2257,7 +2286,7 @@ app.get("/api/v1/revenue-leaks", requireAdmin, requireTenant, async (req, res) =
   }
 });
 
-app.get("/api/v1/owner-brief", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/owner-brief", requireAdmin, requireTenant, async (req, res) => {
   try {
     const callActivity = await callHistory.stats(req.bookedRadarTenant.tenantId);
     return res.json({
@@ -2269,7 +2298,7 @@ app.get("/api/v1/owner-brief", requireAdmin, requireTenant, async (req, res) => 
   }
 });
 
-app.get("/api/v1/opportunities/:id/timeline", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/opportunities/:id/timeline", requireAdmin, requireTenant, async (req, res) => {
   try {
     const result = await opportunityTimeline(
       recoveryStore,
@@ -2284,7 +2313,7 @@ app.get("/api/v1/opportunities/:id/timeline", requireAdmin, requireTenant, async
   }
 });
 
-app.get("/api/v1/radartrust", requireAdmin, requireTenant, async (req, res) => {
+routes.get("/api/v1/radartrust", requireAdmin, requireTenant, async (req, res) => {
   try {
     const callActivity = await callHistory.stats(req.bookedRadarTenant.tenantId);
     return res.json({
@@ -2296,7 +2325,7 @@ app.get("/api/v1/radartrust", requireAdmin, requireTenant, async (req, res) => {
   }
 });
 
-app.get("/api/v1/ops/incidents", requireAdmin, async (_req, res) => {
+routes.get("/api/v1/ops/incidents", requireAdmin, async (_req, res) => {
   try {
     return res.json({
       ok:true,
@@ -2311,7 +2340,7 @@ app.get("/api/v1/ops/incidents", requireAdmin, async (_req, res) => {
   }
 });
 
-app.get("/api/v1/ops/voice-health", requireAdmin, async (req, res) => {
+routes.get("/api/v1/ops/voice-health", requireAdmin, async (req, res) => {
   try {
     const hours = Math.min(Math.max(Number(req.query.hours || 24), 1), 168);
     const tenantId = String(req.query.tenant || "").trim();
@@ -2335,7 +2364,7 @@ app.get("/api/v1/ops/voice-health", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
+routes.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
   try {
     const tenantId = String(req.query.tenant || "").trim();
     const tenant = registry.get(tenantId);
@@ -2411,7 +2440,7 @@ app.get("/api/v1/ops/customer-health", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/v1/radarproof", async (req, res) => {
+routes.get("/api/v1/radarproof", async (req, res) => {
   if (RADARPROOF_PUBLIC.toLowerCase() !== "true") {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     if (!BOOKEDRADAR_ADMIN_TOKEN || token !== BOOKEDRADAR_ADMIN_TOKEN) {
@@ -2441,7 +2470,7 @@ app.use("/onboarding", createPublicOnboardingRouter());
 app.use("/dashboard", express.static("public"));
 app.use("/assets", express.static("public"));
 
-app.get("/health", (_req, res) => {
+routes.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "bookedradar-platform",
@@ -2464,7 +2493,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.get("/ready", requireAdmin, (_req, res) => {
+routes.get("/ready", requireAdmin, (_req, res) => {
   res.json({
     ready: true,
     tenants: registry.list().map((tenant) => ({
@@ -2512,7 +2541,7 @@ app.get("/ready", requireAdmin, (_req, res) => {
   });
 });
 
-app.post("/openai/webhook", async (req, res) => {
+routes.post("/openai/webhook", async (req, res) => {
   if (!voiceEnabled || !openai) {
     return res.status(503).send("Voice service is not enabled");
   }
@@ -2530,31 +2559,44 @@ app.post("/openai/webhook", async (req, res) => {
 
   if (callLifecycle.isDraining()) return res.status(503).send("Service restarting; retry shortly");
 
+  const callId = event.type === "realtime.call.incoming" ? event?.data?.call_id : null;
+  // Register call control before the asynchronous receipt write. A signal during
+  // that write must not produce a successful acknowledgement for an unowned call.
+  if (event.type === "realtime.call.incoming" && !callId) return res.status(400).send("Missing call identity");
+  if (callId && !callLifecycle.begin(callId)) {
+    return callLifecycle.isDraining()
+      ? res.status(503).send("Service restarting; retry shortly")
+      : res.status(503).send("Call control in progress; retry shortly");
+  }
   const webhookId = req.header("webhook-id") || event?.id;
-  if (!(await state.markWebhookOnce(webhookId))) {
+  let firstReceipt;
+  try { firstReceipt = await state.markWebhookOnce(webhookId); }
+  catch (error) { if (callId) callLifecycle.end(callId); throw error; }
+  if (!firstReceipt) {
+    if (callId) callLifecycle.end(callId);
     return res.status(200).send("duplicate ignored");
   }
 
   res.status(200).send("ok");
 
-  if (event.type === "realtime.call.incoming") {
-    const callId = event?.data?.call_id;
-    if (!callLifecycle.begin(callId)) return;
-    handleIncomingCall(event).catch(async (error) => {
-      callLifecycle.end(callId);
-      recordCallMilestone(callId, "call.accept_failed", {
-        ok: false,
-        reason: "incoming_call_failed",
-      });
-      try {
-        await callHistory.finish(callId, { endReason: "incoming_call_failed" });
-      } catch {}
-      console.error(JSON.stringify({
-        event: "incoming_call.failed",
-        call_id: event?.data?.call_id || null,
-        message: String(error?.message || error).slice(0, 400),
-      }));
-    });
+  if (callId) {
+    trackWork("incoming_call", async () => {
+      try { await handleIncomingCall(event); } catch (error) {
+        callLifecycle.end(callId);
+        recordCallMilestone(callId, "call.accept_failed", {
+          ok: false,
+          reason: "incoming_call_failed",
+        });
+        try {
+          await callHistory.finish(callId, { endReason: "incoming_call_failed" });
+        } catch { callLifecycle.fail("call_finalization"); }
+        console.error(JSON.stringify({
+          event: "incoming_call.failed",
+          call_id: event?.data?.call_id || null,
+          message: String(error?.message || error).slice(0, 400),
+        }));
+      }
+    }).catch(() => {});
   }
 });
 
@@ -2634,17 +2676,24 @@ let dispatchTimer = null;
 let dispatchRunning = false;
 const dispatchIntervalSeconds = Number(DISPATCH_INTERVAL_SECONDS || 0);
 
-async function runAutomaticDispatch() {
+function runAutomaticDispatch() {
+  if (callLifecycle.isDraining()) return Promise.resolve();
+  return trackWork("automatic_dispatch", performAutomaticDispatch);
+}
+
+async function performAutomaticDispatch() {
   if (dispatchRunning) return;
   dispatchRunning = true;
   try {
     for (const tenant of registry.list()) {
+      if (callLifecycle.isDraining()) break;
       const gate = dispatchGate(tenant, { DISPATCH_ENABLED });
       if (!gate.armed) continue;
       const { dispatcher } = dispatcherFor(tenant);
       await dispatcher.runOnce({ limit: 50 });
     }
   } catch (error) {
+    callLifecycle.fail("automatic_dispatch");
     console.error(JSON.stringify({
       event: "automatic_dispatch.error",
       message: String(error?.message || error).slice(0, 400),
@@ -2664,15 +2713,20 @@ if (dispatchIntervalSeconds > 0 && String(DISPATCH_ENABLED).trim().toLowerCase()
 }
 
 const server = app.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(JSON.stringify({ event: "server.instance_started", ...callLifecycle.snapshot() }));
   console.log(
     `BookedRadar Platform v2.0 listening on port ${PORT} for ${registry.list().length} tenant(s)`
   );
 });
 
-async function shutdown(signal) {
-  if (dispatchTimer) clearInterval(dispatchTimer);
+function shutdown(signal) {
+  if (callLifecycle.isDraining()) return;
   console.log(JSON.stringify({ event: "server.shutdown", signal }));
-  callLifecycle.shutdown(done => server.close(done));
+  callLifecycle.shutdown(done => server.close(done), () => {
+    if (dispatchTimer) clearInterval(dispatchTimer);
+    if (opsInitialTimer) clearTimeout(opsInitialTimer);
+    if (opsIntervalTimer) clearInterval(opsIntervalTimer);
+  });
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
