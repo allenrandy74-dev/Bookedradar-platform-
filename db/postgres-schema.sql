@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS bookedradar.recovery_events (
   contact_key text,
   occurred_at timestamptz NOT NULL,
   payload jsonb NOT NULL,
-  UNIQUE (idempotency_key)
+  UNIQUE (tenant_id, idempotency_key)
 );
 
 CREATE INDEX IF NOT EXISTS recovery_events_tenant_time_idx
@@ -240,3 +240,15 @@ CREATE TABLE IF NOT EXISTS bookedradar.migration_runs (
   counts jsonb NOT NULL,
   validation jsonb NOT NULL
 );
+
+-- Permanent provider intent/receipt authority. No TTL, cascade or automatic prune.
+-- A pending/unknown intent must never be silently reclaimed after a crash.
+CREATE TABLE IF NOT EXISTS bookedradar.provider_attempt_receipts (
+  attempt_key text PRIMARY KEY,
+  payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+);
+
+-- Upgrade legacy global event-key uniqueness to tenant-scoped uniqueness.
+ALTER TABLE bookedradar.recovery_events DROP CONSTRAINT IF EXISTS recovery_events_idempotency_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS recovery_events_tenant_idempotency_idx
+  ON bookedradar.recovery_events (tenant_id,idempotency_key);

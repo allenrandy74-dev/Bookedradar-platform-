@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPostgresPool } from '../src/postgres-runtime.js';
+import { verifyPostgresReleaseSchema } from '../src/postgres-schema-inspection.js';
 import { verifyValidatedProductionMigration } from '../src/postgres-server-stores.js';
 
 export const LAB_NAME = 'bookedradar-private-voice-lab-20260929';
@@ -14,7 +15,7 @@ const PUBLIC_NUMBERS = ['+14092574186', '+14095477916', '+14092139980', '+140923
 export function validateLabEnvironment(env) {
   if (env.PRIVATE_VOICE_LAB !== 'true' || env.RENDER_SERVICE_NAME !== LAB_NAME) throw new Error('private_lab_service_required');
   const url = new URL(env.DATABASE_URL || '');
-  if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.search || url.hash || (url.port && url.port !== '5432') ||
       url.hostname !== env.PRIVATE_VOICE_LAB_DATABASE_HOST ||
       !/^dpg-[a-z0-9-]+$/.test(url.hostname) || url.pathname !== `/${LAB_DATABASE}`) {
     throw new Error('private_lab_database_required');
@@ -38,6 +39,15 @@ export function validateLabEnvironment(env) {
     if (!env.OPENAI_API_KEY || !env.OPENAI_WEBHOOK_SECRET) throw new Error('private_lab_voice_credentials_required');
   } else if (env.VOICE_ENABLED !== 'false') throw new Error('private_lab_voice_flag_required');
   return numbers;
+}
+
+export function labDatabaseConnectionString(env) {
+  validateLabEnvironment(env);
+  const url = new URL(env.DATABASE_URL);
+  // node-postgres parses connectionString after pool options. Explicitly pin
+  // the URL port so ambient PGPORT cannot redirect preflight or server traffic.
+  url.port = '5432';
+  return url.href;
 }
 
 export function protectedDemoNumbers(sources) {
@@ -87,8 +97,17 @@ export async function validateExistingLabDatabase(pool) {
   } finally {client.release();}
 }
 
+// Migration provenance alone does not prove compatibility with this release.
+// Both checks are read-only; a failure must occur before server import/listen.
+export async function validateLabReleaseReadiness(pool) {
+  const fingerprint = await validateExistingLabDatabase(pool);
+  await verifyPostgresReleaseSchema(pool);
+  return fingerprint;
+}
+
 export async function main(env = process.env) {
   const numbers=validateLabEnvironment(env);
+  const connectionString=labDatabaseConnectionString(env);
   const sources = await Promise.all(CRAFTS.map(async craft =>
     JSON.parse(await fs.readFile(new URL(`../config/tenants/demo-${craft}.json`,import.meta.url),'utf8'))));
   assertNoProtectedDemoRoutes(numbers, sources);
@@ -98,16 +117,16 @@ export async function main(env = process.env) {
     const craft=CRAFTS[i], source=sources[i];
     await fs.writeFile(path.join(configDir,`${craft}.json`),JSON.stringify(isolateTenant(source,craft,numbers[craft])));
   }
-  const pool=createPostgresPool({connectionString:env.DATABASE_URL});
+  const pool=createPostgresPool({connectionString});
   let fingerprint;
-  try {fingerprint=await validateExistingLabDatabase(pool);} finally {await pool.end();}
+  try {fingerprint=await validateLabReleaseReadiness(pool);} finally {await pool.end();}
   Object.assign(env,{
-    NODE_ENV:'production',TENANT_CONFIG_DIR:configDir,BOOKEDRADAR_STORAGE_BACKEND:'postgres',
+    DATABASE_URL:connectionString,NODE_ENV:'production',TENANT_CONFIG_DIR:configDir,BOOKEDRADAR_STORAGE_BACKEND:'postgres',
     POSTGRES_PRODUCTION_ARMED:'true',POSTGRES_STATELESS_MODE:'true',POSTGRES_VALIDATED_MIGRATION_ID:MIGRATION_ID,
     POSTGRES_VALIDATED_SNAPSHOT_FINGERPRINT:fingerprint,DISPATCH_ENABLED:'false',BOOKEDRADAR_BILLING_ENABLED:'false',
     OPS_ALERTS_ENABLED:'false',DEMO_NUMBER_PROVISION_MODE:'off',LOG_TRANSCRIPTS:'false',WARM_TRANSFER_ENABLED:'false',
   });
-  console.log(JSON.stringify({event:'private_voice_lab.ready',tenants:CRAFTS.length,voiceEnabled:env.VOICE_ENABLED==='true',isolatedDatabase:true}));
+  console.log(JSON.stringify({event:'private_voice_lab.preflight_validated',tenants:CRAFTS.length,voiceEnabled:env.VOICE_ENABLED==='true',isolatedDatabase:true}));
   await import('../server.js');
 }
 

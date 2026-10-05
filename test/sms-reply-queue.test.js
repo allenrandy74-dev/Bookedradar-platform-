@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -8,11 +9,11 @@ import { ActionDispatcher } from '../src/integrations/dispatcher.js';
 async function fixture() {
   const tenant = {tenantId:'synthetic',commercial:{dispatchMode:'live'},features:{twoWaySms:true},integrations:{sms:{enabled:true}}};
   const contactKey='synthetic:+14095550100';
-  const raw = new RecoveryStore('/tmp/sms-reply-unused.json');raw.loaded=true;raw.persist=async()=>{};
+  const raw = new RecoveryStore('/tmp/sms-reply-unused.json');useJsonMemoryView(raw);raw.persist=async()=>{};
   await raw.upsertContact(contactKey,{tenantId:'synthetic',phone:'+14095550100',transactionalSmsAllowed:true});
   const opportunity=await raw.createOpportunity({tenantId:'synthetic',contactKey,type:'phone_lead'});
   let serial=Promise.resolve(),generated=0;
-  const store={tenantId:'synthetic',getContact:key=>raw.getContact(key),smsReplyQueued:async sid=>Boolean(raw.data.eventKeys[`sms-reply:synthetic:${sid}`]),queueSmsReplyOnce(request,t){
+  const store={tenantId:'synthetic',getContact:key=>raw.getContact(key),smsReplyQueued:async sid=>raw.hasEventKey(`sms-reply:synthetic:${sid}`, "synthetic"),queueSmsReplyOnce(request,t){
     const next=serial.then(()=>persistSmsReply(raw,t,request));serial=next.catch(()=>{});return next;
   }};
   const args={tenant,store,env:{DISPATCH_ENABLED:'true'},contactKey,opportunity,recipient:'+14095550100',messageSid:'SM'+'a'.repeat(32),generate:async()=>{generated++;return 'The team will confirm your preferred time.';}};

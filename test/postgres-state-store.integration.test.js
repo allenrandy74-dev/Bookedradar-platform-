@@ -60,24 +60,25 @@ test("real Postgres: concurrent state, tenant isolation, deduplication and JSON 
       } finally { client.release(); }
       assert.equal((await a.getCall("shared")).rolledBack, undefined);
     });
-    await t.test("independent workers book once, preserve receipts and isolate tenants", async () => {
+    await t.test("independent workers refuse booking without creating holds or clearing historical attempts", async () => {
       let writes = 0;
       const request = { tenantId: "tenant-a", callId: "shared", slot: "synthetic-slot" };
       const adapter = { async createBooking() { writes++; return { confirmed: true, bookingId: "booking-1" }; } };
-      await Promise.all(Array.from({ length: 40 }, () => createBookingOnce({
+      const before = await a.getCall("shared");
+      const results = await Promise.all(Array.from({ length: 40 }, () => createBookingOnce({
         store: new PostgresCallStateStore(pool, "tenant-a"), adapter, request,
       })));
-      assert.equal(writes, 1);
-      const replay = await createBookingOnce({ store: new PostgresCallStateStore(pool, "tenant-a"), adapter, request });
-      assert.equal(replay.confirmed, true);
-      assert.equal(replay.duplicate, true);
-      assert.equal(writes, 1);
-      assert.equal(await b.claimBooking("shared", { attemptId: "other", requestHash: "a".repeat(64) }), null);
+      assert.ok(results.every(r => r.reason === 'booking_authority_unavailable' && !r.confirmed));
+      assert.equal(writes, 0); assert.deepEqual(await a.getCall("shared"), before);
+      // Direct callers cannot create false booking holds either.
+      await assert.rejects(b.claimBooking("shared", { attemptId: "other", requestHash: "a".repeat(64) }), /booking_authority_unavailable/);
       assert.equal(await a.finishBooking("shared", "wrong-owner", { status: "uncertain", result: { confirmed: false } }), null);
-      assert.equal((await a.getCall("shared")).bookingAttempt.status, "confirmed");
-      // Simulate process loss after a durable claim but before receipt persistence.
-      await b.claimBooking("other", { attemptId: "interrupted", requestHash: "b".repeat(64) });
-      assert.equal(await new PostgresCallStateStore(pool, "tenant-b").claimBooking("other", { attemptId: "restart", requestHash: "b".repeat(64) }), null);
+      // Synthetic legacy record, as if created by the prior lab release.
+      await b.patchCall("other", { bookingAttempt: { attemptId: "interrupted", requestHash: "b".repeat(64), status: "pending" } });
+      const historical = await b.getCall("other");
+      assert.equal((await createBookingOnce({ store: b, adapter, request: { ...request, tenantId: 'tenant-b', callId: 'other' } })).reason, 'booking_authority_unavailable');
+      assert.deepEqual(await b.getCall("other"), historical); assert.equal(writes, 0);
+      await assert.rejects(new PostgresCallStateStore(pool, "tenant-b").claimBooking("other", { attemptId: "restart", requestHash: "b".repeat(64) }), /booking_authority_unavailable/);
     });
     await t.test("booking review includes only owned unresolved attempts without changing claims", async () => {
       assert.deepEqual(await a.listBookingReview(), { attempts: [], nextAfterCallId: null });

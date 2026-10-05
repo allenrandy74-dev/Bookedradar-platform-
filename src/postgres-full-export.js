@@ -4,6 +4,13 @@ import crypto from 'node:crypto';
 import { readRecovery } from './postgres-recovery-store.js';
 
 export async function readPostgresSnapshot(client) {
+  // The JSON platform format cannot represent the lab notification ledger.
+  // Never produce an apparently complete backup/rollback that drops accepted
+  // or uncertain notification history. Use an approved all-table DB backup.
+  const ops = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM bookedradar.ops_incidents) OR
+    EXISTS (SELECT 1 FROM bookedradar.ops_notifications) AS has_ops_state`);
+  if (ops.rows[0]?.has_ops_state !== false) throw new Error('postgres_platform_export_requires_all_table_backup_for_ops_state');
   const read = async sql => (await client.query(sql)).rows;
   const map = (rows,key) => Object.fromEntries(rows.map(r=>[r[key],r.payload]));
   const calls=await read('SELECT call_id,payload FROM bookedradar.voice_calls ORDER BY call_id');
@@ -19,8 +26,9 @@ export async function readPostgresSnapshot(client) {
   const counts={}; let updatedAt=null;
   for (const r of growth) { const n=Number(r.count); if (!Number.isSafeInteger(n)) throw new Error('metric_precision_limit'); counts[r.metric_key]=n; const at=r.updated_at ? new Date(r.updated_at).toISOString() : null; if (at && (!updatedAt || at>updatedAt)) updatedAt=at; }
   const billing=await read('SELECT mode,payload FROM bookedradar.billing_state ORDER BY mode');
+  const attempts=map(await read('SELECT attempt_key,payload FROM bookedradar.provider_attempt_receipts ORDER BY attempt_key'),'attempt_key');
   return {
-    state:{ processedWebhooks:Object.fromEntries((await read('SELECT webhook_id,received_at FROM bookedradar.webhook_receipts')).map(r=>[r.webhook_id,new Date(r.received_at).getTime()])),calls:map(await read('SELECT call_id,payload FROM bookedradar.call_control_state'),'call_id') },
+    state:{ ...(Object.keys(attempts).length ? {attempts} : {}), processedWebhooks:Object.fromEntries((await read('SELECT webhook_id,received_at FROM bookedradar.webhook_receipts')).map(r=>[r.webhook_id,new Date(r.received_at).getTime()])),calls:map(await read('SELECT call_id,payload FROM bookedradar.call_control_state'),'call_id') },
     callHistory:{ calls:map(calls,'call_id') },
     leads:(await read('SELECT payload FROM bookedradar.lead_captures ORDER BY lead_id')).map(r=>r.payload),
     recovery:await readRecovery(client),

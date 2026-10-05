@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { ActionDispatcher } from '../src/integrations/dispatcher.js';
 
 async function fixture() {
   const tenant={tenantId:'t1',features:{callerTexting:true},integrations:{sms:{enabled:true}},commercial:{dispatchMode:'live'}};
-  const raw=new RecoveryStore('/tmp/unused-caller-text.json');raw.loaded=true;raw.persist=async()=>{};
+  const raw=new RecoveryStore('/tmp/unused-caller-text.json');useJsonMemoryView(raw);raw.persist=async()=>{};
   const contactKey='t1:crm-contact';await raw.upsertContact(contactKey,{tenantId:'t1',phone:'+14095550100',transactionalSmsAllowed:true});
   const opportunity=await raw.createOpportunity({tenantId:'t1',contactKey,type:'phone_lead',metadata:{callId:'call-a'}});
   const call={tenantId:'t1',opportunityId:opportunity.id,lastLead:{callback_number:'+14095550100'}};

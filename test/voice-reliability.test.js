@@ -1,3 +1,4 @@
+import { attemptStore } from './helpers/transfer-attempt-store.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -200,7 +201,7 @@ function controllerFixture(overrides = {}) {
     cancelPending: async () => true,
     ...overrides,
   };
-  const run = createTransferController({ relay, timeoutMs: 30,
+  const run = createTransferController({ store: attemptStore(), relay, timeoutMs: 30,
     refer: async ({targetUri}) => targets.push(targetUri),
     log: (event, fields) => events.push({event,...fields}),
   });
@@ -249,7 +250,7 @@ test('confirmed relay entry disarms cancellation and emits dialing',async t=>{
 });
 test('legacy provider failure returns control to the assistant with explicit failure',async()=>{
   const events=[];
-  const run=createTransferController({relay:{preflight:()=>({ready:false,reason:'screening_disabled'})},refer:async()=>{throw new Error('provider failure');},log:event=>events.push(event)});
+  const run=createTransferController({ store: attemptStore(),relay:{preflight:()=>({ready:false,reason:'screening_disabled'})},refer:async()=>{throw new Error('provider failure');},log:event=>events.push(event)});
   const result=await run({callId:'failed',tenant:{tenantId:'demo'},target:'+15555550100',prepare:async()=>({})});
   assert.equal(result.transferred,false); assert.equal(result.reason,'legacy_refer_failed');
   assert.equal(events.at(-1),'transfer.failed');

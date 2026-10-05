@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 export const TRANSFER_DELAY_MS = 10_000;
 export const TRANSFER_HOLD_MESSAGE = "I’m arranging your transfer. Please stay on the line.";
 
@@ -18,26 +19,62 @@ export function transferSummary(tenant, lead = {}, callerNumber = '') {
 
 // This is an internal human handoff notification, independent of customer campaigns.
 // Do not retry ambiguous SMS requests: a timeout must not produce duplicate texts.
-export function createTransferCompanion({ config, log, fetchImpl = fetch,
+export function createTransferCompanion({ config, store, log, fetchImpl = fetch,
   schedule = setTimeout, cancel = clearTimeout, now = () => performance.now(), smsTimeoutMs = 8000 }) {
-  const ready = () => Boolean(/^AC[\da-f]{32}$/i.test(config.accountSid || '') && config.authToken && /^\+[1-9]\d{7,14}$/.test(config.fromNumber || ''));
+  const persistenceTimeoutMs = Number.isFinite(smsTimeoutMs) && smsTimeoutMs > 0 ? Math.min(smsTimeoutMs, 8000) : 8000;
+  async function persistBounded(work) {
+    let timer;
+    try {
+      // Race the acknowledgment only. A late claim never resumes the sender.
+      return await Promise.race([Promise.resolve().then(work), new Promise((_, reject) => {
+        timer = schedule(() => reject(new Error('sms_persistence_timeout')), persistenceTimeoutMs);
+      })]);
+    } finally { if (timer !== undefined) cancel(timer); }
+  }
+  const configured = values => Boolean(typeof values.accountSid === 'string' && typeof values.authToken === 'string' && typeof values.fromNumber === 'string' && /^AC[\da-f]{32}$/i.test(values.accountSid || '') && values.authToken && /^\+[1-9]\d{7,14}$/.test(values.fromNumber || ''));
+  const ready = () => configured(config);
   async function notifyAndWait({ callId, tenant, target, lead, callerNumber }) {
-    const emit = (event, fields = {}) => log(`transfer.${event}`, { call_id: callId, tenant_id: tenant.tenantId, ...fields });
+    const tenantId = tenant?.tenantId;
+    const requestConfig = { accountSid: config.accountSid, authToken: config.authToken, fromNumber: config.fromNumber };
+    const emit = (event, fields = {}) => log(`transfer.${event}`, { call_id: callId, tenant_id: tenantId, ...fields });
+    if (!store?.claimAttempt || !store?.finishAttempt) {
+      emit('sms_failed', { reason: 'durable_transfer_store_required' });
+      return { status: 'unsupported' };
+    }
+    if (typeof callId !== 'string' || !callId || typeof tenantId !== 'string' || !tenantId || typeof target !== 'string' || !/^\+[1-9]\d{7,14}$/.test(target || '')) {
+      emit('sms_failed', { reason: 'invalid_transfer_identity' });
+      return { status: 'invalid' };
+    }
+    const body = transferSummary(tenant, lead, callerNumber);
+    const key = 'transfer-sms:' + crypto.createHash('sha256').update(JSON.stringify([tenantId, callId])).digest('hex');
+    let claim;
+    const intent = { tenantId, callId, target, kind: 'transfer_sms',
+      fingerprint: crypto.createHash('sha256').update(JSON.stringify([requestConfig.accountSid, requestConfig.fromNumber, body])).digest('hex') };
+    try {
+      claim = await persistBounded(() => store.claimAttempt(key, intent));
+    } catch {
+      emit('sms_failed', { reason: 'sms_persistence_or_intent_conflict' });
+      return { status: 'uncertain' };
+    }
+    if (!claim.claimed) return { status: claim.record?.status || 'uncertain', duplicate: true };
+    if (!claim.record?.claimToken) return { status: 'uncertain' };
     emit('sms_requested');
+    let receipt = { status: 'uncertain' };
     const abort = new AbortController();
     let timeout, reason = 'sms_request_failed';
     try {
-      if (!ready()) { reason = 'sms_not_configured'; throw new Error(reason); }
-      await Promise.race([
+      if (!configured(requestConfig)) { reason = 'sms_not_configured'; throw new Error(reason); }
+      receipt = await Promise.race([
         (async () => {
-          const response = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(config.accountSid)}/Messages.json`, {
+          const response = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(requestConfig.accountSid)}/Messages.json`, {
             method: 'POST', signal: abort.signal,
-            headers: { Authorization: `Basic ${Buffer.from(`${config.accountSid}:${config.authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ To: target, From: config.fromNumber, Body: transferSummary(tenant, lead, callerNumber) }),
+            headers: { Authorization: `Basic ${Buffer.from(`${requestConfig.accountSid}:${requestConfig.authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ To: target, From: requestConfig.fromNumber, Body: body }),
           });
           if (!response.ok) throw new Error('sms_request_failed');
           const result = await response.json();
           if (!/^SM[\da-f]{32}$/i.test(result.sid || '') || !['accepted', 'queued', 'sending', 'sent', 'delivered'].includes(result.status)) throw new Error('sms_request_failed');
+          return { status: 'accepted', providerId: result.sid, acceptance: 'provider_accepted' };
         })(),
         new Promise((_, reject) => { timeout = schedule(() => {
           reason = 'sms_request_timeout'; abort.abort(); reject(new Error(reason));
@@ -47,10 +84,13 @@ export function createTransferCompanion({ config, log, fetchImpl = fetch,
       emit('sms_sent', { acceptance: 'provider_accepted' });
     } catch { emit('sms_failed', { reason }); }
     finally { cancel(timeout); }
+    try { await persistBounded(() => store.finishAttempt(key, { ...intent, claimToken: claim.record.claimToken, ...receipt })); }
+    catch { receipt = { ...receipt, status: 'uncertain' }; emit('sms_failed', { reason: 'sms_receipt_persistence_uncertain' }); }
     const started = now();
     emit('delay_started', { delay_ms: TRANSFER_DELAY_MS });
     await new Promise(resolve => schedule(resolve, TRANSFER_DELAY_MS));
     emit('delay_complete', { delay_ms: TRANSFER_DELAY_MS, elapsed_ms: Math.round(now() - started) });
+    return receipt;
   }
   return { ready, notifyAndWait };
 }

@@ -1,4 +1,7 @@
+import { unsupportedBookingAuthority } from "./booking-authority.js";
+
 export class BookingWebhookAdapter {
+  get supportsLiveBooking() { return false; }
   constructor({ url, token = "", timeoutMs = 8000 }) {
     this.url = url;
     this.token = token;
@@ -6,6 +9,7 @@ export class BookingWebhookAdapter {
   }
 
   async request(action, payload) {
+    if (action !== "find_availability") return unsupportedBookingAuthority("webhook");
     if (!this.url) throw new Error("Booking webhook adapter is not configured");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -17,7 +21,7 @@ export class BookingWebhookAdapter {
           "Content-Type": "application/json",
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         },
-        body: JSON.stringify({ action, ...payload }),
+        body: JSON.stringify({ request: payload?.request || {}, action }),
       });
       const text = await response.text();
       let data = {};
@@ -31,20 +35,13 @@ export class BookingWebhookAdapter {
     }
   }
 
-  findAvailability(request) {
-    return this.request("find_availability", { request });
+  async findAvailability(request) {
+    const data = await this.request("find_availability", { request });
+    return { ...data, mode: "live_booking", confirmed: false, bookingId: null,
+      message: "Availability is advisory. The team must confirm any appointment request." };
   }
 
-  async createBooking(request) {
-    const data = await this.request("create_booking", { request });
-    const unverified = { confirmed: false, bookingId: null, reason: "booking_confirmation_unverified" };
-    if (!data || typeof data !== "object" || Array.isArray(data)) return unverified;
-
-    const bookingId = typeof data.bookingId === "string" ? data.bookingId.trim() : "";
-    // HTTP success alone is not a booking receipt. Do not throw or retry an
-    // ambiguous write: the provider may already have created an appointment.
-    if (data.confirmed === true && bookingId) return { ...data, bookingId };
-    if (data.confirmed === false) return { ...data, confirmed: false, bookingId: bookingId || null };
-    return { ...data, ...unverified };
+  createBooking(request) {
+    return Promise.resolve(unsupportedBookingAuthority("webhook"));
   }
 }

@@ -102,9 +102,9 @@ export function tenantReadiness(tenant, { env = process.env } = {}) {
   );
   checks.push({ code: "scheduling_scope", ok: schedulingScopeReady });
   if (!schedulingScopeReady) add(blockers, "scheduling_scope", "Live booking requires a separately approved scheduling scope and agreement reference.");
-  const bookingReady = !liveBooking || booking.constructor.name !== "ConfirmOnlyBookingAdapter";
+  const bookingReady = !liveBooking || booking.supportsLiveBooking === true;
   checks.push({ code: "booking", ok: bookingReady });
-  if (!bookingReady) add(blockers, "booking", "Live booking is requested but no live booking adapter is configured.");
+  if (!bookingReady) add(blockers, "booking", "Live booking is unavailable: no supported durable booking authority and reconciliation protocol is implemented. Calendar credentials enable advisory availability only; use confirm-only operation.");
 
   const escalationPhone = humanTransferTarget(tenant, env);
   const escalationReady = /^\+[1-9]\d{7,14}$/.test(escalationPhone);

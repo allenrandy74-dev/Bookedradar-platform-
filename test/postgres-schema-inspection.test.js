@@ -27,6 +27,7 @@ test("schema inspection reads metadata only inside repeatable-read transaction",
           {table_name:"call_turns",constraint_name:"call_turns_pkey",constraint_type:"PRIMARY KEY",column_name:"sequence",ordinal_position:2},
         ]};
       }
+      if(text.includes("pg_catalog.pg_index") || text.includes("pg_catalog.pg_constraint")) return {rows:[]};
       throw new Error("unexpected_query");
     },
     release(){released=true;},

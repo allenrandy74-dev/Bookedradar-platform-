@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TwilioSmsAdapter } from '../src/integrations/twilio-sms.js';
@@ -20,7 +21,7 @@ test('valid SMS provider acceptance preserves provider state without claiming de
 });
 
 test('legacy dispatch holds unverified provider acceptance rather than automatically resending',async()=>{
-  const store=new RecoveryStore('/tmp/unused-sms-receipt.json');store.loaded=true;store.persist=async()=>{};
+  const store=new RecoveryStore('/tmp/unused-sms-receipt.json');useJsonMemoryView(store);store.persist=async()=>{};
   const tenant={tenantId:'synthetic',policies:{sms:{allowTransactionalWhenInbound:true}}};
   await store.upsertContact('synthetic:phone',{tenantId:'synthetic',phone:'+14095550100'});
   const opportunity=await store.createOpportunity({tenantId:'synthetic',contactKey:'synthetic:phone'});
