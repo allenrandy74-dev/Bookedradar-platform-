@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "./json-file-transaction.js";
 import { CallHistoryStore } from './call-history.js';
 import { proofPilotReadiness, proofPilotStatus } from './proof-pilot-control.js';
 
@@ -151,7 +152,7 @@ export async function reserveProofPilotCall(pool, { tenantId, callId, config, ca
       await client.query('COMMIT');
       return { admitted: false, reason: status.stopReason || status.status.toLowerCase(), status };
     }
-    const history = new CallHistoryStore('/unused/pilot-reservation.json');
+    const history = useJsonMemoryView(new CallHistoryStore('/unused/pilot-reservation.json'));
     history.loaded = true;
     history.persist = async () => {};
     const call = await history.start(callId, { tenantId, callerMasked, dialedMasked });

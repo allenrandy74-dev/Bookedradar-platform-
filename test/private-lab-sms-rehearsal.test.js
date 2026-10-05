@@ -1,3 +1,4 @@
+import { useJsonMemoryView } from "../src/json-file-transaction.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -102,7 +103,7 @@ test('fixture wrapper has a hard attempted-row cap and accepts no existing tenan
 test('inert fixture policy creates a real opportunity and attribution, with zero seeded actions', async () => {
   const tenant = syntheticSmsTenant(fixtureIds()[0]);
   const store = new RecoveryStore('/unused/sms-rehearsal-test.json');
-  store.loaded = true; store.persist = async () => {};
+  useJsonMemoryView(store); store.loaded = true; store.persist = async () => {};
   const result = await new RecoveryEngine({ store, tenant }).ingest({
     idempotencyKey: 'fixture-seed-unit', tenantId: tenant.tenantId, type: 'phone_lead',
     contact: { externalId: 'unit-seed', phone: '+12025550101', transactionalSmsAllowed: true },

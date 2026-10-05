@@ -1,3 +1,4 @@
+import { attemptStore } from './helpers/transfer-attempt-store.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTransferCompanion, createTransferHold, transferSummary, TRANSFER_HOLD_MESSAGE } from '../src/transfer-companion.js';
@@ -6,7 +7,8 @@ import { createTransferController } from '../src/warm-transfer.js';
 const config = { accountSid: 'AC' + 'a'.repeat(32), authToken: 'private-token', fromNumber: '+15555550100' };
 const tenant = { tenantId: 'test', businessName: 'Test Plumbing' };
 const accepted = () => ({ ok: true, json: async () => ({ sid: 'SM' + 'b'.repeat(32), status: 'queued' }) });
-const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+// Drain the additional bounded durable-claim/receipt promise layers before advancing fake time.
+const flush = async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); };
 function clock() {
   let time = 0, id = 0;
   const timers = new Map();
@@ -37,7 +39,7 @@ for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_con
   test(`SMS ${mode}: one REFER only after the full ten-second window`, async () => {
     const c = clock(), logs = [], calls = [], requests = [];
     let acceptRequest;
-    const companion = createTransferCompanion({ config: mode === 'not_configured' ? {} : config, ...c,
+    const companion = createTransferCompanion({ store: attemptStore(), config: mode === 'not_configured' ? {} : config, ...c,
       log: (event, fields) => logs.push({ event, ...fields }),
       fetchImpl: async (url, options) => {
         requests.push({ url, options });
@@ -48,7 +50,7 @@ for (const mode of ['accepted', 'rejected', 'network_error', 'timeout', 'not_con
         return new Promise(resolve => { acceptRequest = () => resolve(accepted()); });
       },
     });
-    const transfer = createTransferController({ relay: { preflight: () => ({ ready: false, reason: 'screening_disabled' }) },
+    const transfer = createTransferController({ store: attemptStore(), relay: { preflight: () => ({ ready: false, reason: 'screening_disabled' }) },
       refer: async args => calls.push({ ...args, at: c.now() }), log: (event, fields) => logs.push({ event, ...fields }) });
     const options = { callId: 'call', tenant, target: '+15555550101', prepare: async () => ({ name: 'Jane', urgency: 'urgent' }), beforeRefer: ({ lead }) => companion.notifyAndWait({ callId: 'call', tenant, target: '+15555550101', lead }) };
     const result = transfer(options);

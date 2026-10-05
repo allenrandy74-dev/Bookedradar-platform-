@@ -29,10 +29,56 @@ export function stableHash(value) {
   return crypto.createHash("sha256").update(json).digest("hex");
 }
 
+
+function migrationRawEventKey(recovery, key, event, tenant) {
+  const format = recovery.eventKeyFormat;
+  if (format !== undefined && format !== "tenant_scoped_v1") throw new Error("migration_event_key_format_unsupported");
+  let decoded;
+  try { decoded = JSON.parse(key); } catch {}
+  const tuple = Array.isArray(decoded) && decoded.length === 2 && decoded.every(value => typeof value === "string");
+  if (format === "tenant_scoped_v1") {
+    if (!tuple) throw new Error("migration_event_key_format_invalid");
+    if (decoded[0] !== tenant) throw new Error("migration_event_key_tenant_conflict");
+    return decoded[1];
+  }
+  if (key === event?.idempotencyKey || key === event?.id) return key;
+  if (tuple) throw new Error("migration_event_key_ambiguous_legacy_alias");
+  return key;
+}
+
 export function normalizeMigrationSnapshotForContent(snapshot = {}) {
   const normalized = { ...snapshot };
   const normalizations = [];
+  if (snapshot.recovery?.eventKeyFormat !== undefined && snapshot.recovery.eventKeyFormat !== "tenant_scoped_v1") throw new Error("migration_event_key_format_unsupported");
 
+  // Empty durable attempt maps did not exist in older JSON snapshots.
+  if (snapshot.state?.attempts && Object.keys(snapshot.state.attempts).length === 0) {
+    normalized.state = { ...snapshot.state };
+    delete normalized.state.attempts;
+    normalizations.push("state.attempts:empty_to_absent");
+  }
+  if (snapshot.recovery?.eventKeys) {
+    const recovery = snapshot.recovery;
+    const eventKeys = {};
+    let changed = false;
+    for (const [key,eventId] of Object.entries(recovery.eventKeys)) {
+      const event = array(recovery.events).find(item => item?.id === eventId);
+      const opportunity = object(recovery.opportunities)[event?.opportunityId];
+      const tenant = event?.tenantId || opportunity?.tenantId || tenantFromContactKey(event?.contactKey) ||
+        Object.values(object(recovery.opportunities)).find(item => item?.sourceEventId === eventId)?.tenantId;
+      const raw = migrationRawEventKey(recovery, key, event, tenant);
+      const canonical = tenant ? JSON.stringify([tenant,raw]) : raw;
+      if (Object.hasOwn(eventKeys,canonical) && eventKeys[canonical] !== eventId) throw new Error('migration_event_key_collision');
+      eventKeys[canonical] = eventId;
+      changed ||= canonical !== key;
+    }
+    if (changed || recovery.eventKeyFormat !== undefined) {
+      normalized.recovery = {...recovery,eventKeys};
+      delete normalized.recovery.eventKeyFormat;
+      if (changed) normalizations.push('recovery.eventKeys:tenant_scoped');
+      if (recovery.eventKeyFormat !== undefined) normalizations.push('recovery.eventKeyFormat:remove_format_marker');
+    }
+  }
   // WebChatStore treats a missing file as its canonical empty store.
   // Postgres reverse-export necessarily materializes that empty wrapper.
   if (snapshot.webChat == null) {
@@ -63,9 +109,17 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   const billingLive = snapshot.billingLive == null ? null : object(snapshot.billingLive);
 
   const errors = [];
+  if (recovery.eventKeyFormat !== undefined && recovery.eventKeyFormat !== "tenant_scoped_v1") issue(errors,"event_key_format_unsupported");
   const warnings = [];
 
   const controlCalls = object(state.calls);
+  if (state.attempts !== undefined && (!state.attempts || typeof state.attempts !== 'object' || Array.isArray(state.attempts))) issue(errors, 'attempts_invalid');
+  for (const [key, record] of Object.entries(object(state.attempts))) {
+    const fields = ['tenantId','callId','target','kind','fingerprint'];
+    if (!key || !record || fields.some(field => typeof record[field] !== 'string' || !record[field].trim() || record.identity?.[field] !== record[field]) ||
+        record.key !== key || typeof record.claimToken !== 'string' || !record.claimToken ||
+        !['pending','accepted','uncertain','completed','failed','reconciliation_required'].includes(record.status)) issue(errors, 'attempt_receipt_invalid', { id: safeRef(key) });
+  }
   const historyCalls = object(callHistory.calls);
   const contacts = object(recovery.contacts);
   const opportunities = object(recovery.opportunities);
@@ -162,6 +216,7 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
 
   const seenEventIds = new Set();
   const seenEventKeys = new Map();
+  const seenRawEventKeys = new Map();
   const eventKeyMap = object(recovery.eventKeys);
 
   for (const event of events) {
@@ -172,26 +227,6 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     }
     if (eventId) seenEventIds.add(eventId);
 
-    const idempotencyKey = String(event?.idempotencyKey || "");
-    if (idempotencyKey) {
-      const priorEventId = seenEventKeys.get(idempotencyKey);
-      if (priorEventId && priorEventId !== eventId) {
-        issue(errors, "duplicate_event_idempotency_key", {
-          keyRef: safeRef(idempotencyKey),
-          eventIds: [priorEventId, eventId],
-        });
-      } else {
-        seenEventKeys.set(idempotencyKey, eventId);
-      }
-      if (eventKeyMap[idempotencyKey] && String(eventKeyMap[idempotencyKey]) !== eventId) {
-        issue(errors, "event_key_map_mismatch", {
-          keyRef: safeRef(idempotencyKey),
-          eventId,
-          mappedEventId: String(eventKeyMap[idempotencyKey]),
-        });
-      }
-    }
-    if (!event?.occurredAt) issue(errors, "event_missing_occurred_at", { eventId });
     let tenantId = String(event?.tenantId || "");
     if (!tenantId && event?.opportunityId) {
       tenantId = opportunityTenant.get(String(event.opportunityId)) || "";
@@ -202,6 +237,19 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
     if (!tenantId && eventId) {
       tenantId = sourceEventTenant.get(eventId) || "";
     }
+    const idempotencyKey = String(event?.idempotencyKey || "");
+    if (idempotencyKey) {
+      const rawPrior = seenRawEventKeys.get(idempotencyKey);
+      if (rawPrior && (!tenantId || !rawPrior.tenantId) && rawPrior.eventId !== eventId) issue(errors, "duplicate_event_idempotency_key", {keyRef:safeRef(idempotencyKey),eventIds:[rawPrior.eventId,eventId]});
+      seenRawEventKeys.set(idempotencyKey,{tenantId,eventId});
+      const scopedKey = JSON.stringify([tenantId,idempotencyKey]);
+      const priorEventId = seenEventKeys.get(scopedKey);
+      if (priorEventId && priorEventId !== eventId) issue(errors, "duplicate_event_idempotency_key", { keyRef:safeRef(scopedKey),eventIds:[priorEventId,eventId] });
+      else seenEventKeys.set(scopedKey,eventId);
+      const mapped = eventKeyMap[scopedKey] ?? eventKeyMap[idempotencyKey];
+      if (mapped && String(mapped) !== eventId) issue(errors, "event_key_map_mismatch", {keyRef:safeRef(scopedKey),eventId,mappedEventId:String(mapped)});
+    }
+    if (!event?.occurredAt) issue(errors, "event_missing_occurred_at", { eventId });
     if (!tenantId) {
       issue(warnings, "event_tenant_inferred_later_or_unknown", {
         eventId,
@@ -223,6 +271,10 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
 
   const eventIds = new Set(events.map(event => String(event?.id || "")).filter(Boolean));
   for (const [eventKey,eventId] of Object.entries(eventKeyMap)) {
+    const event = events.find(item => String(item?.id || "") === String(eventId));
+    const tenant = event?.tenantId || opportunityTenant.get(String(event?.opportunityId || "")) || tenantFromContactKey(event?.contactKey) || sourceEventTenant.get(String(eventId));
+    try { migrationRawEventKey(recovery,eventKey,event,tenant); }
+    catch (error) { issue(errors,error.message,{keyRef:safeRef(eventKey)}); }
     if (!eventIds.has(String(eventId))) {
       issue(errors, "event_key_unknown_event", {
         keyRef: safeRef(eventKey),
@@ -328,6 +380,7 @@ export function auditPostgresMigrationSnapshot(snapshot = {}) {
   }
 
   const counts = {
+    providerAttempts: Object.keys(object(state.attempts)).length,
     processedWebhooks: Object.keys(processedWebhooks).length,
     callControlRecords: Object.keys(controlCalls).length,
     voiceCalls: Object.keys(historyCalls).length,
@@ -405,6 +458,7 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
     counts: audit.counts,
     snapshotFingerprint: audit.snapshotFingerprint,
     rows: {
+      providerAttempts: Object.entries(object(state.attempts)).map(([attemptKey,payload]) => ({ attemptKey,payload })),
       webhookReceipts: Object.entries(object(state.processedWebhooks)).map(([webhookId, receivedAt]) => ({
         webhookId,
         receivedAt: new Date(Number(receivedAt)).toISOString(),
@@ -471,11 +525,10 @@ export function buildPostgresMigrationManifest(snapshot = {}) {
       })),
       recoveryEventKeys: Object.entries(object(recovery.eventKeys)).map(([eventKey, eventId]) => {
         const payload = array(recovery.events).find(item => String(item?.id || "") === String(eventId)) || {};
-        return {
-          tenantId: eventTenant(payload),
-          eventKey,
-          eventId: String(eventId),
-        };
+        const tenantId = eventTenant(payload);
+        if (!tenantId) throw new Error('migration_event_key_tenant_required');
+        const rawKey = migrationRawEventKey(recovery, eventKey, payload, tenantId);
+        return { tenantId, eventKey: rawKey, eventId: String(eventId) };
       }),
       recoveryActions: Object.entries(object(recovery.actions)).map(([actionId, payload]) => ({
         actionId,

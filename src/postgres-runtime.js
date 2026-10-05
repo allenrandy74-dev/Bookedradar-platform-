@@ -91,6 +91,19 @@ export async function importMigrationManifest(pool, manifest, {
       [migrationId, manifest.snapshotFingerprint, JSON.stringify(manifest.counts || {}), JSON.stringify({})]
     );
 
+    for (const row of manifest.rows.providerAttempts || []) {
+      // Never overwrite an already persisted provider intent during import.
+      // Identical restore replay is safe; conflicting history aborts the transaction.
+      const result = await client.query(`
+        INSERT INTO bookedradar.provider_attempt_receipts AS existing (attempt_key,payload)
+        VALUES ($1,$2::jsonb)
+        ON CONFLICT (attempt_key) DO UPDATE SET payload=existing.payload
+        WHERE existing.payload=EXCLUDED.payload
+        RETURNING attempt_key`, [row.attemptKey,JSON.stringify(row.payload)]);
+      if (!result.rows.length) throw new Error('migration_attempt_receipt_conflict');
+    }
+    counts.providerAttempts = (manifest.rows.providerAttempts || []).length;
+
     for (const row of manifest.rows.webhookReceipts || []) {
       await upsert(client,
         `INSERT INTO bookedradar.webhook_receipts (webhook_id, received_at)
@@ -328,6 +341,7 @@ export async function importMigrationManifest(pool, manifest, {
 
 export async function reconcileMigration(pool, manifest) {
   const expected = {
+    providerAttempts: (manifest.rows.providerAttempts || []).length,
     webhookReceipts: (manifest.rows.webhookReceipts || []).length,
     callControlState: (manifest.rows.callControlState || []).length,
     voiceCalls: (manifest.rows.voiceCalls || []).length,
@@ -347,6 +361,7 @@ export async function reconcileMigration(pool, manifest) {
   };
 
   const queries = {
+    providerAttempts: "SELECT count(*)::int AS count FROM bookedradar.provider_attempt_receipts",
     webhookReceipts: "SELECT count(*)::int AS count FROM bookedradar.webhook_receipts",
     callControlState: "SELECT count(*)::int AS count FROM bookedradar.call_control_state",
     voiceCalls: "SELECT count(*)::int AS count FROM bookedradar.voice_calls",

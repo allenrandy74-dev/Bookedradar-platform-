@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {validateLabEnvironment,isolateTenant,protectedDemoNumbers,assertNoProtectedDemoRoutes,LAB_NAME,LAB_DATABASE,CRAFTS} from '../scripts/private-voice-lab-start.mjs';
+import {Client} from 'pg';
+import {labDatabaseConnectionString,validateLabEnvironment,isolateTenant,protectedDemoNumbers,assertNoProtectedDemoRoutes,LAB_NAME,LAB_DATABASE,CRAFTS} from '../scripts/private-voice-lab-start.mjs';
 import {validateTenant} from '../src/recovery/tenant.js';
 import {humanTransferTarget} from '../src/recovery/tenant-registry.js';
 const env={PRIVATE_VOICE_LAB:'true',RENDER_SERVICE_NAME:LAB_NAME,DATABASE_URL:`postgresql://u:p@dpg-private-lab/${LAB_DATABASE}`,PRIVATE_VOICE_LAB_DATABASE_HOST:'dpg-private-lab',OPENAI_PROJECT_ID:'proj_O0Mk7nAzTfe0AIys8Ukwd1cn',VOICE_ENABLED:'false'};
@@ -58,4 +59,36 @@ test('lab derives protected routes from current demo tenant configs', async()=>{
     assert.throws(()=>assertNoProtectedDemoRoutes({hvac:number},sources),/public_demo_target/);
   }
   assert.doesNotThrow(()=>assertNoProtectedDemoRoutes({hvac:'+14095550101'},sources));
+});
+
+
+test('private wrapper rejects database query/fragment/port overrides before any connection', () => {
+  for (const suffix of ['?host=127.0.0.1', '?dbname=production', '?sslmode=disable', '#fragment']) {
+    assert.throws(() => validateLabEnvironment({ ...env, DATABASE_URL: env.DATABASE_URL + suffix }), /database_required/);
+  }
+  assert.throws(() => validateLabEnvironment({ ...env, DATABASE_URL: env.DATABASE_URL.replace('/'+LAB_DATABASE, ':6543/'+LAB_DATABASE) }), /database_required/);
+});
+
+test('wrapper performs release compatibility checks before import and does not claim service readiness', async () => {
+  const source = await fs.readFile(new URL('../scripts/private-voice-lab-start.mjs', import.meta.url), 'utf8');
+  assert.ok(source.indexOf('fingerprint=await validateLabReleaseReadiness(pool)') < source.indexOf("await import('../server.js')"));
+  assert.ok(source.includes("event:'private_voice_lab.preflight_validated'"));
+  assert.ok(!source.includes("event:'private_voice_lab.ready'"));
+});
+
+
+test('wrapper pins one normalized destination for preflight and server despite PG defaults', async () => {
+  const before = process.env.PGPORT;
+  try {
+    process.env.PGPORT = '6543';
+    const connectionString = labDatabaseConnectionString(env);
+    const client = new Client({ connectionString });
+    assert.equal(client.connectionParameters.port, 5432);
+    assert.equal(client.connectionParameters.host, 'dpg-private-lab');
+    assert.equal(client.connectionParameters.database, LAB_DATABASE);
+    const source = await fs.readFile(new URL('../scripts/private-voice-lab-start.mjs', import.meta.url), 'utf8');
+    assert.match(source, /createPostgresPool\(\{connectionString\}\)/);
+    assert.match(source, /DATABASE_URL:connectionString/);
+    assert.equal(env.DATABASE_URL.includes(':5432'), false);
+  } finally { if (before === undefined) delete process.env.PGPORT; else process.env.PGPORT = before; }
 });

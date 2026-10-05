@@ -2,7 +2,7 @@
 // boundaries become savepoints, so no adapter can commit a partial workflow.
 export async function postgresUnitOfWork(pool,tenantId,fn) {
   const client=await pool.connect();let sequence=0;let busy=false;
-  const scoped={query:(...args)=>client.query(...args),connect:async()=>{
+  const scoped={requiresOuterCommit:true,query:(...args)=>client.query(...args),connect:async()=>{
     if(busy)throw new Error('parallel_nested_transaction_forbidden');busy=true;
     const savepoint=`workflow_${++sequence}`;let begun=false;
     return {query:async(sql,values)=>{

@@ -2,8 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createPostgresPool } from '../src/postgres-runtime.js';
-import { verifyValidatedProductionMigration } from '../src/postgres-server-stores.js';
+import http from 'node:http';
 
 export const LAB_NAME = 'bookedradar-private-voice-lab-20260929';
 export const LAB_DATABASE = 'bookedradar_private_voice_lab_20260929';
@@ -14,7 +13,7 @@ const PUBLIC_NUMBERS = ['+14092574186', '+14095477916', '+14092139980', '+140923
 export function validateLabEnvironment(env) {
   if (env.PRIVATE_VOICE_LAB !== 'true' || env.RENDER_SERVICE_NAME !== LAB_NAME) throw new Error('private_lab_service_required');
   const url = new URL(env.DATABASE_URL || '');
-  if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.search || url.hash || (url.port && url.port !== '5432') ||
       url.hostname !== env.PRIVATE_VOICE_LAB_DATABASE_HOST ||
       !/^dpg-[a-z0-9-]+$/.test(url.hostname) || url.pathname !== `/${LAB_DATABASE}`) {
     throw new Error('private_lab_database_required');
@@ -38,6 +37,15 @@ export function validateLabEnvironment(env) {
     if (!env.OPENAI_API_KEY || !env.OPENAI_WEBHOOK_SECRET) throw new Error('private_lab_voice_credentials_required');
   } else if (env.VOICE_ENABLED !== 'false') throw new Error('private_lab_voice_flag_required');
   return numbers;
+}
+
+export function labDatabaseConnectionString(env) {
+  validateLabEnvironment(env);
+  const url = new URL(env.DATABASE_URL);
+  // node-postgres parses connectionString after pool options. Explicitly pin
+  // the URL port so ambient PGPORT cannot redirect preflight or server traffic.
+  url.port = '5432';
+  return url.href;
 }
 
 export function protectedDemoNumbers(sources) {
@@ -70,6 +78,7 @@ export function isolateTenant(source, craft, inboundNumber) {
 }
 
 export async function validateExistingLabDatabase(pool) {
+  const { verifyValidatedProductionMigration } = await import('../src/postgres-server-stores.js');
   const client = await pool.connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -87,8 +96,68 @@ export async function validateExistingLabDatabase(pool) {
   } finally {client.release();}
 }
 
+// Migration provenance alone does not prove compatibility with this release.
+// Both checks are read-only; a failure must occur before server import/listen.
+export async function validateLabReleaseReadiness(pool) {
+  const fingerprint = await validateExistingLabDatabase(pool);
+  const { verifyPostgresReleaseSchema } = await import('../src/postgres-schema-inspection.js');
+  await verifyPostgresReleaseSchema(pool);
+  return fingerprint;
+}
+
+// Only literal true opts in. Empty, whitespace, case variants and other values
+// are configuration errors, not a silent return to application startup.
+export function labMaintenanceEnabled(env) {
+  const flag = env.PRIVATE_VOICE_LAB_MAINTENANCE;
+  if (flag === undefined || flag === 'false') return false;
+  if (flag !== 'true') throw new Error('private_lab_maintenance_flag_invalid');
+  return true;
+}
+
+export function validateLabMaintenanceEnvironment(env) {
+  validateLabEnvironment(env);
+  if (!labMaintenanceEnabled(env)) throw new Error('private_lab_maintenance_required');
+  for (const key of ['VOICE_ENABLED', 'DISPATCH_ENABLED', 'BOOKEDRADAR_BILLING_ENABLED', 'OPS_ALERTS_ENABLED', 'WARM_TRANSFER_ENABLED']) {
+    if (env[key] !== 'false') throw new Error('private_lab_maintenance_providers_disabled_required');
+  }
+  if (env.DEMO_NUMBER_PROVISION_MODE !== 'off' ||
+      Object.entries(env).some(([key, value]) => key.endsWith('_ON_STARTUP') && value !== 'false')) {
+    throw new Error('private_lab_maintenance_actions_disabled_required');
+  }
+  const port = env.PORT === undefined ? '5050' : env.PORT;
+  if (!/^[1-9]\d{0,4}$/.test(port) || Number(port) > 65535) throw new Error('private_lab_maintenance_port_invalid');
+  return Number(port);
+}
+
+export async function startLabMaintenance(env) {
+  const port = validateLabMaintenanceEnvironment(env);
+  // Built-ins only: no config generation, application import, PostgreSQL client,
+  // provider SDK, worker, readiness query or automatic migration in this branch.
+  const body = JSON.stringify({status:'maintenance', mode:'private_lab_maintenance',
+    customerReady:false, databaseReady:false, databaseAccess:'disabled', service:LAB_NAME,
+    instanceId:env.RENDER_INSTANCE_ID || null, commit:env.RENDER_GIT_COMMIT || null});
+  const server = http.createServer((request, response) => {
+    const health = (request.method === 'GET' || request.method === 'HEAD') && request.url === '/health';
+    response.writeHead(health ? 200 : 503, {'Content-Type':'application/json', 'Cache-Control':'no-store',
+      'Connection':'close', ...(health ? {} : {'Retry-After':'60'})});
+    response.end(request.method === 'HEAD' ? undefined : body);
+  });
+  server.requestTimeout = 10000;
+  server.headersTimeout = 10000;
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', resolve);
+  });
+  console.log(JSON.stringify({event:'private_voice_lab.maintenance_listening', port,
+    customerReady:false, databaseAccess:'disabled', instanceId:env.RENDER_INSTANCE_ID || null,
+    commit:env.RENDER_GIT_COMMIT || null}));
+  return server;
+}
+
 export async function main(env = process.env) {
+  if (labMaintenanceEnabled(env)) return startLabMaintenance(env);
   const numbers=validateLabEnvironment(env);
+  const connectionString=labDatabaseConnectionString(env);
   const sources = await Promise.all(CRAFTS.map(async craft =>
     JSON.parse(await fs.readFile(new URL(`../config/tenants/demo-${craft}.json`,import.meta.url),'utf8'))));
   assertNoProtectedDemoRoutes(numbers, sources);
@@ -98,16 +167,17 @@ export async function main(env = process.env) {
     const craft=CRAFTS[i], source=sources[i];
     await fs.writeFile(path.join(configDir,`${craft}.json`),JSON.stringify(isolateTenant(source,craft,numbers[craft])));
   }
-  const pool=createPostgresPool({connectionString:env.DATABASE_URL});
+  const { createPostgresPool } = await import('../src/postgres-runtime.js');
+  const pool=createPostgresPool({connectionString});
   let fingerprint;
-  try {fingerprint=await validateExistingLabDatabase(pool);} finally {await pool.end();}
+  try {fingerprint=await validateLabReleaseReadiness(pool);} finally {await pool.end();}
   Object.assign(env,{
-    NODE_ENV:'production',TENANT_CONFIG_DIR:configDir,BOOKEDRADAR_STORAGE_BACKEND:'postgres',
+    DATABASE_URL:connectionString,NODE_ENV:'production',TENANT_CONFIG_DIR:configDir,BOOKEDRADAR_STORAGE_BACKEND:'postgres',
     POSTGRES_PRODUCTION_ARMED:'true',POSTGRES_STATELESS_MODE:'true',POSTGRES_VALIDATED_MIGRATION_ID:MIGRATION_ID,
     POSTGRES_VALIDATED_SNAPSHOT_FINGERPRINT:fingerprint,DISPATCH_ENABLED:'false',BOOKEDRADAR_BILLING_ENABLED:'false',
     OPS_ALERTS_ENABLED:'false',DEMO_NUMBER_PROVISION_MODE:'off',LOG_TRANSCRIPTS:'false',WARM_TRANSFER_ENABLED:'false',
   });
-  console.log(JSON.stringify({event:'private_voice_lab.ready',tenants:CRAFTS.length,voiceEnabled:env.VOICE_ENABLED==='true',isolatedDatabase:true}));
+  console.log(JSON.stringify({event:'private_voice_lab.preflight_validated',tenants:CRAFTS.length,voiceEnabled:env.VOICE_ENABLED==='true',isolatedDatabase:true}));
   await import('../server.js');
 }
 

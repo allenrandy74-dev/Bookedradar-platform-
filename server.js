@@ -512,11 +512,14 @@ const warmTransfer = createWarmTransfer({
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const guardedTransfer = createTransferController({
+  store: state,
   relay: warmTransfer,
+  hangup: ({ callId }) => hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId }),
   refer: ({ targetUri, callId }) => referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri }),
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 const transferCompanion = createTransferCompanion({
+  store: state,
   config: { accountSid: TWILIO_ACCOUNT_SID, authToken: TWILIO_AUTH_TOKEN,
     fromNumber: TWILIO_TRANSFER_SMS_FROM || TWILIO_VOICE_CALLER_ID },
   log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
@@ -1177,30 +1180,16 @@ async function attachSideband({
       greetingTurns.release("greeting_fallback");
       fallbackStarted = true;
       send(ws, { type: "response.cancel" });
-      let leadSaved = false;
-      try {
-        await executeTool({ name: "capture_lead", args: { notes: "Greeting audio unavailable; follow-up needed." }, callId, callerNumber, tenant, syncCrm: false });
-        leadSaved = true;
-      } catch { voiceLog("greeting.lead_save_failed"); }
-      try {
-        if (warmTransfer.ready()) {
-          const transfer = await warmTransfer.start({ callId, tenant, leadSaved, kind: "greeting_fallback" });
-          try { await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: transfer.targetUri }); }
-          catch { await warmTransfer.failed(transfer.id); throw new Error("fallback_refer_failed"); }
-          ws.close();
-          return "twilio_announcement_requested";
-        }
-        const target = humanTransferTarget(tenant);
-        if (!/^\+[1-9]\d{7,14}$/.test(target)) throw new Error("no_fallback_target");
-        await referRealtimeCall({ apiKey: OPENAI_API_KEY, callId, targetUri: `tel:${target}` });
-        ws.close();
-        return "legacy_human_transfer_requested";
-      } catch {
-        // Last resort: terminate a failed silent session instead of leaving it open.
-        try { await hangupRealtimeCall({ apiKey: OPENAI_API_KEY, callId }); }
-        finally { ws.close(); }
-        return "call_ended_no_audio";
-      }
+      // Share the same durable tenant/call claim as transfer_to_human. A
+      // timeout or conflicting owner must never launch a competing fallback.
+      const result = await guardedTransfer({
+        callId, tenant, target: humanTransferTarget(tenant), kind: "greeting_fallback",
+        prepare: () => executeTool({ name: "capture_lead", args: { notes: "Greeting audio unavailable; follow-up needed." }, callId, callerNumber, tenant, syncCrm: false }),
+      });
+      ws.close();
+      if (result.status === "announcement_started") return "twilio_announcement_requested";
+      if (result.status === "legacy_referred") return "legacy_human_transfer_requested";
+      return result.status || "transfer_uncertain";
     },
   });
 
@@ -2018,12 +2007,19 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
   const wix = crmTenant ? wixCredentialsForTenant(crmTenant) : null;
   if (!wix) return res.status(503).json({ ok: false, error: "crm_unavailable" });
   const submissionKey = proofPilotInquiryKey(parsed.inquiry);
-  const firstSubmission = await state.markWebhookOnce(submissionKey);
-  if (!firstSubmission) {
-    return res.status(200).json({ ok: true, duplicate: true, message: "We already received this Proof Pilot request." });
-  }
+  const completedKey = `${submissionKey}:completed`;
+  const duplicateSuccess = () => res.status(200).json({ ok: true, duplicate: true, message: "We already received this request." });
+  let ownsReservation = false;
+  let providerWorkStarted = false;
   try {
+    if (await state.hasInquiryReceipt(completedKey)) return duplicateSuccess();
+    ownsReservation = await state.markInquiryOnce(submissionKey);
+    if (!ownsReservation) {
+      if (await state.hasInquiryReceipt(completedKey)) return duplicateSuccess();
+      return res.status(409).json({ ok: false, error: "inquiry_capture_unconfirmed" });
+    }
     const lead = proofPilotLead(parsed.inquiry);
+    providerWorkStarted = true;
     const contact = await createWixContact({
       apiKey: wix.apiKey,
       siteId: wix.siteId,
@@ -2041,7 +2037,8 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
       timeoutMs,
       retries,
     });
-    if (!task?.ok) throw new Error("task_create_failed");
+    if (!task?.ok || !task?.taskId) throw new Error("task_create_failed");
+    await state.markInquiryOnce(completedKey);
     // CRM capture is already complete. A metrics failure must not release the
     // submission key or tell the visitor to retry a successfully captured lead.
     await growthMetrics.record({ event: "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: "short_form" }).catch(error => {
@@ -2055,7 +2052,8 @@ app.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max
     }));
     return res.status(201).json({ ok: true, message: "Thanks. BookedRadar will review your workflow and follow up." });
   } catch (error) {
-    await state.releaseWebhook(submissionKey).catch(() => {});
+    // Never release an ambiguous provider write for blind retry.
+    if (ownsReservation && !providerWorkStarted) await state.releaseWebhook(submissionKey).catch(() => {});
     console.error(JSON.stringify({ event: "growth.proof_pilot_inquiry_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     return res.status(503).json({ ok: false, error: "inquiry_capture_failed" });
   }

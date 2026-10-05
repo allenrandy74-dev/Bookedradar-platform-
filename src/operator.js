@@ -98,7 +98,7 @@ export function buildOperatorInstructions({
 
   const bookingRule =
     bookingMode === "live_booking"
-      ? `You may check live availability and create an appointment only through the booking tools. Never claim a booking succeeded unless the tool confirms it. Before check_availability, translate the caller's requested date/time into concrete RFC3339 window_start and window_end values using business timezone ${timeZone}. Use the returned slot id exactly when calling book_appointment. Never invent a slot.`
+      ? `You may check advisory calendar availability, but automatic booking is currently unavailable. Calendar slots are not reserved and may change. Collect the preferred window through the normal intake flow and say the team must confirm it. Do not call book_appointment or say the caller is booked. A booking refusal does not mean a request was saved: only say details were captured after capture_lead succeeds. Before check_availability, translate the caller's requested date/time into concrete RFC3339 window_start and window_end values using business timezone ${timeZone}. Never invent a slot.`
       : "Live booking is not enabled. Collect the preferred window and say a team member will confirm it.";
 
   const pricingRule = quotePrices

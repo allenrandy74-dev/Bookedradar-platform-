@@ -62,3 +62,11 @@ test("failed rollback snapshot aborts transaction and releases connection", asyn
   assert.ok(!queries.includes("COMMIT"));
   assert.equal(released, true);
 });
+
+
+test('direct booking claims refuse without any database query', async () => {
+  let queries = 0;
+  const store = new PostgresCallStateStore({ query: async () => { queries++; throw Error('must not query'); } }, 'synthetic-hvac');
+  await assert.rejects(store.claimBooking('call', { attemptId: 'attempt', requestHash: 'a'.repeat(64) }), /booking_authority_unavailable/);
+  assert.equal(queries, 0);
+});

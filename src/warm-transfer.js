@@ -53,16 +53,32 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
       ? "I'm sorry, the team is unavailable right now. Your information has been saved for follow-up. Thank you for calling. Goodbye."
       : "I'm sorry, we're having trouble connecting your call. Please call the business again. Thank you. Goodbye.") + '<Hangup/>');
   }
-  async function start({ callId, tenant, target, lead, leadSaved, kind = 'transfer' }) {
+  async function start({ callId, tenant, target, lead, leadSaved, kind = 'transfer', signal }) {
+    signal?.throwIfAborted();
     if (!ready()) throw new Error('warm_transfer_not_ready');
     if (kind === 'transfer' && !/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_transfer_target');
     const id = crypto.randomBytes(16).toString('hex');
     const secret = crypto.randomBytes(24).toString('hex');
+    const ticket = { id, targetUri: `sip:br-${id}-${secret}@${config.domain};transport=tls` };
     const record = { id, secret, callId, tenantId: tenant.tenantId, target, lead, leadSaved,
       kind, expiresAt: now() + 24 * 60 * 60_000, entryExpiresAt: now() + 60_000, status: 'requested', events: [] };
-    await store.patchCall(id, record);
+    // Fence entry immediately when the controller abandons a slow store write.
+    // Keep the ticket available for bounded cleanup, even if the write finishes late.
+    const revoke = () => revoked.add(id);
+    signal?.addEventListener('abort', revoke, { once: true });
+    try {
+      await store.patchCall(id, record);
+      if (signal?.aborted) revoke();
+    } catch {
+      // A rejected persistence acknowledgment may still have written the ticket.
+      // Preserve its identity so the controller can revoke it before fallback.
+      revoke();
+      const error = new Error('relay_start_failed');
+      error.transferTicket = ticket;
+      throw error;
+    } finally { signal?.removeEventListener('abort', revoke); }
     if (kind === 'greeting_fallback') await emit(record, 'requested');
-    return { id, targetUri: `sip:br-${id}-${secret}@${config.domain};transport=tls` };
+    return ticket;
   }
   async function failed(id) {
     const record = await store.getCall(id);
@@ -157,21 +173,27 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
     await emit(record, 'rejected', { status: 'rejected' });
     return res.type('text/xml').send(response(say('The call was not connected. Goodbye.') + '<Hangup/>'));
   }));
-  async function waitForEntry(id, timeoutMs = 8000) {
+  async function waitForEntry(id, timeoutMs = 8000, { signal } = {}) {
     const until = Date.now() + timeoutMs;
     do {
+      if (signal?.aborted) return false;
       const record = await store.getCall(id);
+      if (signal?.aborted) return false;
       if (record?.parentSid && record.entryXml) return true;
       if (!record || revoked.has(id) || record.status === 'failed') return false;
       await new Promise(resolve => setTimeout(resolve, 100));
     } while (Date.now() < until);
     return false;
   }
-  async function cancelPending(id) {
+  async function cancelPending(id, { signal } = {}) {
     return serialized(id, async () => {
+      signal?.throwIfAborted();
       const record = await store.getCall(id);
       // Entry and cancellation share a lock: a late SIP leg cannot start a second dial.
-      if (record?.parentSid) return false;
+      if (record?.parentSid) {
+        if (record.entryXml) return false;
+        throw new Error('relay_entry_uncertain');
+      }
       revoked.add(id);
       if (record) await emit(record, 'failed', { status: 'failed' });
       return true;
@@ -182,47 +204,121 @@ export function createWarmTransfer({ store, registry, config, log, now = Date.no
 
 // REFER acceptance is not proof that Twilio reached the relay. Keep call control
 // until the signed entry callback arrives, or invalidate the relay before fallback.
-export function createTransferController({ relay, refer, log, timeoutMs = 8000 }) {
+export function createTransferController({ relay, refer, hangup, store, log, timeoutMs = 8000 }) {
   const calls = new Map();
-  async function bounded(work) {
+  const stepTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, 8000) : 8000;
+  async function bounded(work, { onTimeout } = {}) {
     let timer;
+    const abort = new AbortController();
     try {
-      return await Promise.race([Promise.resolve().then(work), new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('transfer_step_timeout')), timeoutMs);
+      return await Promise.race([Promise.resolve().then(() => work(abort.signal)), new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          onTimeout?.();
+          abort.abort();
+          reject(new Error('transfer_step_timeout'));
+        }, stepTimeoutMs);
       })]);
     } finally { clearTimeout(timer); }
   }
-  async function run({ callId, tenant, target, prepare, beforeRefer }) {
+  async function run({ callId, tenant, target, prepare, beforeRefer, kind }, key, claimToken, intent) {
+    let persistenceFailed = false;
+    const greetingFallback = kind === 'greeting_fallback';
+    const relayStatus = greetingFallback ? 'announcement_started' : 'screening_started';
+    async function persistedRefer(targetUri, phase, signal) {
+      try { await store.finishAttempt(key, { ...intent, claimToken, status: 'pending', phase, targetUri }); }
+      catch { persistenceFailed = true; throw new Error('transfer_persistence_uncertain'); }
+      signal?.throwIfAborted();
+      await refer({ callId, targetUri });
+      try { await store.finishAttempt(key, { ...intent, claimToken, status: 'pending', phase: phase + '_accepted' }); }
+      catch { persistenceFailed = true; throw new Error('transfer_persistence_uncertain'); }
+    }
     const fields = { call_id: callId, tenant_id: tenant.tenantId };
     const emit = (event, extra = {}) => log(`transfer.${event}`, { ...fields, ...extra });
     emit('requested');
     let transfer, lead = {}, leadSaved = false;
-    let reason = 'preparation_failed';
+    let reason = 'preparation_failed', startTimedOut = false;
+    const uncertain = (failureReason, ticket = transfer) => {
+      emit('failed', { reason: failureReason });
+      return { ok: false, transferred: false, lead_saved: leadSaved,
+        status: 'transfer_uncertain', reason: failureReason,
+        ...(ticket?.id ? { transferId: ticket.id } : {}) };
+    };
+    async function cleanupLateTicket(ticket) {
+      try {
+        if (!ticket?.id || await bounded(signal => relay.cancelPending(ticket.id, { signal })) !== true) {
+          emit('failed', { reason: 'late_relay_cleanup_uncertain' });
+          return;
+        }
+        emit('late_relay_revoked');
+      } catch { emit('failed', { reason: 'late_relay_cleanup_uncertain' }); }
+    }
     try {
-      if (!/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
+      if (!greetingFallback && !/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
       const check = relay.preflight();
-      emit('preflight', { ...check, fallback_ready: true });
-      lead = await bounded(prepare);
-      leadSaved = true;
+      emit('preflight', { ...check, fallback_ready: /^\+[1-9]\d{7,14}$/.test(target || '') });
+      try {
+        lead = await bounded(prepare);
+        leadSaved = true;
+      } catch (error) {
+        if (!greetingFallback) throw error;
+        // The announcement has a truthful unsaved-lead version as well.
+        emit('lead_save_failed');
+      }
       reason = check.reason;
       if (check.ready) {
         reason = 'relay_start_failed';
-        transfer = await bounded(() => relay.start({ callId, tenant, target, lead, leadSaved }));
-        await bounded(() => refer({ callId, targetUri: transfer.targetUri }));
+        transfer = await bounded(async signal => {
+          try {
+            const ticket = await relay.start({ callId, tenant, target, lead, leadSaved, kind, signal });
+            if (startTimedOut) await cleanupLateTicket(ticket);
+            return ticket;
+          } catch (error) {
+            if (startTimedOut && error?.transferTicket) await cleanupLateTicket(error.transferTicket);
+            throw error;
+          }
+        }, { onTimeout: () => { startTimedOut = true; } });
+        if (!transfer?.id || !transfer.targetUri) {
+          if (transfer?.id) await cleanupLateTicket(transfer);
+          return uncertain('relay_start_uncertain');
+        }
+        await bounded(signal => persistedRefer(transfer.targetUri, 'relay_refer_intent', signal));
         emit('relay_referred');
-        if (await bounded(() => relay.waitForEntry(transfer.id, Math.max(100, timeoutMs - 100)))) {
-          return { ok: true, transferred: true, lead_saved: true, status: 'screening_started', transferId: transfer.id };
+        if (await bounded(signal => relay.waitForEntry(transfer.id, Math.max(100, timeoutMs - 100), { signal })) === true) {
+          return { ok: true, transferred: true, lead_saved: leadSaved, status: relayStatus, transferId: transfer.id };
         }
         reason = 'relay_entry_timeout';
       }
-    } catch {
+    } catch (error) {
+      if (error?.transferTicket) transfer = error.transferTicket;
       emit('failed', { reason });
     }
+    // A timed-out start may still allocate a ticket. Its late completion is
+    // cleaned up above, but cannot authorize a second dial in the meantime.
+    if (persistenceFailed) return uncertain('transfer_persistence_uncertain');
+    if (startTimedOut) return uncertain('relay_start_timeout');
     if (transfer) {
-      // Revoke before attempting legacy REFER, including after ambiguous API timeouts.
-      if (!await relay.cancelPending(transfer.id)) {
-        return { ok: true, transferred: true, lead_saved: leadSaved, status: 'screening_started', transferId: transfer.id };
-      }
+      // Only an explicit revocation receipt permits fallback. A false receipt
+      // means entry has completed; errors, timeouts and missing receipts do not.
+      try {
+        const cancelled = await bounded(signal => relay.cancelPending(transfer.id, { signal }));
+        if (cancelled === false) {
+          return { ok: true, transferred: true, lead_saved: leadSaved, status: relayStatus, transferId: transfer.id };
+        }
+        if (cancelled !== true) return uncertain('relay_cancellation_uncertain');
+      } catch { return uncertain('relay_cancellation_uncertain'); }
+    }
+    // Only the claimed owner, with no possible live relay, may end a silent
+    // greeting with no usable human destination. Replays cannot repeat this I/O.
+    if (greetingFallback && !/^\+[1-9]\d{7,14}$/.test(target || '')) {
+      if (!hangup) return uncertain('greeting_hangup_unavailable');
+      try {
+        await bounded(async signal => {
+          await store.finishAttempt(key, { ...intent, claimToken, status: 'pending', phase: 'hangup_intent' });
+          signal.throwIfAborted();
+          await hangup({ callId });
+        });
+        return { ok: true, transferred: false, lead_saved: leadSaved, status: 'call_ended_no_audio' };
+      } catch { return uncertain('greeting_hangup_uncertain'); }
     }
     // The companion owns its bounded SMS request and fixed ten-second window.
     // Do not apply the eight-second call-control timeout to that window.
@@ -232,21 +328,51 @@ export function createTransferController({ relay, refer, log, timeoutMs = 8000 }
     }
     emit('fallback_refer', { reason });
     try {
-      await bounded(() => refer({ callId, targetUri: `tel:${target}` }));
+      await bounded(signal => persistedRefer(`tel:${target}`, 'legacy_refer_intent', signal));
       emit('referred', { mode: 'legacy' });
       return { ok: true, transferred: true, lead_saved: leadSaved, status: 'legacy_referred' };
     } catch {
       emit('failed', { reason: 'legacy_refer_failed' });
-      return { ok: false, transferred: false, lead_saved: leadSaved, reason: 'legacy_refer_failed' };
+      return { ok: false, transferred: false, lead_saved: leadSaved, status: 'transfer_uncertain', reason: 'legacy_refer_failed' };
     }
   }
   return options => {
-    if (calls.has(options.callId)) return calls.get(options.callId);
-    const work = run(options);
-    calls.set(options.callId, work);
+    const { callId, tenant } = options;
+    const kind = options.kind ?? 'transfer';
+    const target = kind === 'greeting_fallback' && !options.target ? 'unavailable' : options.target;
+    const unsupported = reason => ({ ok: false, transferred: false, lead_saved: false, status: 'transfer_uncertain', reason });
+    if (!store?.claimAttempt || !store?.finishAttempt) return Promise.resolve(unsupported('durable_transfer_store_required'));
+    if (typeof callId !== 'string' || !callId || typeof tenant?.tenantId !== 'string' || !tenant.tenantId || typeof target !== 'string' || !['transfer', 'greeting_fallback'].includes(kind) || (kind !== 'greeting_fallback' && !/^\+[1-9]\d{7,14}$/.test(target || ''))) {
+      return Promise.resolve(unsupported('invalid_transfer_identity'));
+    }
+    // Bind the operation to the same snapshot as its durable claim, even if
+    // caller-owned options are mutated while the store acknowledgment is pending.
+    const snapshot = { ...options, callId, target, kind, tenant: { ...tenant } };
+    const key = 'transfer:' + crypto.createHash('sha256').update(JSON.stringify([tenant.tenantId, callId])).digest('hex');
+    const intent = { tenantId: tenant.tenantId, callId, target, kind, fingerprint: target };
+    if (calls.has(key)) {
+      const existing = calls.get(key);
+      return existing.target === target && existing.kind === kind ? existing.work : Promise.resolve(unsupported('transfer_intent_conflict'));
+    }
+    const work = (async () => {
+      try {
+        // The durable claim is an at-most-once fence, not a lease. A crash may
+        // sacrifice liveness; pending attempts are never automatically replayed.
+        const claim = await bounded(() => store.claimAttempt(key, intent));
+        if (!claim.claimed) return claim.record?.result || unsupported('transfer_attempt_pending');
+        const claimToken = claim.record?.claimToken;
+        if (!claimToken) return unsupported('transfer_claim_receipt_invalid');
+        const result = await run(snapshot, key, claimToken, intent);
+        await bounded(() => store.finishAttempt(key, { ...intent, claimToken, status: result.ok ? 'accepted' : 'uncertain', result }));
+        return result;
+      } catch (error) {
+        return unsupported(/conflict/.test(error?.message || '') ? 'transfer_intent_conflict' : 'transfer_persistence_uncertain');
+      }
+    })();
+    calls.set(key, { target, kind, work });
     work.finally(() => {
-      const cleanup = setTimeout(() => calls.delete(options.callId), 60000);
-      cleanup.unref?.();
+      const timer = setTimeout(() => { if (calls.get(key)?.work === work) calls.delete(key); }, 60000);
+      timer.unref?.();
     }).catch(() => {});
     return work;
   };

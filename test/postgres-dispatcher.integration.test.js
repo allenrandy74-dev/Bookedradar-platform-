@@ -46,9 +46,17 @@ test('real Postgres: application dispatcher fences sends and ambiguous outcomes'
     });
     await t.test('crash after durable send intent does not allow another worker to resend',async()=>{
       const action=await seed('crash');const claimed=(await store.claimDueActions({workerId:'crashed',leaseMs:1000}))[0];
-      assert.equal(claimed.id,action.id);await store.beginDispatch(action.id,claimed);
+      assert.equal(claimed.id,action.id);await store.beginDispatch(action.id,claimed,new Date(),tenant);
       assert.deepEqual(await store.claimDueActions({workerId:'other',now:new Date(Date.now()+10000)}),[]);
       assert.ok((await store.reconciliationActions()).some(a=>a.id===action.id));
+    });
+    await t.test('final durable intent rejects a tampered caller-text attestation',async()=>{
+      const action=await seed('attestation-tamper');
+      const claim=(await store.claimDueActions({workerId:'attestation-check',leaseMs:60000})).find(item=>item.id===action.id);
+      await pool.query(`UPDATE bookedradar.recovery_actions SET payload=payload || $2::jsonb WHERE action_id=$1`,[action.id,JSON.stringify({template:'caller_text',expectedRecipient:'+14095550111',confirmedCallbackNumber:'+14095550111',callerRequested:false})]);
+      const result=await store.beginDispatch(action.id,claim,new Date(),tenant);
+      assert.equal(result.status,'blocked');assert.equal(result.blockedReason,'sms_confirmation_binding_required');
+      assert.equal((await store.snapshot()).actions[action.id].dispatchStartedAt,undefined);
     });
     await t.test('expired ownership is rejected before a provider call',async()=>{
       await seed('stale');const oldNow=new Date(Date.now()-10000);
@@ -86,7 +94,7 @@ test('real Postgres: application dispatcher fences sends and ambiguous outcomes'
     await t.test('operator cannot resolve a send with an active worker lease',async()=>{
       const action=await seed('active-resolution');
       const claims=await store.claimDueActions({workerId:'active-review',leaseMs:60000});const claim=claims.find(a=>a.id===action.id);
-      await store.beginDispatch(action.id,claim);
+      await store.beginDispatch(action.id,claim,new Date(),tenant);
       const current=(await store.reconciliationActions()).find(a=>a.id===action.id);
       await assert.rejects(store.reconcileAction(action.id,{decision:'cancelled',resolutionId:'active_resolution',expectedRevision:current.reconciliationRevision,evidence:'Synthetic review',actor:'synthetic_admin'}),/dispatch_still_active/);
     });

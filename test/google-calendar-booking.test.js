@@ -24,35 +24,15 @@ test("Google Calendar adapter refreshes token and returns open slots", async () 
   assert.equal(calls.filter(x=>x.url.includes("oauth2.googleapis.com")).length,1);
 });
 
-test("Google Calendar booking rechecks availability before insert", async () => {
-  let insertBody; let freeBusyCalls=0;
-  const a=adapter(async (url,options)=>{
-    if(url.includes("oauth2.googleapis.com")) return Response.json({access_token:"token",expires_in:3600});
-    if(url.endsWith("/freeBusy")) { freeBusyCalls++; return Response.json({calendars:{primary:{busy:[]}}}); }
-    if(url.includes("/events")) { insertBody=JSON.parse(options.body); return Response.json({id:"evt-1"}); }
-    throw new Error("unexpected");
-  });
-  const result=await a.createBooking({
-    tenantId:"demo",callId:"call",name:"Alex Smith",callbackNumber:"+14095550100",
-    serviceType:"AC repair",serviceAddress:"123 Oak",city:"Silsbee",
-    slot:"2026-09-25T14:00:00Z|2026-09-25T15:00:00Z"
-  });
-  assert.equal(result.confirmed,true);
-  assert.equal(result.bookingId,"evt-1");
-  assert.equal(freeBusyCalls,1);
-  assert.match(insertBody.summary,/AC repair/);
-  assert.match(insertBody.description,/BookedRadar call/);
-});
-
-test("Google Calendar booking refuses a slot that became busy", async () => {
-  const a=adapter(async (url)=>{
-    if(url.includes("oauth2.googleapis.com")) return Response.json({access_token:"token",expires_in:3600});
-    if(url.endsWith("/freeBusy")) return Response.json({calendars:{primary:{busy:[{start:"2026-09-25T14:00:00.000Z",end:"2026-09-25T15:00:00.000Z"}]}}});
-    throw new Error("event insert must not run");
-  });
-  const result=await a.createBooking({slot:"2026-09-25T14:00:00Z|2026-09-25T15:00:00Z"});
+test("Google Calendar booking refuses unsupported authority before any provider operation", async () => {
+  let calls=0;
+  const a=adapter(async()=>{calls++; throw new Error("must not contact provider");});
+  const result=await a.createBooking({tenantId:"demo",callId:"call",name:"Alex Smith",slot:"2026-09-25T14:00:00Z|2026-09-25T15:00:00Z"});
   assert.equal(result.confirmed,false);
-  assert.equal(result.reason,"slot_no_longer_available");
+  assert.equal(result.bookingId,null);
+  assert.equal(result.reason,"booking_authority_unavailable");
+  assert.equal(result.needsHumanReview,true);
+  assert.equal(calls,0);
 });
 
 test("Google Calendar does not offer or book slots when free/busy evidence is incomplete", async t => {
@@ -75,8 +55,8 @@ test("Google Calendar does not offer or book slots when free/busy evidence is in
         inserts++;
         return Response.json({ id: "must-not-be-created" });
       });
-      await assert.rejects(a.findAvailability({ windowStart: "2026-09-25T14:00:00Z", windowEnd: "2026-09-25T15:00:00Z" }), /google_calendar_availability_unverified/);
-      await assert.rejects(a.createBooking({ slot: "2026-09-25T14:00:00Z|2026-09-25T15:00:00Z" }), /google_calendar_availability_unverified/);
+      await assert.rejects(a.findAvailability({ windowStart: "2026-09-25T14:00:00Z", windowEnd: "2026-09-25T15:00:00Z" }), /google_calendar_availability_unknown/);
+      assert.equal((await a.createBooking({ slot: "2026-09-25T14:00:00Z|2026-09-25T15:00:00Z" })).reason, "booking_authority_unavailable");
       assert.equal(inserts, 0);
     });
   }

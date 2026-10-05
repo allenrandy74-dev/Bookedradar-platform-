@@ -20,7 +20,7 @@ for (const tenant of registry.list()) {
     ingestTokenConfigured: Boolean(process.env.BOOKEDRADAR_INGEST_TOKEN),
     liveBookingSafe:
       tenant?.policies?.bookingMode !== "live_booking" ||
-      bookingAdapterForTenant(tenant).constructor.name !== "ConfirmOnlyBookingAdapter",
+      bookingAdapterForTenant(tenant).supportsLiveBooking === true,
   };
   for (const [k,v] of Object.entries(row)) if ((k.endsWith("Configured") || k.endsWith("Safe")) && v === false) failures++;
   rows.push(row);
