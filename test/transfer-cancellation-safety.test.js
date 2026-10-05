@@ -54,16 +54,23 @@ test('unresolved start never launches fallback; a late noncooperative ticket is 
 });
 
 for (const kind of ['stall', 'reject', 'already entered']) test(`late-ticket cleanup ${kind} is bounded and cannot claim success`, async () => {
-  let finish, cleanupSignal;
+  let finish, cleanupSignal, cleanupEntered;
+  const cleanupStarted = new Promise(resolve => { cleanupEntered = resolve; });
   const f = fixture({ start: () => new Promise(resolve => { finish = resolve; }),
     cancelPending: async (_id, { signal }) => {
       cleanupSignal = signal;
+      cleanupEntered();
       if (kind === 'stall') return new Promise(() => {});
       if (kind === 'reject') throw Error('private-error');
       return false;
     } });
   const result = await f.run(options);
-  finish({ id: 'late', targetUri: 'sip:late@synthetic.invalid' }); await sleep(40);
+  finish({ id: 'late', targetUri: 'sip:late@synthetic.invalid' });
+  // The cleanup deadline starts in a continuation after start resolves. Wait
+  // for that phase before starting the observation window; CPU contention can
+  // otherwise expire this test's timer before cleanup has even begun.
+  await cleanupStarted;
+  await sleep(40);
   assert.equal(result.ok, false); assert.equal(f.refs.length, 0);
   assert.equal(f.events.filter(x => x.reason === 'late_relay_cleanup_uncertain').length, 1);
   assert.equal(f.events.some(x => x.event === 'transfer.late_relay_revoked'), false);
