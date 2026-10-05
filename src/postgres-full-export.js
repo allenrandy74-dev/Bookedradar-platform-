@@ -4,6 +4,10 @@ import crypto from 'node:crypto';
 import { readRecovery } from './postgres-recovery-store.js';
 
 export async function readPostgresSnapshot(client) {
+  // Platform JSON has no representation for incident history. Refuse to make
+  // an incomplete export/rollback appear complete; use an all-table backup.
+  const ops = await client.query('SELECT EXISTS (SELECT 1 FROM bookedradar.ops_incidents) AS has_ops_state');
+  if (ops.rows[0]?.has_ops_state !== false) throw new Error('postgres_platform_export_requires_all_table_backup_for_ops_state');
   const read = async sql => (await client.query(sql)).rows;
   const map = (rows,key) => Object.fromEntries(rows.map(r=>[r[key],r.payload]));
   const calls=await read('SELECT call_id,payload FROM bookedradar.voice_calls ORDER BY call_id');

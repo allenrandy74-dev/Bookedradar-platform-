@@ -6,6 +6,33 @@ const active = Symbol('jsonTransaction');
 const dirty = Symbol('jsonDirty');
 const baseline = Symbol('jsonBaseline');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const localLocks = new Map();
+const lockUnavailable = () => new Error('json_store_locked: exclusive lock unavailable; operator recovery required if owner crashed');
+
+// FIFO admission avoids an in-process mkdir polling herd. This is only an
+// optimization: the filesystem lock remains authoritative across processes.
+// The original five-second acquisition budget includes time in this queue.
+function localLock(key, deadline) {
+  let queue = localLocks.get(key);
+  if (!queue) { queue = []; localLocks.set(key, queue); }
+  return new Promise((resolve, reject) => {
+    const entry = { admit: null, timer: null };
+    entry.admit = () => {
+      clearTimeout(entry.timer);
+      resolve(() => {
+        queue.shift();
+        if (queue.length) queue[0].admit();
+        else localLocks.delete(key);
+      });
+    };
+    queue.push(entry);
+    if (queue.length === 1) entry.admit();
+    else entry.timer = setTimeout(() => {
+      queue.splice(queue.indexOf(entry), 1);
+      reject(lockUnavailable());
+    }, Math.max(0, deadline - Date.now()));
+  });
+}
 function dictionaryPrototypes(data) {
   for (const [key, value] of Object.entries(data)) {
     if (key === 'eventKeyFormat') { if (value !== 'tenant_scoped_v1') throw new Error('json_event_key_format_unsupported'); continue; }
@@ -23,22 +50,26 @@ async function locked(filePath, callback) {
   const canonicalPath = path.join(await fs.realpath(path.dirname(filePath)), path.basename(filePath));
   const lock = `${canonicalPath}.lock`;
   const deadline = Date.now() + 5000;
-  while (true) {
-    try { await fs.mkdir(lock); break; }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (Date.now() >= deadline) throw new Error('json_store_locked: exclusive lock unavailable; operator recovery required if owner crashed');
-      await pause(10);
-    }
-  }
+  const releaseLocal = await localLock(canonicalPath, deadline);
   try {
+    while (true) {
+      if (Date.now() >= deadline) throw lockUnavailable();
+      try { await fs.mkdir(lock); break; }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        if (Date.now() >= deadline) throw lockUnavailable();
+        await pause(10);
+      }
+    }
     try {
-      const stat = await fs.lstat(canonicalPath);
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('json_store_unsupported_file_type');
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    return await callback(canonicalPath);
-  }
-  finally { await fs.rmdir(lock); }
+      try {
+        const stat = await fs.lstat(canonicalPath);
+        if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('json_store_unsupported_file_type');
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      return await callback(canonicalPath);
+    }
+    finally { await fs.rmdir(lock); }
+  } finally { releaseLocal(); }
 }
 
 async function commit(filePath, data) {
