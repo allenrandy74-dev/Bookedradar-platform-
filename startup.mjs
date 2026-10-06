@@ -1,4 +1,4 @@
-// Optional production entrypoint. Deployment wiring is deliberately unchanged.
+// Default container entrypoint. Maintenance remains an explicit, validated opt-in.
 // Keep every application/config/store/provider import below the mode decision.
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";

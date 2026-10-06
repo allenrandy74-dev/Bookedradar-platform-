@@ -2,12 +2,13 @@
 
 ## Status and scope
 
-`startup.mjs` is a reviewed-code candidate for a production-only, health-only
-maintenance process. It is **not activated by this change**. `Dockerfile` still
-runs `node server.js`, the package `start` script still runs `node server.js`, and
-`render.yaml` is unchanged. Deploying this source alone does not enable the gate.
-No production deployment, command/environment setting, database migration,
-provider operation, new credential, or permission change is authorized here.
+The container default command is `node startup.mjs`. The package `start` script
+still runs `node server.js`, and `render.yaml` is unchanged. Maintenance remains
+an explicit opt-in: absent/false mode with no target imports the existing server.
+Deploying this image with valid maintenance selectors activates health-only mode;
+without them it selects normal application startup. No production deployment,
+command/environment setting, database migration, provider operation, new credential,
+or permission change is authorized by this code change.
 
 The wrapper imports only the Node HTTP and crypto builtins before choosing its mode. It
 does not load dotenv, application configuration, tenants, stores, provider
@@ -98,22 +99,20 @@ would be required to change it and requires separate authorization.
 retry/retention behavior must be reviewed for the actual window. Maintenance
 does not queue, replay, answer, hang up, transfer, or send messages for a call.
 
-## Future command wiring: separate approval required
+## Container command wiring and deployment approval
 
-The required future effective container command is exactly:
+The reviewed image default is exactly `CMD ["node", "startup.mjs"]`. An empty
+Render Docker command override should use that image default; verify the effective
+command and exact deployed commit rather than assuming platform behavior. A stale
+`node server.js` override bypasses the guard. Do not change protected deployment
+settings or deploy solely because this candidate passes tests.
 
-```text
-node startup.mjs
-```
-
-The future execution approval must include how that command is wired into this
-specific Render service. Record and verify the effective command, not merely a
-package script. The current Docker `CMD ["node", "server.js"]` bypasses both
-the wrapper and `npm start`. A permitted, explicitly approved service-level
-Docker command override could supply `node startup.mjs`; otherwise prepare a
-separately reviewed Docker change to `CMD ["node", "startup.mjs"]`. Do not
-assume a command override exists or silently change deployment settings.
-Re-pin the reviewed final commit if command wiring requires a code change.
+CI exercises the actual default image command without an entrypoint or command
+override, using synthetic settings, network isolation and import/transport guards.
+Normal pass-through uses a substituted server module to prove selection and unchanged
+environment without provider/database startup; it is not live readiness evidence.
+Deployment, original-instance retirement, ingress pause and actual-target checks
+remain separately controlled steps. Retain the precise approved commit identity.
 
 For the approved maintenance start, retain the original application environment
 and add only the explicit selector and target above. Do not turn off or rewrite
@@ -259,11 +258,12 @@ The suite covers dependency-free maintenance startup, poison application flags,
 wrong/missing identities, malformed selectors/URLs/ports, forbidden imports,
 normal selection/passthrough, 503 routes/methods/upgrades/Expect behavior,
 malformed HTTP, both shutdown signals, listen collision, sanitized import errors,
-and the intentionally unchanged deployment wiring. It is not a full normal-app
+and the approved Docker entrypoint with unchanged npm/Render configuration. It is not a full normal-app
 startup or proof of production drain, database migration, or provider behavior.
 
 `npm run test:maintenance` invokes this standalone test, and `npm test` runs it
 after the normal `test/*.test.js` suite so repository CI does not omit it. When
 the ordinary suite uses an external no-subprocess guard, run the two suites
-separately; do not expand that guard's network privileges. A later separately
-approved command-wiring change must update the explicit unchanged-wiring test.
+separately; do not expand that guard's network privileges. The maintenance-image
+CI job additionally tests the actual image default CMD with synthetic settings
+and no external network, including malformed-mode rejection and normal selection.

@@ -16,4 +16,4 @@ RUN npm run check && npm test
 ENV NODE_ENV=production
 EXPOSE 5050
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD wget -qO- http://127.0.0.1:5050/health || exit 1
-CMD ["node", "server.js"]
+CMD ["node", "startup.mjs"]

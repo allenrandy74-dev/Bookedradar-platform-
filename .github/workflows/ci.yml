@@ -28,6 +28,11 @@ jobs:
             pg_restore --version | grep -E "^pg_restore \(PostgreSQL\) 18\."
             npm run test:maintenance
           '
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify default image command with isolated synthetic configuration
+        run: node scripts/test-default-image.mjs bookedradar-maintenance:test
   postgres-state:
     runs-on: ubuntu-latest
     timeout-minutes: 10

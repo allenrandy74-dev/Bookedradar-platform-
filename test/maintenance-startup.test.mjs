@@ -362,12 +362,12 @@ test("log-only instance/build identity is sanitized and shares a unique ID acros
   }
 });
 
-test("repository launch wiring remains on the original server until separately approved", async () => {
+test("container uses the guarded entrypoint while npm and Render configuration stay unchanged", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   assert.equal(packageJson.scripts.start, "node server.js");
   const dockerfile = await readFile(path.join(root, "Dockerfile"), "utf8");
-  assert.match(dockerfile, /CMD \["node", "server\.js"\]/);
+  assert.match(dockerfile, /CMD \["node", "startup\.mjs"\]/);
   assert.doesNotMatch(await readFile(path.join(root, "render.yaml"), "utf8"), /startup\.mjs|MAINTENANCE_MODE/);
 });
 
