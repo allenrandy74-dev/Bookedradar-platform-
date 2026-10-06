@@ -7,6 +7,32 @@ on:
     branches: [main]
 
 jobs:
+  maintenance-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image with official PostgreSQL 18 clients
+        run: docker build --pull --tag bookedradar-maintenance:test .
+      - name: Verify final-image clients and isolated maintenance startup
+        run: |
+          docker run --rm --network none --entrypoint sh bookedradar-maintenance:test -ec '
+            test "$(node --version)" = "v22.23.3"
+            grep -E "^3\.24\." /etc/alpine-release
+            apk info -e postgresql18-client libpq
+            ldd /usr/lib/libpq.so.5 | grep -E "libssl\.so\.3"
+            /usr/bin/psql --version | grep -E "^psql \(PostgreSQL\) 18\."
+            pg_dump --version | grep -E "^pg_dump \(PostgreSQL\) 18\."
+            pg_restore --version | grep -E "^pg_restore \(PostgreSQL\) 18\."
+            npm run test:maintenance
+          '
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify default image command with isolated synthetic configuration
+        run: node scripts/test-default-image.mjs bookedradar-maintenance:test
   postgres-state:
     runs-on: ubuntu-latest
     timeout-minutes: 10

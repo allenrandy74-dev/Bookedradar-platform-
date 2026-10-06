@@ -65,18 +65,97 @@ export async function contactWithRecipientSuppression(store, tenantId, contact) 
     : contact;
 }
 
+function nonnegativeMoney(value, field) {
+  // Numeric strings remain supported for existing intake clients, but coercible
+  // objects, booleans, empty strings and null are not monetary amounts.
+  if (!(typeof value === "number" ||
+        typeof value === "string" && /^[+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+\-]?\d+)?$/i.test(value.trim())) ||
+      !Number.isFinite(Number(value)) || Number(value) < 0) {
+    throw new Error(`${field} must be a finite non-negative amount`);
+  }
+  return Number(value);
+}
+
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    [Object.prototype, null].includes(Object.getPrototypeOf(value));
+}
+
+export function validateRecoveryEvent(event, tenant) {
+  if (!record(event)) throw new Error("Invalid recovery event: object required");
+  if (typeof tenant?.tenantId !== "string" || !tenant.tenantId.trim()) {
+    throw new Error("Invalid recovery tenant");
+  }
+  if (typeof event.type !== "string" || !event.type.trim()) {
+    throw new Error("Invalid recovery event type");
+  }
+  // Unknown/custom event names retain the existing no-playbook behavior.
+  for (const field of ["id", "idempotencyKey", "tenantId", "opportunityId", "contactKey", "bookingId"]) {
+    if (event[field] !== undefined && !(field === "bookingId" && event[field] === null) &&
+        (typeof event[field] !== "string" || !event[field].trim())) {
+      throw new Error(`Invalid recovery event ${field}`);
+    }
+  }
+  if (event.tenantId !== undefined && event.tenantId !== tenant.tenantId) {
+    throw new Error("Recovery event tenant mismatch");
+  }
+  if (event.occurredAt !== undefined &&
+      (!(typeof event.occurredAt === "string" && event.occurredAt.trim() ||
+         typeof event.occurredAt === "number") ||
+       !Number.isFinite(new Date(event.occurredAt).getTime()))) {
+    throw new Error("Invalid recovery event occurredAt");
+  }
+  for (const field of ["contact", "metadata"]) {
+    if (event[field] !== undefined && !record(event[field])) {
+      throw new Error(`Invalid recovery event ${field}`);
+    }
+  }
+  const contact = event.contact || {};
+  for (const field of ["contactKey", "externalId", "phone", "email", "tenantId"]) {
+    if (contact[field] !== undefined && typeof contact[field] !== "string") {
+      throw new Error(`Invalid recovery contact ${field}`);
+    }
+  }
+  if (contact.tenantId !== undefined && contact.tenantId !== tenant.tenantId) {
+    throw new Error("Recovery contact tenant mismatch");
+  }
+  for (const field of ["optedOut", "suppressed", "marketingConsent", "smsMarketingConsent", "transactionalSmsAllowed"]) {
+    if (contact[field] !== undefined && typeof contact[field] !== "boolean") {
+      throw new Error(`Invalid recovery contact ${field}`);
+    }
+  }
+  const normalized = {
+    ...event, tenantId: tenant.tenantId,
+    occurredAt: event.occurredAt === undefined ? new Date().toISOString() : event.occurredAt,
+  };
+  for (const field of ["amount", "estimateAmount", "estimatedOpportunityValue", "estimatedRecoveredValue"]) {
+    if (field !== "amount" && event[field] === null) delete normalized[field];
+    else if (event[field] !== undefined) normalized[field] = nonnegativeMoney(event[field], field);
+  }
+  if ((TERMINAL_EVENTS.has(event.type) && event.type !== "contact_opted_out" ||
+       ["customer_replied", "revenue_confirmed"].includes(event.type)) && !event.opportunityId) {
+    throw new Error("Recovery event opportunityId required");
+  }
+  if (event.type === "contact_opted_out" &&
+      ![event.opportunityId, event.contactKey, contact.contactKey, contact.externalId, contact.phone, contact.email]
+        .some(value => typeof value === "string" && value.trim())) {
+    throw new Error("Contact identity required for opt-out");
+  }
+  if (event.type === "revenue_confirmed" && event.amount === undefined) {
+    throw new Error("Revenue amount required");
+  }
+  // Clone accepted inputs before queuing or delegating: later caller mutation
+  // must not bypass validation while an earlier ingestion is awaiting storage.
+  return structuredClone(normalized);
+}
+
 function estimateValue(event, tenant) {
-  if (Number.isFinite(Number(event.estimatedOpportunityValue))) {
-    return Number(event.estimatedOpportunityValue);
-  }
-  if (Number.isFinite(Number(event.estimateAmount))) {
-    return Number(event.estimateAmount);
-  }
+  if (event.estimatedOpportunityValue !== undefined) return event.estimatedOpportunityValue;
+  if (event.estimateAmount !== undefined) return event.estimateAmount;
   const byType = tenant?.economics?.averageJobValueByType || {};
-  return Number(
-    byType[event.serviceType] ||
-    tenant?.economics?.defaultAverageJobValue ||
-    0
+  return nonnegativeMoney(
+    byType[event.serviceType] ?? tenant?.economics?.defaultAverageJobValue ?? 0,
+    "estimatedOpportunityValue"
   );
 }
 
@@ -87,15 +166,60 @@ export class RecoveryEngine {
   }
 
   async ingest(event) {
+    event = validateRecoveryEvent(event, this.tenant);
     if (typeof this.store.ingest === "function") return this.store.ingest(event, this.tenant);
     const pending = ingestionChains.get(this.store) || Promise.resolve();
-    const result = pending.then(() => this.ingestLocal(event));
+    const result = pending.then(async () => {
+      if (typeof this.store.transaction !== "function") return this.ingestLocal(event);
+      if (event.type === "contact_opted_out") {
+        if (!event.id && !event.idempotencyKey) event = { ...event, id: `evt_${crypto.randomUUID()}` };
+        // Durable suppression and its identity-bound receipt precede cancellation.
+        // If later cleanup fails, delivery stays suppressed and a replay repairs
+        // it; ordinary intake still uses a single atomic transaction below.
+        const prepared = await this.store.transaction(store =>
+          new RecoveryEngine({ store, tenant: this.tenant }).ingestContactOptOut(event, { prepareOnly: true }));
+        const completed = await this.store.transaction(store =>
+          new RecoveryEngine({ store, tenant: this.tenant }).ingestContactOptOut(event));
+        if (!prepared.event.duplicate) delete completed.duplicate;
+        completed.event = prepared.event;
+        return completed;
+      }
+      return this.store.transaction(store => new RecoveryEngine({ store, tenant: this.tenant }).ingestLocal(event));
+    });
     ingestionChains.set(this.store, result.catch(() => {}));
     return result;
   }
 
   async ingestLocal(event) {
+    event = validateRecoveryEvent(event, this.tenant);
     if (event.type === "contact_opted_out") return this.ingestContactOptOut(event);
+    // Validate targets and configuration before a receipt can make an invalid
+    // event permanently deduplicated in the non-transactional JSON store.
+    if (event.opportunityId && (TERMINAL_EVENTS.has(event.type) ||
+        ["customer_replied", "revenue_confirmed"].includes(event.type))) {
+      const target = await this.store.getOpportunity(event.opportunityId);
+      if (!target) throw new Error("Unknown opportunity");
+      if (target.tenantId !== this.tenant.tenantId) {
+        throw new Error("Opportunity belongs to a different tenant");
+      }
+      if (["booking_confirmed", "opportunity_won"].includes(event.type) &&
+          event.estimatedRecoveredValue === undefined) {
+        nonnegativeMoney(target.estimatedOpportunityValue ?? 0, "estimatedRecoveredValue");
+      }
+    }
+    const playbook = playbookFor(event.type, this.tenant.playbooks || {});
+    if (!Array.isArray(playbook)) throw new Error("Invalid recovery playbook");
+    for (const step of playbook) {
+      const dueAt = new Date(event.occurredAt).getTime() + Number(step.offsetMs || 0);
+      if (!Number.isFinite(new Date(dueAt).getTime())) {
+        throw new Error("Invalid recovery action dueAt");
+      }
+    }
+    const estimatedOpportunityValue = playbook.length ? estimateValue(event, this.tenant) : 0;
+    const contactKey = tenantContactKey(this.tenant.tenantId, event);
+    if (contactKey.startsWith(`${this.tenant.tenantId}:suppressed-recipient:`)) {
+      throw new Error("Reserved recipient suppression identity");
+    }
     const storedEvent = await this.store.addEvent(event);
 
     if (storedEvent.duplicate) {
@@ -114,6 +238,11 @@ export class RecoveryEngine {
       if (!opportunity) throw new Error("Unknown opportunity");
       if (opportunity.tenantId !== this.tenant.tenantId) {
         throw new Error("Opportunity belongs to a different tenant");
+      }
+
+      if (opportunity.status === "closed" || TERMINAL_EVENTS.has(opportunity.outcome)) {
+        return { event: storedEvent, opportunity, ignored: true, engaged: false,
+          reason: "opportunity_closed", cancelledAutomatedActions: 0 };
       }
 
       if (storedEvent.contact && Object.keys(storedEvent.contact).length) {
@@ -152,7 +281,7 @@ export class RecoveryEngine {
         throw new Error("Opportunity belongs to a different tenant");
       }
 
-      const amount = Number(storedEvent.amount || 0);
+      const amount = storedEvent.amount;
       const attribution = await this.store.putAttribution(storedEvent.opportunityId, {
         confirmedRevenue: amount,
         confirmedRevenueSource: storedEvent.source || "explicit_confirmation",
@@ -168,6 +297,14 @@ export class RecoveryEngine {
         throw new Error("Opportunity belongs to a different tenant");
       }
 
+      // First terminal outcome wins. A correction requires an explicit separate
+      // reconciliation workflow; late webhook ordering must not reverse revenue
+      // attribution or silently relabel a won opportunity as lost (or vice versa).
+      if (existing.status === "closed" || TERMINAL_EVENTS.has(existing.outcome)) {
+        return { event: storedEvent, opportunity: existing, ignored: true,
+          reason: existing.outcome === storedEvent.type ? "terminal_already_recorded" : "terminal_outcome_conflict",
+          recovered: Boolean(existing.recovered) };
+      }
       const recovered =
         storedEvent.type === "booking_confirmed" ||
         storedEvent.type === "opportunity_won";
@@ -194,22 +331,20 @@ export class RecoveryEngine {
           recovered: true,
           bookingId: storedEvent.bookingId || existing.bookingId || null,
           estimatedRecoveredValue:
-            Number(storedEvent.estimatedRecoveredValue) ||
-            Number(existing.estimatedOpportunityValue || 0),
+            storedEvent.estimatedRecoveredValue ??
+            nonnegativeMoney(existing.estimatedOpportunityValue ?? 0, "estimatedRecoveredValue"),
         });
       }
 
       return { event: storedEvent, opportunity, recovered };
     }
 
-    const contactKey = tenantContactKey(this.tenant.tenantId, event);
     const contact = await this.upsertContactPreservingSuppression(contactKey, {
       ...(event.contact || {}),
       contactKey,
       tenantId: this.tenant.tenantId,
     });
 
-    const playbook = playbookFor(storedEvent.type, this.tenant.playbooks || {});
     if (!playbook.length) {
       return { event: storedEvent, ignored: true, reason: "no_playbook" };
     }
@@ -222,7 +357,7 @@ export class RecoveryEngine {
       source: storedEvent.source || storedEvent.type,
       serviceType: storedEvent.serviceType || "",
       urgency: storedEvent.urgency || "",
-      estimatedOpportunityValue: estimateValue(storedEvent, this.tenant),
+      estimatedOpportunityValue,
       metadata: storedEvent.metadata || {},
     });
 
@@ -296,7 +431,7 @@ export class RecoveryEngine {
     return this.store.upsertContact(contactKey, protectedContact);
   }
 
-  async ingestContactOptOut(event) {
+  async ingestContactOptOut(event, { prepareOnly = false } = {}) {
     const tenantId = this.tenant.tenantId;
     const prefix = `${tenantId}:`;
     const state = await this.store.snapshot();
@@ -358,7 +493,8 @@ export class RecoveryEngine {
     };
     const target = resolveTarget(event);
     const eventKey = event.idempotencyKey || event.id;
-    const previous = eventKey && state.events.find(item => item.id === state.eventKeys[eventKey]);
+    const scopedEventKey = eventKey && JSON.stringify([tenantId, eventKey]);
+    const previous = eventKey && state.events.find(item => item.id === (state.eventKeys[scopedEventKey] || state.eventKeys[eventKey]) && item.tenantId === tenantId);
     if (event.id && state.events.some(item => item.id === event.id && item !== previous)) {
       throw new Error("Contact opt-out event conflict");
     }
@@ -426,6 +562,10 @@ export class RecoveryEngine {
         outcome: "contact_opted_out",
       });
     }
+    if (prepareOnly) {
+      const storedEvent = await this.store.addEvent({ ...event, tenantId, contactKey: target.contactKey, occurredAt });
+      return { event: storedEvent };
+    }
     let cancelledActions = 0;
     const pending = await this.store.snapshot();
     for (const action of Object.values(pending.actions)) {
@@ -460,15 +600,30 @@ export class RecoveryEngine {
     bookingId = null,
     estimatedRecoveredValue = null,
   } = {}) {
+    if (estimatedRecoveredValue !== null) {
+      estimatedRecoveredValue = nonnegativeMoney(estimatedRecoveredValue, "estimatedRecoveredValue");
+    }
     if (typeof this.store.markRecovered === "function") {
       return this.store.markRecovered(opportunityId, { bookingId, estimatedRecoveredValue }, this.tenant);
     }
+    if (typeof this.store.transaction === "function") {
+      return this.store.transaction(store => new RecoveryEngine({ store, tenant: this.tenant }).markRecoveredLocal(opportunityId, { bookingId, estimatedRecoveredValue }));
+    }
+    return this.markRecoveredLocal(opportunityId, { bookingId, estimatedRecoveredValue });
+  }
+
+  async markRecoveredLocal(opportunityId, { bookingId = null, estimatedRecoveredValue = null } = {}) {
     const existing = await this.store.getOpportunity(opportunityId);
     if (!existing) throw new Error("Unknown opportunity");
     if (existing.tenantId !== this.tenant.tenantId) {
       throw new Error("Opportunity belongs to a different tenant");
     }
 
+    if (existing.status === "closed" || TERMINAL_EVENTS.has(existing.outcome)) {
+      throw new Error("terminal_outcome_conflict: use an explicit reconciliation workflow");
+    }
+    const recoveredValue = estimatedRecoveredValue ??
+      nonnegativeMoney(existing.estimatedOpportunityValue ?? 0, "estimatedRecoveredValue");
     const opportunity = await this.store.patchOpportunity(opportunityId, {
       recovered: true,
       bookingId,
@@ -478,10 +633,7 @@ export class RecoveryEngine {
     const attribution = await this.store.putAttribution(opportunityId, {
       recovered: true,
       bookingId,
-      estimatedRecoveredValue:
-        estimatedRecoveredValue == null
-          ? opportunity.estimatedOpportunityValue
-          : Number(estimatedRecoveredValue),
+      estimatedRecoveredValue: recoveredValue,
     });
 
     return { opportunity, attribution };

@@ -1,5 +1,5 @@
 import { renderTemplate } from "../recovery/templates.js";
-import { actionAllowed } from "../recovery/compliance.js";
+import { dispatchAllowed } from "../recovery/dispatch-policy.js";
 
 export function voiceContactResolver(state, tenantId) {
   return async ({ action, contact, opportunity }) => {
@@ -37,89 +37,9 @@ export class ActionDispatcher {
         results.push(await this.runFencedAction(action, now));
         continue;
       }
-      if (action.tenantId !== this.tenant.tenantId) {
-        await this.store.patchAction(action.id, {
-          status: "pending",
-          claimedBy: null,
-          claimExpiresAt: null,
-        });
-        continue;
-      }
-
-      const opportunity = await this.store.getOpportunity(action.opportunityId);
-      let contact = await this.store.getContact(action.contactKey);
-
-      const decision = dispatchAllowed({
-        action,
-        opportunity,
-        contact,
-        tenant: this.tenant,
-        now,
-      });
-
-      if (!decision.allowed) {
-        const blocked = await this.store.patchAction(action.id, {
-          status: "blocked",
-          blockedReason: decision.reason,
-          completedAt: new Date().toISOString(),
-        });
-        results.push({ action: blocked, dispatched: false });
-        continue;
-      }
-
-      const adapter = this.adapters[action.channel];
-      if (!adapter) {
-        const deferred = await this.store.patchAction(action.id, {
-          status: "pending",
-          lastError: `No adapter configured for channel: ${action.channel}`,
-          claimedBy: null,
-          claimExpiresAt: null,
-        });
-        results.push({ action: deferred, dispatched: false, deferred: true });
-        continue;
-      }
-
-      try {
-        if (this.resolveContact) contact = await this.resolveContact({ action, contact, opportunity });
-        const content =
-          ["sms", "email"].includes(action.channel)
-            ? renderActionContent(action, { contact, tenant: this.tenant, opportunity })
-            : null;
-
-        const result = await adapter.send({
-          action,
-          contact,
-          opportunity,
-          tenant: this.tenant,
-          content,
-        });
-
-        const completed = await this.store.patchAction(action.id, {
-          status: "completed",
-          completedAt: new Date().toISOString(),
-          providerResult: result || null,
-        });
-        results.push({ action: completed, dispatched: true, result });
-      } catch (error) {
-        const attempts = Number(action.attempts || 0) + 1;
-        const maxAttempts = Number(this.tenant?.policies?.maxDispatchAttempts || 3);
-        const baseMinutes = Number(this.tenant?.policies?.retryBaseMinutes || 5);
-        const uncertain = error?.reconciliationRequired === true;
-        const failed = attempts >= maxAttempts;
-        const retryDelayMs = baseMinutes * 60 * 1000 * (2 ** Math.max(0, attempts - 1));
-
-        const updated = await this.store.patchAction(action.id, {
-          status: uncertain ? "reconciliation_required" : failed ? "failed" : "pending",
-          failedAt: failed ? new Date().toISOString() : null,
-          attempts,
-          dueAt: uncertain || failed ? action.dueAt : new Date(Date.now() + retryDelayMs).toISOString(),
-          lastError: String(error?.message || error).slice(0, 500),
-          claimedBy: null,
-          claimedAt: null,
-          claimExpiresAt: null,
-        });
-        results.push({ action: updated, dispatched: false, ...(uncertain ? { reconciliationRequired: true } : {}), error: updated.lastError });
-      }
+      // Stores without durable, fenced send intent cannot safely retry after
+      // crashes. Refuse provider I/O rather than fall back to legacy send-first.
+      results.push({ action, dispatched: false, reason: "dispatch_authority_unavailable" });
     }
 
     return results;
@@ -150,7 +70,8 @@ export class ActionDispatcher {
     // Bind this queued SMS to its caller-confirmed recipient, not a stale
     // contact snapshot read before the transactional send-intent check.
     const { dispatchContact, ...fencedAction } = intent || {};
-    const dispatchAction = intent?.status === 'dispatching' ? fencedAction : action;
+    if (intent?.status !== 'dispatching') throw new Error('dispatch_authority_unverified');
+    const dispatchAction = { ...action, ...fencedAction };
     if (dispatchContact && ['sms', 'email'].includes(dispatchAction.channel)) {
       contact = dispatchContact;
       content = renderActionContent(dispatchAction, { contact, tenant: this.tenant, opportunity });
@@ -162,6 +83,7 @@ export class ActionDispatcher {
     let result;
     try {
       result = await adapter.send({ action:dispatchAction,contact,opportunity,tenant:this.tenant,content,deliveryPolicy:"single_attempt" });
+      if (!validDispatchReceipt(action.channel, result)) throw new Error("provider_acceptance_unverified");
     } catch (error) {
       const uncertain = await finish({ status:"reconciliation_required",failedAt:new Date().toISOString(),lastError:String(error?.message || error).slice(0,500) });
       return { action:uncertain,dispatched:false,reconciliationRequired:true,error:uncertain.lastError };
@@ -180,12 +102,18 @@ function renderActionContent(action, context) {
   return action.content;
 }
 
-function dispatchAllowed(input) {
-  const { action } = input;
-  if (['inbound_sms_reply', 'caller_text'].includes(action.template)) {
-    const validRecipient = typeof action.expectedRecipient === 'string' && /^\+[1-9]\d{7,14}$/.test(action.expectedRecipient);
-    const validAttestation = action.template !== 'caller_text' || (action.callerRequested === true && action.confirmedCallbackNumber === action.expectedRecipient);
-    if (!validRecipient || !validAttestation) return { allowed: false, reason: 'sms_confirmation_binding_required' };
+
+// Completion records provider acceptance (or a persisted internal task), never
+// handset delivery/owner acknowledgment. Empty/coercible results are uncertainty.
+function validDispatchReceipt(channel, result) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return false;
+  const text = value => typeof value === "string" && Boolean(value.trim());
+  if (channel === "sms") return text(result.sid) &&
+    (result.status === undefined || ["accepted", "scheduled", "queued", "sending", "sent", "delivered"].includes(result.status));
+  if (channel === "email") return result.accepted === true && (result.provider === "email_webhook" || text(result.id));
+  if (["human_task", "human_alert"].includes(channel)) {
+    return text(result.taskId) || text(result.id) || text(result.receipt) ||
+      (channel === "human_task" && result.provider === "internal" && text(result.task?.title));
   }
-  return actionAllowed(input);
+  return false;
 }

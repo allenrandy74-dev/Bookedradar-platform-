@@ -1,0 +1,18 @@
+import net from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
+import tls from 'node:tls';
+import dgram from 'node:dgram';
+import dns from 'node:dns';
+import cp from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+let blocked=0;
+const deny=(...args)=>{blocked++;throw new Error('LAB_NETWORK_OR_PROCESS_BLOCKED');};
+globalThis.fetch=deny;
+globalThis.WebSocket=class {constructor(){deny();}};
+net.connect=net.createConnection=net.Socket.prototype.connect=net.Server.prototype.listen=deny;
+http.request=http.get=https.request=https.get=tls.connect=deny;
+dgram.createSocket=deny; dns.lookup=dns.resolve=deny;
+for(const key of ['exec','execSync','execFile','execFileSync','spawn','spawnSync','fork'])cp[key]=deny;
+syncBuiltinESMExports();
+process.on('exit',()=>console.error(JSON.stringify({labNetworkGuard:true,blockedAttempts:blocked,externalRequestsExecuted:0,scope:'guarded Node public APIs; synthetic injected adapters never reach transport'})));

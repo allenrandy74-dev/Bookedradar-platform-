@@ -1,3 +1,4 @@
+import { trackedRoutes } from '../tracked-routes.js';
 import express from 'express';
 import Stripe from 'stripe';
 import { requireBearer } from '../auth.js';
@@ -60,6 +61,7 @@ export async function createBilling({
   defaultStateFile,
   stripeClient = null,
   storeFactory = null,
+  trackWork = (_kind, run) => run(),
 }) {
   if (env.BOOKEDRADAR_BILLING_ENABLED !== 'true') return null;
 
@@ -111,6 +113,7 @@ export async function createBilling({
     : null;
 
   const api = express.Router();
+  const routes = trackedRoutes(api, trackWork);
   api.use(requireBearer(
     env.BOOKEDRADAR_BILLING_ADMIN_TOKEN,
     'billing_admin_token'
@@ -134,16 +137,16 @@ export async function createBilling({
     }
   };
 
-  api.post('/accounts', handle(async req => ({
+  routes.post('/accounts', handle(async req => ({
     account: await service.enroll(req.body || {}),
   })));
-  api.get('/accounts/:tenantId', handle(async req => ({
+  routes.get('/accounts/:tenantId', handle(async req => ({
     account: await service.get(req.params.tenantId),
   })));
-  api.post('/accounts/:tenantId/checkout', handle(req =>
+  routes.post('/accounts/:tenantId/checkout', handle(req =>
     service.checkout(req.params.tenantId, req.body?.method || 'ach')
   ));
-  api.post('/accounts/:tenantId/portal', handle(req =>
+  routes.post('/accounts/:tenantId/portal', handle(req =>
     service.portal(req.params.tenantId)
   ));
 

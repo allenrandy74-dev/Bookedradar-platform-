@@ -180,3 +180,19 @@ test("active feature outside package entitlement blocks activation", () => {
   const result=tenantReadiness(tenant,{env:{}});
   assert.ok(result.blockers.some(x=>x.code==="service_profile_entitlement"));
 });
+
+for (const calendar of [
+  {enabled:true,type:'google_calendar',calendarId:'shared@example.test',clientId:'synthetic',clientSecret:'synthetic',refreshToken:'synthetic'},
+  {enabled:true,type:'webhook',webhookUrl:'https://example.test/calendar'},
+]) {
+  test(`configured ${calendar.type} cannot pass live-booking readiness without authority`,()=>{
+    const tenant=baseTenant();
+    tenant.policies.bookingMode='live_booking';
+    tenant.commercial={...tenant.commercial,serviceProfile:'schedule',serviceTier:'scheduling',schedulingApproved:true,schedulingAgreementReference:'synthetic-approved-scope'};
+    tenant.integrations.calendar=calendar;
+    const result=tenantReadiness(tenant,{env:{}});
+    assert.equal(result.ready,false);
+    assert.equal(result.checks.find(x=>x.code==='booking').ok,false);
+    assert.match(result.blockers.find(x=>x.code==='booking').message,/durable booking authority/);
+  });
+}

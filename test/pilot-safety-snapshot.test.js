@@ -117,7 +117,7 @@ test('actual incoming handler rejects known pilot preparation failure but never 
 });
 
 test('pilot endpoint passes identical end bounds to reporting and reports skipped safety metrics as unknown',async()=>{
- const marker='app.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, res) => {';
+ const marker='routes.get("/api/v1/proof-pilot/status", requireAdmin, requireTenant, async (req, res) => {';
  const body=source.slice(source.indexOf(marker)+marker.length,source.indexOf('\n});',source.indexOf(marker)));
  let historyWindow,proofWindow;
  const deps={callHistory:{statsSince:async(...args)=>{historyWindow=args;return {callsHandled:3};}},

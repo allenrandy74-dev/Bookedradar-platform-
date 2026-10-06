@@ -80,8 +80,7 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       const sibling = await seed();
       const other = await seed(otherEngine);
       const messageSid = `SM${'a'.repeat(32)}`;
-      // Match the signed Twilio STOP route. recovery_events.idempotency_key is
-      // globally unique; the source supplies the tenant-qualified receipt key.
+      // Match the signed Twilio STOP route; storage also isolates event keys by tenant.
       const eventFor = tenantId => ({ type: 'contact_opted_out',
         idempotencyKey: `twilio-optout:${tenantId}:${messageSid}`,
         contactKey: `${tenantId}:${phone}`, contact: { phone }, source: 'twilio_sms' });
@@ -105,25 +104,23 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       assert.equal((await otherStore.snapshot()).events.filter(item => item.type === 'contact_opted_out').length, 1);
     });
 
-    await t.test('reusing a globally unique raw receipt key fails atomically without cross-tenant suppression', async () => {
+    await t.test('the same raw receipt key succeeds independently for two legitimate tenant STOPs', async () => {
       const { store, otherStore, engine, otherEngine, seed } = await fixture();
       await seed();
       const foreign = await seed(otherEngine);
       const event = { type: 'contact_opted_out', idempotencyKey: 'unqualified-shared-source-id',
         contactKey: phone, contact: { phone }, source: 'twilio_sms' };
-      await engine.ingest(event);
-      const firstBefore = await store.snapshot();
       const foreignBefore = await otherStore.snapshot();
-      await assert.rejects(otherEngine.ingest(event), error => {
-        assert.equal(error.code, '23505');
-        assert.equal(error.constraint, 'recovery_events_idempotency_key_key');
-        return true;
-      });
-      assert.deepEqual(await store.snapshot(), firstBefore);
-      assert.deepEqual(await otherStore.snapshot(), foreignBefore);
-      assert.equal((await otherStore.getContact(foreign.opportunity.contactKey)).suppressed, undefined);
-      assert.equal(await recipientSuppressed(otherStore, otherStore.tenantId, { phone }), false);
-      assert.ok(foreign.actions.every(action => foreignBefore.actions[action.id].status === 'pending'));
+      await engine.ingest(event);
+      assert.deepEqual(await otherStore.snapshot(),foreignBefore);
+      const firstBefore = await store.snapshot();
+      const foreignResult = await otherEngine.ingest(event);
+      assert.equal(foreignResult.duplicate,undefined);
+      assert.equal(foreignResult.cancelledActions,foreign.actions.length);
+      assert.deepEqual(await store.snapshot(),firstBefore);
+      assert.equal((await otherStore.getContact(foreign.opportunity.contactKey)).suppressed,true);
+      assert.equal(await recipientSuppressed(otherStore,otherStore.tenantId,{phone}),true);
+      assert.equal((await otherEngine.ingest(event)).duplicate,true);
     });
 
     await t.test('invalid identities, cross-tenant targets and conflicting replays leave no receipt or mutations', async () => {
@@ -153,7 +150,7 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       }
     });
 
-    await t.test('database cancellation failure rolls back suppression, closure and receipt; retry succeeds', async () => {
+    await t.test('database cancellation failure retains committed suppression and receipt; replay repairs cleanup', async () => {
       const { store, engine, seed } = await fixture();
       const first = await seed();
       await seed();
@@ -162,12 +159,17 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       await pool.query("ALTER TABLE bookedradar.recovery_actions ADD CONSTRAINT reject_optout_cancellation CHECK (payload->>'cancelledReason' IS DISTINCT FROM 'contact_opted_out') NOT VALID");
       try {
         await assert.rejects(engine.ingest(event), /reject_optout_cancellation/);
-        assert.deepEqual(await store.snapshot(), before);
+        const retained=await new PostgresRecoveryStore(pool,store.tenantId).snapshot();
+        assert.equal(retained.contacts[first.opportunity.contactKey].suppressed,true);
+        assert.equal(retained.opportunities[first.opportunity.id].status,'closed');
+        assert.equal(retained.events.filter(item=>item.type==='contact_opted_out').length,1);
+        assert.deepEqual(retained.actions,before.actions);
+        assert.equal(await recipientSuppressed(store,store.tenantId,{phone}),true);
       } finally {
         await pool.query('ALTER TABLE bookedradar.recovery_actions DROP CONSTRAINT reject_optout_cancellation');
       }
       const retry = await engine.ingest(event);
-      assert.equal(retry.duplicate, undefined);
+      assert.equal(retry.duplicate, true);
       assert.equal(retry.cancelledActions, 10);
       assert.equal((await store.getContact(first.opportunity.contactKey)).suppressed, true);
       assert.equal((await engine.ingest(event)).duplicate, true);
@@ -197,11 +199,22 @@ test('real Postgres: contact opt-out scope, replay and atomicity', { skip: !conn
       assert.equal(fenced.blockedReason, 'contact_suppressed');
     });
 
-    await t.test('dispatching evidence survives opt-out while other claims are cancelled', async () => {
+    await t.test('legacy STOP payload owner is inferred from SQL scope and replay does not add an event', async () => {
       const { store, engine, seed } = await fixture();
+      const first=await seed();
+      const event={type:'contact_opted_out',idempotencyKey:'legacy-stop',opportunityId:first.opportunity.id};
+      const initial=await engine.ingest(event);
+      await pool.query("UPDATE bookedradar.recovery_events SET payload=payload - 'tenantId' WHERE event_id=$1 AND tenant_id=$2",[initial.event.id,store.tenantId]);
+      const replay=await new PostgresRecoveryStore(pool,store.tenantId).ingest(event,tenant(store.tenantId));
+      assert.equal(replay.duplicate,true);assert.equal(replay.cancelledActions,0);
+      assert.equal((await store.snapshot()).events.filter(item=>item.type==='contact_opted_out').length,1);
+    });
+
+    await t.test('dispatching evidence survives opt-out while other claims are cancelled', async () => {
+      const { config, store, engine, seed } = await fixture();
       const first = await seed();
       const [claim] = await store.claimDueActions({ now: new Date(), workerId: 'send-intent', limit: 1 });
-      await store.beginDispatch(claim.id, claim);
+      await store.beginDispatch(claim.id, claim, new Date(), config);
       const before = await store.snapshot();
       const result = await engine.ingest({ type: 'contact_opted_out', opportunityId: first.opportunity.id });
       assert.equal(result.cancelledActions, first.actions.length - 1);

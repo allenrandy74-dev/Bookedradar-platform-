@@ -138,13 +138,20 @@ test('receipt collisions cannot suppress another contact or tenant', async t => 
   await store.addEvent({ id: 'unrelated-event', idempotencyKey: 'unrelated-key', type: 'customer_replied', opportunityId: seeded.opportunity.id });
   await secondEngine.ingest({ id: 'foreign-stop', idempotencyKey: 'foreign-key', type: 'contact_opted_out', opportunityId: foreign.opportunity.id });
   const before = await store.snapshot();
-  for (const identity of [{ idempotencyKey: 'unrelated-key' }, { id: 'unrelated-event', idempotencyKey: 'new-key' }, { idempotencyKey: 'foreign-key' }]) {
+  for (const identity of [{ idempotencyKey: 'unrelated-key' }, { id: 'unrelated-event', idempotencyKey: 'new-key' }]) {
     await assert.rejects(engine.ingest({ ...identity, type: 'contact_opted_out', opportunityId: seeded.opportunity.id }));
     assert.deepEqual(await store.snapshot(), before);
   }
+  // Source keys are tenant-scoped: a different tenant's identical key cannot
+  // block this legitimate STOP or change any of the other tenant's evidence.
+  const stopped = await engine.ingest({ idempotencyKey: 'foreign-key', type: 'contact_opted_out', opportunityId: seeded.opportunity.id });
+  assert.equal(stopped.suppressed, true);
+  const after = await store.snapshot();
+  assert.deepEqual(after.opportunities[foreign.opportunity.id], before.opportunities[foreign.opportunity.id]);
+  assert.deepEqual(after.contacts[foreign.opportunity.contactKey], before.contacts[foreign.opportunity.contactKey]);
 });
 
-test('JSON interruption before receipt stays suppressed and is repairable after reload', async t => {
+test('JSON durable suppression receipt survives cleanup interruption and is repairable after reload', async t => {
   const { store, engine, seed } = await fixture(t);
   const seeded = await seed();
   const event = { idempotencyKey: 'interrupted-stop', type: 'contact_opted_out', opportunityId: seeded.opportunity.id };
@@ -153,11 +160,11 @@ test('JSON interruption before receipt stays suppressed and is repairable after 
   const restarted = new RecoveryStore(store.filePath);
   const partial = await restarted.snapshot();
   assert.equal(partial.contacts[seeded.opportunity.contactKey].suppressed, true);
-  assert.equal(partial.eventKeys[event.idempotencyKey], undefined);
+  assert.ok(partial.eventKeys[JSON.stringify(["t1", event.idempotencyKey])]);
   const recovered = await new RecoveryEngine({ store: restarted, tenant: tenant('t1') }).ingest(event);
   assert.equal(recovered.cancelledActions, seeded.actions.length);
-  assert.equal(recovered.duplicate, undefined);
-  assert.ok((await restarted.snapshot()).eventKeys[event.idempotencyKey]);
+  assert.equal(recovered.duplicate, true);
+  assert.ok((await restarted.snapshot()).eventKeys[JSON.stringify(["t1", event.idempotencyKey])]);
 });
 
 test('future intake and replies cannot clear persisted opt-out flags or dispatch', async t => {

@@ -72,6 +72,7 @@ test("voice health summary aggregates sanitized operational milestones", async (
     });
     // Stabilize timestamps for deterministic percentiles.
     history.data.calls[callId].startedAt = base + i * 100;
+    await history.persist();
     await history.mark(callId, "call.accepted", { at: base + i * 100 + [50,100,150,200][i] });
     if (i !== 2) {
       await history.mark(callId, "greeting.first_audio", { at: base + i * 100 + [500,800,0,1200][i] });
