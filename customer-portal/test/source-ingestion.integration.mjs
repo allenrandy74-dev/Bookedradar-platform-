@@ -564,6 +564,19 @@ await test('disposable PostgreSQL source ingestion, fencing and audit', { timeou
     } finally {continueRequest();await pending;}
   });
 
+  await run('a valid imported-mode API note commits its note, version and human audit together',async()=>{
+    await importer.importInquiry({opportunityId:'opp-a',expectedVersion:null});
+    const result=await portalService(portalRequest('POST','/inquiries/opp-a/notes',{version:1,text:'Synthetic allowed note'}));
+    assert.equal(result.status,201);assert.equal(result.body.ok,true);assert.equal(result.body.inquiry.version,2);
+    const visible=await visibleStore.getInquiry(tenantId,'opp-a');
+    assert.equal(visible.version,2);assert.equal(visible.notes.length,1);assert.equal(visible.notes[0].text,'Synthetic allowed note');
+    const audits=(await pool.query(`SELECT action,fields,previous_version,version,actor_id FROM ${dst}.audit_events WHERE tenant_id=$1 AND inquiry_id='opp-a'`,[tenantId])).rows;
+    assert.equal(audits.length,1);assert.equal(audits[0].action,'inquiry.note_added');assert.deepEqual(audits[0].fields,['note']);
+    assert.equal(audits[0].previous_version,'1');assert.equal(audits[0].version,'2');assert.equal(audits[0].actor_id,'operator-a');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM ${dst}.source_ingestion_audit`)).rows[0].n,1);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM ${dst}.source_visibility_audit`)).rows[0].n,1);
+  });
+
   await run('lease expiry after transactional read rejects an update and rolls back',async()=>{
     const short=createPostgresSourceImporter({pool,tenantId,sourceSchema,portalSchema,enabled:true,visibilityLeaseMs:1000});
     await short.importInquiry({opportunityId:'opp-a',expectedVersion:null});

@@ -161,9 +161,12 @@ export function createPostgresPortalStore({ pool, schema = 'bookedradar_portal',
               // The lease can expire after the workflow UPDATE even while the
               // parent lock prevents quarantine from racing us. Recheck it at
               // the note mutation itself; a denial rolls back both statements.
+              // Explicit base types avoid SELECT/WHERE parameter ambiguity;
+              // omit length modifiers so destination limits reject, not truncate.
               if (visibility) {
                 const inserted = await client.query(`INSERT INTO ${s}.notes (tenant_id,inquiry_id,id,author_id,text,created_at)
-                  SELECT $1,$2,$3,$4,$5,$6 FROM ${s}.inquiries i WHERE i.tenant_id=$1 AND i.id=$2${visibilityWhere}`,
+                  SELECT $1::varchar,$2::varchar,$3::varchar,$4::varchar,$5::varchar,$6::timestamptz
+                  FROM ${s}.inquiries i WHERE i.tenant_id=$1 AND i.id=$2${visibilityWhere}`,
                 [tenantId, next.id, note.id, note.authorId, note.text, note.createdAt]);
                 ensure(inserted.rowCount === 1, 'source_visibility_or_version_conflict');
               } else await client.query(`INSERT INTO ${s}.notes (tenant_id,inquiry_id,id,author_id,text,created_at) VALUES ($1,$2,$3,$4,$5,$6)`, [tenantId, next.id, note.id, note.authorId, note.text, note.createdAt]);

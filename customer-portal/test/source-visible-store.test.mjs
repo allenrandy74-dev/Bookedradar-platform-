@@ -76,7 +76,7 @@ test('a lease expiring between parent update and note insert prevents the note a
     await tx.saveInquiry(row);
   }),/source_visibility_or_version_conflict/);
   const insert=f.calls.find(c=>c.sql.startsWith('INSERT INTO')&&c.sql.includes('.notes'));
-  assert.match(insert.sql,/SELECT \$1,\$2,\$3,\$4,\$5,\$6 FROM/);assert.match(insert.sql,/source_visibility/);
+  assert.match(insert.sql,/SELECT \$1::varchar,\$2::varchar,\$3::varchar,\$4::varchar,\$5::varchar,\$6::timestamptz/);assert.match(insert.sql,/source_visibility/);
   assert.equal(f.calls.at(-1).sql,'ROLLBACK');
   assert.ok(!f.calls.some(c=>c.sql.includes('INSERT INTO')&&c.sql.includes('.audit_events')));
 });
