@@ -1,19 +1,31 @@
 # Portal acceptance evidence
 
-The portal's dedicated CI workflow runs synthetic unit/security checks and browser checks without production credentials. It reuses `qa/reporting-browser/package-lock.json` and its pinned Playwright dependency.
+## Verified candidate
 
-## Authoring checks
+On October 12, 2026, head `e0ecbb864edc685dbbc561ee0b994b72f65c3605` of [draft PR #105](https://github.com/allenrandy74-dev/Bookedradar-platform-/pull/105) passed:
 
-- `npm run check --prefix customer-portal`: passed.
-- `npm test --prefix customer-portal`: 37 passing, 0 failing, 0 skipped at initial review.
-- Independent read-only review confirmed the same 37 tests and syntax checks; changes requested for HTTP origins, workflow parity, interrupted-save fencing and outcome evidence validation were applied and retested.
-- Existing production files are unchanged. The candidate is additive and the API is unmounted.
-- Local browser launch was attempted but blocked by the executor's Unix-socket permission restriction. The cloud browser could not reach the executor's loopback server, and the private hosted Site requires the user's ChatGPT sign-in. Do not describe these as successful browser checks.
+- Syntax checks and **91/91** synthetic unit/security/model/client/source tests, zero skips.
+- **16/16** real Chromium browser checks, including 320/375/390/768/1440px layouts.
+- **15/15** disposable PostgreSQL 18 tests, zero skips (14 nested scenarios plus the parent test).
+- Existing repository CI, including production dependency audit, full tests, 200 simulations, PostgreSQL state and maintenance Docker checks.
+- CodeQL.
 
-## Browser suite scope
+[Portal QA run](https://github.com/allenrandy74-dev/Bookedradar-platform-/actions/runs/38257323997), [existing CI run](https://github.com/allenrandy74-dev/Bookedradar-platform-/actions/runs/38257323953), [CodeQL run](https://github.com/allenrandy74-dev/Bookedradar-platform-/actions/runs/38257323940).
 
-`browser.mjs` verifies demo labels, search/filter, assignment/status, literal notes, pending-click suppression, unsaved drafts, Escape/focus return, Back/Forward, failure preservation/retry, disabled stale writes, empty/loading/error/expiry clearing, outcome evidence, layout overflow at 320/375/390/768/1440px and no external traffic. It writes a machine-readable result and screenshots. A passed CI run for the precise commit supersedes the initial local-browser limitation; inspect its result before claiming it passed.
+[Browser evidence archive](https://github.com/allenrandy74-dev/Bookedradar-platform-/actions/runs/38257323997/artifacts/11750264524) contains screenshots and machine-readable results. Its SHA-256 is `c3fa1d508e4147eb23720034c8318d39163365c5032cabd487fd95dc43c7487a`.
 
-## Production gates
+These links prove the stated commit only. Later commits must pass their own CI; check the PR's current head rather than assuming an earlier green run covers newer changes. The subsequent evidence-capture changes add screenshots at each tested width and wait for transient toasts to disappear. They do not alter the application's static assets.
 
-This evidence is synthetic. Authentication provider lifecycle, durable adapter integration, session revocation, membership changes, real source projections, production deployment, voice/transfer acceptance, calendar confirmation and customer notification delivery are separate gates.
+## What the browser suite establishes
+
+`browser.mjs` verifies persistent demo labels, search/filter, assignment/status, literal notes, pending-click suppression, unsaved drafts, Escape/focus return, Back/Forward, failed-save preservation/retry, disabled stale writes, empty/loading/error/expiry clearing, outcome evidence, layout overflow and absence of external requests. It uses only the synthetic loopback preview and the repository's pinned Playwright toolchain. Dialog screenshots use the viewport so off-screen page content is not mistaken for the modal's layout.
+
+The first run exposed a test race with asynchronous hash navigation. The next exposed a test that waited on a previous success toast instead of the new saved note. Both were corrected with actual route/record-state assertions; no application behavior assertion was removed or relaxed. The complete suite then passed.
+
+## What PostgreSQL establishes
+
+The real PostgreSQL 18 suite checks migration rollback, hashed session expiry/revocation, membership and tenant rejection, identical-ID cross-tenant isolation, composite foreign keys, durable notes/updates/audits, stale/concurrent writes, a blocked note writer receiving both committed notes, atomic audit rollback, membership revocation locking and immutable source fields. It creates and removes only a fresh synthetic schema in an explicitly guarded disposable loopback database.
+
+## Remaining release gates
+
+The preview is synthetic, and the API/adapters remain unmounted. Real identity-provider login, issuer/logout/recovery, staging end-to-end authorization, approved persistent access, source import, production deployment, calendar confirmation and customer notification delivery are separate gates. Passing synthetic CI is not customer launch approval or a formal accessibility certification.

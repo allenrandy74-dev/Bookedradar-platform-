@@ -45,9 +45,9 @@ npm ci --prefix qa/reporting-browser
 node customer-portal/qa/browser.mjs
 ```
 
-Browser QA starts its own synthetic-only server; no production credentials or endpoints are used. It checks desktop and 320/375/390/768px layouts, focus/history, interrupted/error states, note escaping, duplicate-click protection, evidence wording and absence of external requests. Screenshots and results go to `customer-portal/qa/evidence/`. Browser launch is blocked by the current isolated executor's Unix-socket restriction; the standalone suite and dedicated PR workflow provide a reproducible route in CI. A private hosted preview was published separately; its authentication is not the portal's production identity system.
+Browser QA starts its own synthetic-only server; no production credentials or endpoints are used. It checks desktop and 320/375/390/768px layouts, focus/history, interrupted/error states, note escaping, duplicate-click protection, evidence wording and absence of external requests. Screenshots and results go to `customer-portal/qa/evidence/`. The local authoring executor could not launch Chromium, but the dedicated PR workflow subsequently ran the real browser suite successfully; see [exact-commit evidence](qa/README.md). A private hosted preview was published separately; its authentication is not the portal's production identity system.
 
-At initial review, 37 focused unit/API tests passed with no skips. The inactive customer transport and durable/session adapter unit tests expanded the local suite; the final count is recorded with the candidate manifest. Live PostgreSQL verification remains a separate CI gate. That is not a claim that the complete original production suite or live integrations passed. The checkout used for authoring is a connector-materialized partial reference snapshot, not a full production checkout. CI operates on the full repository.
+At verified head `e0ecbb864edc685dbbc561ee0b994b72f65c3605`, 91 focused tests, 16 real Chromium checks and 15 disposable PostgreSQL 18 tests passed. Existing production CI and CodeQL also passed on the full repository. See [QA evidence](qa/README.md) for exact runs and limits. The authoring workspace is a connector-materialized partial reference snapshot; CI uses a full checkout. These results do not establish any live customer integration.
 
 ## Before any customer launch
 
