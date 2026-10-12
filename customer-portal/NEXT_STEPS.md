@@ -1,32 +1,26 @@
-# Customer portal activation plan
+# Customer portal: current status and next gates
 
-## What exists now
+## Verified status as of October 12, 2026
 
-- A private synthetic preview, with no live customer records or provider actions.
-- An unmounted customer API, a same-origin client, PostgreSQL storage adapter, hashed-cookie session verifier and reviewable isolated schema.
-- A pure source-to-inquiry mapper that preserves independent human workflow.
-- 91 passing fast unit/security/model/client/source checks, 16 real Chromium checks and 15 disposable PostgreSQL checks at the verified commit in [QA evidence](qa/README.md).
+The isolated synthetic staging app has a Wix managed identity flow, verified tenant-bound opaque sessions, and durable workflow/note storage. Synthetic staging identity/session and durable-workflow acceptance were verified at `3f4430c5ce942ea00cfe8d47aa1203444f0925d9`. The earlier request to reconnect Wix, choose a login provider and create the first staging login client is historical and no longer the next action. See [staging authentication](server/STAGING_AUTH.md) for the implemented boundary.
 
-None of this enables real customer access. Existing phone, CRM, recovery and billing services remain unchanged.
+The standalone preview remains memory-only and entirely synthetic. The staging app and its prior approval do not authorize loading customer records, another business membership, or production activation. Existing phone, CRM, recovery and billing behavior is outside this source-only change.
 
-## Minimum path to an isolated connected staging app
+## Current source/test-only candidate
 
-1. **Public source publication is approved and completed.** [PR #105](https://github.com/allenrandy74-dev/Bookedradar-platform-/pull/105) is draft and unmerged. It contains only portal source, synthetic fixtures, tests, documentation and isolated QA. Publication approval does not authorize deployment.
-2. **Exact-commit CI passed; preserve the gate.** The verified head in [QA evidence](qa/README.md) passed browser layouts at 320/375/390/768/1440px, keyboard/history, error recovery, tenant/object authorization, concurrent notes and audit rollback, plus existing production CI and CodeQL. Every later head still needs its own passing run. Review screenshots as well as the automated results.
-3. **Choose and verify the customer identity issuer.** Prefer an existing supported managed identity flow if the business already has one. Do not implement password storage. Login must bind a verified provider identity to an explicitly approved tenant membership, with secure cookie issuance, expiry, logout, recovery and revocation. Never use an administrator bearer token or browser-selected tenant as identity.
-4. **Approve the target and minimum persistent access.** Identify the existing approved staging hosting environment, exact HTTPS origin, disposable/isolated database and narrowly scoped runtime role. Review the new schema migration and rollback. Any OAuth client, secret, grant or persistent role creation requires explicit action-time authorization. No new paid provider, subscription or service is approved by this candidate.
-5. **Implement the internal source importer.** SOURCE_MAPPING.md explains the actual recovery fields and gaps. It needs coherent bounded reads, safe handling of pruned events, a privileged source-only writer with compare-and-swap and dedicated auditing, and no provider state mutation. The current customer store intentionally refuses source-column writes. No financial reporting endpoint is exposed by the customer API yet.
-6. **Wire a staging-only connected interface.** Keep connected and synthetic modes visibly distinct. Mount the API only behind real session verification. Use the same-origin client and explicit source DTOs. Prove end-to-end isolation with two synthetic customer accounts/tenants before selecting any real customer fields.
-7. **Separate release review.** Only after staging acceptance should production schema/access, route mounting, deployment and customer invitations be considered for explicit approval. No merge, auto-merge, live deployment or invitation is included here.
+- The unchanged pure source mapper validates identity and preserves independent human workflow.
+- A new inactive bounded tenant source reader and transactional importer add real-store lock fencing, immutable source bindings, compare-and-swap source refresh and separate service audit.
+- A separate inactive migration defines only the new portal source-link/audit tables. No runtime, auth, UI, original schema or staging schema changes are made.
+- All candidate testing uses fabricated data. The modules are disabled by default, have no CLI/environment activation, and are not imported by the running staging app.
 
-## Preferred next decision: inspect existing Wix identity first
+Read [SOURCE_INGESTION.md](SOURCE_INGESTION.md) for the exact API, field/storage/access proposal, source evidence and limitations. See [SOURCE_MAPPING.md](SOURCE_MAPPING.md) for the unchanged field mapper.
 
-Wix officially supports a Wix-managed login page using OAuth 2.0 with PKCE, and recommends server-side token refresh for best security: [Wix login-page guide](https://dev.wix.com/docs/go-headless/authentication/members/wix-login-page/add-a-wix-login-page-js-sdk).
+## Next steps before any first-business read-only view
 
-Prefer reusing that managed flow if the existing BookedRadar site supports it, rather than introducing a second identity service. The smallest owner action is to reconnect the already-installed Wix app so the next check can be read-only: confirm the correct site, Members/auth setup, existing OAuth clients and callback configuration, and current plan/cost impact. No paid service is selected or approved. The current site's member/auth setup and any plan/cost impact have not been verified. The connected Wix tool required reauthentication when checked. No login client was registered, no grant was expanded, and no Wix configuration was changed. The preview's ChatGPT sign-in protects the preview only; it is not BookedRadar customer authentication.
+1. Review and finish exact-candidate synthetic unit and disposable PostgreSQL acceptance. Existing head/CI results cover only the code actually tested; future publication needs exact-head checks.
+2. Choose one verified business tenant, finite record scope and intended viewer. Decide eligibility, pruned-history handling, retention and what happens when an already imported row becomes ineligible. The current candidate rejects its refresh but does not hide the old row; that is a live-use blocker.
+3. Approve the exact customer-data destination/schema and minimal internal source-read / portal-write permissions. The current synthetic lab is not an implied real-data destination. Review database-level tenant enforcement and the cooperative recovery-write lock contract. Persistent access and secure credential provisioning require separate authorization.
+4. Review and implement a bounded invocation/publisher and verified viewer access binding. The new importer is an internal library, not a mounted endpoint or scheduled job. Review customer DTOs, session revocation, cross-tenant isolation and audit/retention controls on the final composition.
+5. Obtain separate approval for migration, real-data reads/transfers, deployment and customer access. No real-data activation, credentials, grants, providers, spending or customer invitations are included in this candidate.
 
-After that inventory identifies an exact staging origin and provider configuration, request a separate bounded activation approval: configure only the staging OAuth client/callback, server-side session issuance and revocation, two synthetic test identities explicitly mapped to two staging tenants, and the isolated staging schema/runtime role. State the exact target, permissions and any cost before registering credentials or granting persistent access. Keep real customer enrollment and production route mounting out of that approval.
-
-## Accurate review status
-
-Fast tests establish local synthetic behavior. A private URL establishes deployment of the demonstrator. Neither proves a live login, durable production save, real booking, payment, customer reply or completed human transfer. Those claims require their own observed end-to-end evidence.
+The proposed first view contains name, email, phone, service subject, source and receipt time only. It excludes transcripts, arbitrary metadata/internal notes, monetary results, consent/provider state and action execution. A synthetic login or durable synthetic save is not evidence of a real booking, payment, customer reply or completed transfer.

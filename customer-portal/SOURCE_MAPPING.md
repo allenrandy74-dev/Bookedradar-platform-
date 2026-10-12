@@ -1,8 +1,12 @@
 # Recovery source projection: inactive candidate
 
+October 12, 2026 update: the pure mapper below is unchanged. A separate source/test-only bounded reader and durable importer candidate now exists; see [SOURCE_INGESTION.md](SOURCE_INGESTION.md). It is inactive, unmounted and unapproved for real-data use. Its current pinned source baseline is `3f4430c5ce942ea00cfe8d47aa1203444f0925d9`.
+
 `server/source-projection.mjs` is a pure mapping and merge-plan module. It has no imports, reads, writes, listeners, database connection, route registration, scheduler, credentials, or deployment behavior. Its tests use synthetic objects only. It does not call the existing recovery engine or expose a recovery snapshot to a browser.
 
-## Verified code baseline
+## Original mapper baseline and current recheck
+
+The original mapping references below use the earlier `dd3adec8` baseline. The engine/store identity contracts were rechecked against `3f4430c5`; see the current links in SOURCE_INGESTION.md. The older `src/customer-results-scope.js` reporting file is absent at the new pinned head, so its eligibility contract must not be claimed as implemented by this candidate.
 
 Repository: `allenrandy74-dev/Bookedradar-platform-`, commit `dd3adec8c24799f4be2951263e28677cf3f28669`. The files below were read through the authorized GitHub connector. No real source records were read or changed.
 
@@ -66,23 +70,21 @@ Not projected: contact keys, source-event IDs, full events/contacts/snapshots, p
 - The audit proposal has tenant/inquiry IDs, an explicit source-create/source-refresh action, changed field names, prior/new version and time. It contains no contact values, note text, contact keys, metadata, financial data, or service credentials. It is a proposal, not a persisted audit or a customer-member action.
 - Missing, excluded, or malformed source records throw before any plan is returned. They never imply deletion, closing, reassignment, restored contact consent, or cancellation/re-enabling of provider actions.
 
-### Exact writer blockers
+### Implemented inactive writer candidate and remaining gates
 
-The current `postgres-store.mjs` and `schema.sql` intentionally do **not** support these plans. Customer `saveInquiry` forbids source-column changes; `appendAudit` and its table accept only human workflow actions, field names and member actors. Do not weaken those paths or invent a customer member to represent ingestion.
+`server/source-reader.mjs`, `server/source-importer.mjs` and `server/schema.source-ingestion.sql` now provide a separate internal candidate. They do not change `postgres-store.mjs`, the human audit table, `schema.sql`, `schema.staging.sql`, auth, UI or runtime wiring.
 
-A separately approved internal writer needs, before live use:
+The candidate freshly reads a bounded tenant-scoped triple plus direct-lineage synthetic checks under the actual recovery tenant advisory-lock protocol. Source read, portal parent/binding locks, expected-version compare-and-swap, immutable source binding and dedicated source audit share one transaction. No detached snapshot is accepted. Source timestamps and event insertion sequence are not treated as revisions. Plain source SELECTs preserve a future SELECT-only source privilege boundary. The separate migration is never applied automatically.
 
-1. A dedicated service-actor/source-audit design and reviewed schema migration that can represent source-created/source-refreshed events, including an insert's initial version. The current audit table cannot store these events. A separate restricted source-ingestion audit table is preferable to broadening the customer mutation API.
-2. A transaction that locks or compare-and-swaps `(tenant_id, id, version)`, persists only the mapper-owned columns plus version/update time, leaves workflow/notes untouched, and atomically records the source audit. Insert collisions, audit failures, or stale versions must roll back. No source-store write method should be invoked.
-3. A durable source-link binding to opportunity, contact and origin event, plus source revisions or a consistent source-read/write fence. The existing portal row stores no source-event/contact binding or source checkpoint. The pure plan checks the supplied triple but cannot detect an older yet internally consistent source snapshot or prove its freshness. Portal version checking protects human edits; by itself it does not prevent out-of-order source refreshes.
-4. A reviewed tenant-scoped, bounded reader for opportunities and exact linked contacts/events, with a consistent-read boundary and SQL tenant-column/payload identity checks. Existing JSON `snapshot()` can include all tenants; Postgres `snapshot()` is tenant-bound but still loads full recovery collections. Neither is a bounded customer inquiry feed, and no direct source-event lookup/list interface suitable for this integration was found in the inspected stores. Do not expose the snapshot endpoints or invoke a full-export reader with null tenant.
-5. Handling for receipts removed by the existing 90-day default event-retention process. Missing events cannot be backfilled from opportunity timestamps or guessed contact identity. Retain already verified projections under a reviewed retention policy, quarantine the refresh, or introduce an explicitly approved provenance source before importing older rows. No retention changes are implemented here.
+Still required before live use: approve and verify all source writer paths cooperate with the fence; choose the business and finite record scope; settle eligibility and later-ineligible visibility/retention; approve the destination database/schema, migration, least-privilege role and secure credential handling; implement/review a bounded publisher and verified customer membership; and authorize real-data reads/transfers plus release. The synthetic staging approval is not real-data approval. Missing/pruned source cannot be guessed or reconstructed from opportunity timestamps. A rejected refresh leaves the prior projection visible until a separately reviewed withdrawal policy is implemented.
+
+See SOURCE_INGESTION.md for exact guarantees, source/privacy scope, API, schema, tests and remaining limitations. No runtime import, provider behavior, live SQL, credentials or customer enrollment is added.
 
 ## Coverage and eligibility limitations
 
 This triple-only mapper excludes `synthetic: true` on the opportunity, source event, or linked contact, including `metadata.synthetic: true`; explicit true wins over false. Checking the contact is a conservative additional gate beyond the existing reporting code's opportunity/event classification: an explicitly marked contact must not leak demo identity into a customer view. Invalid marker types are rejected. Names, telephone numbers, `source` strings and missing flags never establish test/real classification. Unmarked history can be structurally mapped but is **not verified real activity**. No completeness or result-count claim is produced.
 
-The existing reporting code also quarantines opportunities when later synthetic outcomes/actions/attribution contaminate their lineage. Those records are deliberately not inputs to this minimal mapper, so it cannot independently establish that eligibility rule. Before publishing live data, an approved internal reader must determine the intended customer-inquiry eligibility policy and supply eligible rows using complete tenant-scoped lineage checks. Do not claim this mapper is equivalent to `customerResultSnapshot`, and do not add result/revenue metrics to this projection to fill the gap. If an imported row later becomes ineligible, removing or restricting it needs its own reviewed policy; a failed refresh does not automatically remove existing visibility.
+The existing reporting code also quarantines opportunities when later synthetic outcomes/actions/attribution contaminate their lineage. Those records are deliberately not inputs to this minimal pure mapper, so it cannot independently establish that eligibility rule. The new separate reader checks bounded directly linked records conservatively, but does not claim full reporting-policy or real-activity equivalence. Before publishing live data, an approved internal reader must determine the intended customer-inquiry eligibility policy and supply eligible rows using complete tenant-scoped lineage checks. Do not claim this mapper is equivalent to `customerResultSnapshot`, and do not add result/revenue metrics to this projection to fill the gap. If an imported row later becomes ineligible, removing or restricting it needs its own reviewed policy; a failed refresh does not automatically remove existing visibility.
 
 This maps only recovery opportunities. It is not a complete inbox of all calls, chat conversations, lead-log entries, ignored events, bookings or CRM contacts. A raw call summary alone cannot satisfy the required opportunity/contact/source receipt contract.
 

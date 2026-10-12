@@ -1,16 +1,14 @@
 # Customer portal server contract
 
-## State of this candidate
+## Current state, October 12, 2026
 
-This is an isolated, inactive portal backend with a PostgreSQL store adapter and opaque-session verification. It does not create a listener, mount routes in the existing application, implement a login provider, create credentials, connect a database, or deploy anything. With no injected session resolver and store, every service request returns `503 portal_not_configured`.
+The core API/store contract below originated as an inactive scaffold. The isolated synthetic staging composition now implements Wix identity, tenant-bound opaque sessions, logout/revocation and durable workflow storage; acceptance was verified at `3f4430c5ce942ea00cfe8d47aa1203444f0925d9`. See [STAGING_AUTH.md](server/STAGING_AUTH.md). The standalone preview remains synthetic/memory-only. Earlier statements about having no staging provider or callback are superseded by this status.
 
-`server/api.mjs` exports a framework-independent request service and Node HTTP adapter. `server/postgres-store.mjs` implements durable, tenant-scoped operations against an injected, already authorized PostgreSQL pool; it creates no connection itself. `server/session-resolver.mjs` validates existing opaque sessions without issuing them. `server/schema.sql` is a reviewable migration for six normalized tables in a new isolated schema; it is not run on startup and has not been applied to production.
-
-The in-memory store in `test/api.test.mjs` is a synthetic test fixture only. The PostgreSQL integration suite is implemented separately and must be run on the explicitly guarded disposable database before claiming real-database validation. Local unit tests do not prove PostgreSQL locking or durability. No customer identity provider, login callback, data importer, live database access, or deployment has been activated.
+`server/api.mjs` remains default-deny without its trusted injected session resolver/store. The core source and human workflow boundaries below remain in force. The new [source ingestion candidate](SOURCE_INGESTION.md) is a separate inactive library with an unapplied migration; it is not wired into the existing staging runtime and does not change auth, UI or the original schemas. No real customer source data, live business membership or production activation is authorized by the synthetic staging result.
 
 ## Verified repository context
 
-These are observations of the supplied source snapshot, not claims of an existing customer-login system:
+These original core-API observations explain why shared administrative authorization is insufficient; the separate verified staging identity flow is described above:
 
 - [`../src/auth.js`](../src/auth.js), lines 10–29, accepts a shared bearer secret. [`../server.js`](../server.js), lines 1509–1510, uses it for ingest and admin guards. Neither establishes an individual customer identity or tenant membership.
 - [`../server.js`](../server.js), lines 801–817, resolves a tenant from a request header/query. [`../MULTI_TENANT.md`](../MULTI_TENANT.md), lines 36–40, documents that selector. Selection is not customer authorization; this scaffold rejects client tenant selectors.
@@ -159,7 +157,7 @@ The adapter accepts at most one workflow save and matching audit per inquiry per
 
 These are implemented guarantees to be verified against the target database, not claims of a completed production test. The guarded integration suite exercises real PostgreSQL concurrency, constraints and rollback; its actual CI result must be reviewed before launch. The in-memory suite alone proves only application behavior.
 
-`saveInquiry` persists only portal workflow fields (`status`, `assigneeId`, `notes`, `version`, `updatedAt`) to a dedicated portal-owned table/projection. Source identity/contact fields remain read-only. Even if a source row contains additional metadata, it must never overwrite provider dispatch state, booking state, revenue, or integration records. Source synchronization and mapping are a separate pending design. Do not map `closed` to a booked/won revenue event.
+`saveInquiry` persists only portal workflow fields (`status`, `assigneeId`, `notes`, `version`, `updatedAt`) to a dedicated portal-owned table/projection. Source identity/contact fields remain read-only. Even if a source row contains additional metadata, it must never overwrite provider dispatch state, booking state, revenue, or integration records. Source synchronization is implemented as a separate inactive candidate, documented in SOURCE_INGESTION.md; it has no runtime activation. Do not map `closed` to a booked/won revenue event.
 
 Audit events contain only generated event/request IDs, tenant/inquiry/actor/user IDs, action (`inquiry.updated` or `inquiry.note_added`), changed field names, prior/new version, and timestamp. No note text, contact details, credentials, raw request, or raw provider response is included. Audits need restricted operator access and retention policy; there is no customer audit export endpoint in this scaffold.
 
@@ -167,8 +165,8 @@ Audit events contain only generated event/request IDs, tenant/inquiry/actor/user
 
 Before any real customer access, obtain explicit approval for:
 
-1. Choose the customer identity provider and verified-login/onboarding flow, including allowed tenants, membership administration, account recovery, session lifetimes, and logout/revocation. This resolver does not substitute for provider verification. Registering OAuth clients, credentials, or persistent grants requires separate action-time authorization; none have been created.
-2. Approve the real source-to-portal mapping, allowed customer fields, target PostgreSQL database, this isolated schema/migration and rollback plan, runtime role permissions, and audit retention/access. Implement the source projector/importer and validate source/customer linkage. Authorization must cover real-data connections/transfers and any persistent database access; none are configured here.
+1. Approve the intended business/viewer binding and real customer onboarding/access policy. The existing Wix staging identity flow is implemented and tested with synthetic data; it does not approve another tenant or customer enrollment. Any new OAuth client, credential or persistent grant still requires separate action-time authorization.
+2. Approve the real source-to-portal mapping, allowed customer fields, target PostgreSQL database, this isolated schema/migration and rollback plan, runtime role permissions, and audit retention/access. Review the inactive source projector/importer, its immutable source/customer linkage, cooperative freshness fence and unresolved eligibility/retention/withdrawal limits before enabling it. Authorization must cover real-data connections/transfers and any persistent database access; none are configured here.
 3. The target hosting environment/domain, exact trusted HTTPS origin, session-cookie configuration, and mounting/deploying the reviewed portal routes. This candidate does not authorize publication or deployment.
 
 Then wire and verify the provided adapters plus the remaining identity/source/hosting controls in an isolated staging environment, run real database concurrency/rollback tests and end-to-end customer session/expiry/logout/revocation tests with two distinct tenants, and obtain launch approval. Keep customer access disabled until those checks pass. No substitute shared admin token, development session, mock sign-in, or synthetic test store is an activation option.
