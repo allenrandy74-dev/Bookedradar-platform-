@@ -14,7 +14,7 @@ const evidence=path.join(root,'qa','evidence');await mkdir(evidence,{recursive:t
 const url=process.env.PORTAL_URL||'http://127.0.0.1:4178';
 let server,browser,page;
 const results=[];
-async function shot(name,fullPage=true){await page.locator('#toast.visible').waitFor({state:'detached'});await page.screenshot({path:path.join(evidence,name),fullPage,animations:'disabled'});}
+async function shot(name,fullPage=true){await page.locator('#toast.visible').waitFor({state:'detached'});if(fullPage){await page.evaluate(()=>window.scrollTo(0,0));await page.waitForFunction(()=>window.scrollY===0);assert.equal(await page.locator('.skip-link').evaluate(el=>el.getBoundingClientRect().bottom<=0),true);}await page.screenshot({path:path.join(evidence,name),fullPage,animations:'disabled'});}
 async function check(name,fn){await fn();results.push({name,status:'passed'});console.log(`PASS ${name}`);}
 try{
   if(!process.env.PORTAL_URL){server=spawn(process.execPath,[path.join(root,'preview.mjs')],{cwd:root,stdio:'pipe'});await new Promise((resolve,reject)=>{server.stdout.on('data',chunk=>{if(String(chunk).includes('Synthetic-only preview'))resolve();});server.once('error',reject);server.once('exit',code=>reject(new Error(`Preview exited: ${code}`)));});}
