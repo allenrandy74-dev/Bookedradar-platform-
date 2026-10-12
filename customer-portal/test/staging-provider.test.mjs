@@ -7,7 +7,7 @@ const info={active:true,subject_type:'MEMBER',subject_id:'synthetic-member',clie
 const json=value=>new Response(JSON.stringify(value),{status:200,headers:{'content-type':'application/json'}});
 test('all staging identity/origin/database/deployment gates are exact and required',()=>{assert.deepEqual(assertStagingConfig(config),config);for(const key of Object.keys(config))assert.throws(()=>assertStagingConfig({...config,[key]:'wrong'}));assert.throws(()=>validateStagingConfig({PORTAL_STAGING_ENABLED:'true'}));});
 test('existing database name is verified once before any query and mismatch cannot reach writes',async()=>{const calls=[];const source={query:async(sql)=>{calls.push(sql);return {rows:[{name:'wrong_database'}]};},connect:async()=>{throw new Error('must not connect');}};const guarded=guardStagingPool(source,config);await assert.rejects(guarded.query('INSERT forbidden'),/staging_database_mismatch/);await assert.rejects(guarded.connect(),/staging_database_mismatch/);assert.deepEqual(calls,['SELECT current_database() AS name']);});
-test('Wix identity needs active unexpired exact audience MEMBER with strict known aliases',()=>{assert.equal(validateWixMemberInfo(info,config,now).subjectId,'synthetic-member');const camel={active:true,subjectType:'MEMBER',subjectId:'synthetic-member',clientId:STAGING.wixClientId,siteId:STAGING.wixSiteId,exp:info.exp};assert.equal(validateWixMemberInfo(camel,config,now).subjectId,'synthetic-member');for(const patch of [{active:false},{subject_type:'APP'},{subject_type:'USER'},{subject_type:'VISITOR'},{subject_type:'UNKNOWN'},{client_id:'wrong'},{site_id:'wrong'},{subject_id:''},{exp:now/1000},{exp:String(info.exp)},{exp:Infinity},{subjectType:'APP'},{clientId:'wrong'},{siteId:'wrong'},{subjectId:'other'},{iat:now/1000+300}])assert.throws(()=>validateWixMemberInfo({...info,...patch},config,now));assert.equal(memberFingerprint(info.subject_id,config).length,64);});
+test('Wix identity needs active unexpired exact audience MEMBER with strict known aliases',()=>{assert.equal(validateWixMemberInfo(info,config,now).subjectId,'synthetic-member');const camel={active:true,subjectType:'MEMBER',subjectId:'synthetic-member',clientId:STAGING.wixClientId,siteId:STAGING.wixSiteId,exp:info.exp};assert.equal(validateWixMemberInfo(camel,config,now).subjectId,'synthetic-member');for(const patch of [{active:false},{subject_type:'APP'},{subject_type:'USER'},{subject_type:'VISITOR'},{subject_type:'UNKNOWN'},{client_id:'wrong'},{site_id:'wrong'},{subject_id:''},{exp:now/1000},{exp:"1e12"},{exp:Infinity},{subjectType:'APP'},{clientId:'wrong'},{siteId:'wrong'},{subjectId:'other'},{iat:now/1000+300}])assert.throws(()=>validateWixMemberInfo({...info,...patch},config,now));assert.equal(memberFingerprint(info.subject_id,config).length,64);});
 test('provider uses exact public-client PKCE/token-info REST contracts and discards tokens',async()=>{const calls=[];const responses=[json({access_token:'synthetic-visitor-access',refresh_token:'synthetic-visitor-refresh',expires_in:14400,token_type:'Bearer'}),json({redirectSession:{fullUrl:'https://www.bookedradar.com/_api/oauth2/authorize?state=synthetic'}}),json({access_token:'synthetic-member-access',refresh_token:'synthetic-member-refresh',expires_in:14400,token_type:'Bearer'}),json(info)];const provider=createWixMemberProvider({config,now:()=>now,fetchImpl:async(url,options)=>{calls.push({url,...options,body:JSON.parse(options.body)});return responses.shift();}});await provider.loginUrl({state:'state',codeChallenge:'challenge'});const result=await provider.verifyCode({code:'code',codeVerifier:'verifier'});assert.equal(calls[0].url,'https://www.wixapis.com/oauth2/token');assert.deepEqual(calls[0].body,{clientId:STAGING.wixClientId,grantType:'anonymous'});assert.equal(calls[1].body.auth.authRequest.codeChallengeMethod,'S256');assert.equal(calls[1].body.auth.authRequest.responseMode,'fragment');assert.equal(calls[1].headers.authorization,'synthetic-visitor-access');assert.deepEqual(calls[2].body,{clientId:STAGING.wixClientId,grantType:'authorization_code',redirectUri:STAGING.origin+'/api/auth/callback',code:'code',codeVerifier:'verifier'});assert.equal(calls[3].url,'https://www.wixapis.com/oauth2/token-info');assert.deepEqual(calls[3].body,{token:'synthetic-member-access'});assert.ok(calls.every(c=>c.redirect==='error'));assert.equal(JSON.stringify(result).includes('synthetic-member-access'),false);assert.equal(JSON.stringify(calls).includes('client_secret'),false);assert.equal(JSON.stringify(calls).includes('clientSecret'),false);const logout=new URL(provider.logoutUrl());assert.equal(logout.origin+logout.pathname,'https://www.wixapis.com/_api/iam/authentication/v1/logout');assert.equal(logout.searchParams.get('clientId'),STAGING.wixClientId);assert.equal(logout.searchParams.get('postLogoutRedirectUri'),STAGING.origin+'/api/auth/logout-callback');assert.equal([...logout.searchParams].length,2);});
 test('provider rejects untrusted redirects, mixed audience, giant or non-JSON replies',async()=>{for(const destination of ['javascript:alert(1)','http://www.bookedradar.com/','https://attacker.test/','https://user@www.bookedradar.com/','https://www.bookedradar.com/#token','https://www.bookedradar.com/?access_token=secret']){let step=0;const provider=createWixMemberProvider({config,fetchImpl:async()=>++step===1?json({access_token:'synthetic',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl:destination}})});await assert.rejects(provider.loginUrl({state:'x',codeChallenge:'x'}));}const huge=createWixMemberProvider({config,fetchImpl:async()=>new Response('x'.repeat(65537),{headers:{'content-type':'application/json'}})});await assert.rejects(huge.loginUrl({state:'x',codeChallenge:'x'}));});
 
@@ -46,7 +46,7 @@ test('member exchange diagnostics never include the member token or identity',as
   const diagnostics=[];let count=0;
   const provider=createWixMemberProvider({config,now:()=>now,onDiagnostic:record=>diagnostics.push(record),fetchImpl:async()=>++count===1?json({access_token:'private-member-token',expires_in:14400,token_type:'Bearer'}):json({...info,subject_id:'private-member',site_id:'wrong'})});
   await assert.rejects(provider.verifyCode({code:'private-code',codeVerifier:'private-verifier'}));
-  assert.deepEqual(diagnostics,[{event:'portal_staging.wix_failure',stage:'token_info',reason:'identity_validation',http_status:null}]);
+  assert.deepEqual(diagnostics,[{event:'portal_staging.wix_failure',stage:'token_info',reason:'identity_site_mismatch',http_status:null}]);
 });
 
 
@@ -81,4 +81,47 @@ test('opaque redirect support never widens destination or structural constraints
     let calls=0;const provider=createWixMemberProvider({config,fetchImpl:async()=>++calls===1?json({access_token:'synthetic-access-only',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl}})});
     await assert.rejects(provider.loginUrl({state:'synthetic-state',codeChallenge:'synthetic-challenge'}),/wix_authentication_failed/);
   }
+});
+
+
+test('token-info canonical REST strings are equivalent to SDK primitive representations',()=>{
+  const expected=validateWixMemberInfo(info,config,now);
+  const canonical={active:'true',subjectType:info.subject_type,subjectId:info.subject_id,clientId:info.client_id,siteId:info.site_id,exp:String(info.exp),iat:String(info.iat)};
+  assert.deepEqual(validateWixMemberInfo(canonical,config,now),expected);
+  for(const patch of [{active:'false'},{active:'TRUE'},{active:'1'},{active:1},{active:' true'},
+    ...['01','1e12','+123','-1','1.5',' 123','123 ',true,null,Infinity,NaN,8640000000001,'9007199254740992'].map(exp=>({exp})),
+    ...['01','1e12','+123','-1','1.5',' 123',true,null,Infinity,8640000000001].map(iat=>({iat})),
+    {exp:String(now/1000)},{iat:String(now/1000+31)},{subjectType:'USER'},{clientId:'wrong'},{siteId:'wrong'}])
+    assert.throws(()=>validateWixMemberInfo({...canonical,...patch},config,now),/wix_authentication_failed/);
+});
+test('token-info failures identify only the violated fixed predicate and never identity values',async()=>{
+  const cases=[
+    [null,'identity_response_shape'],[[],'identity_response_shape'],['private-payload','identity_response_shape'],
+    [{...info,active:'private-active'},'identity_active_shape'],[{...info,active:false},'identity_inactive'],
+    [{...info,active:'false'},'identity_inactive'],[{...info,subjectType:'private-conflict'},'identity_alias_conflict'],
+    [{...info,subject_type:'private-subject-type'},'identity_not_member'],[{...info,client_id:'private-client'},'identity_client_mismatch'],
+    [{...info,client_id:undefined},'identity_client_mismatch'],[{...info,site_id:'private-site'},'identity_site_mismatch'],
+    [{...info,subject_id:'private value'},'identity_subject_shape'],[{...info,exp:'private-expiry'},'identity_expiry_shape'],
+    [{...info,exp:String(now/1000)},'identity_expired'],[{...info,iat:'private-issued-at'},'identity_issued_at_shape'],
+    [{...info,iat:String(now/1000+31)},'identity_issued_at_future'],
+  ];
+  for(const [reply,reason] of cases){
+    let calls=0;const diagnostics=[];
+    const provider=createWixMemberProvider({config,now:()=>now,onDiagnostic:event=>diagnostics.push(event),fetchImpl:async()=>++calls===1?json({access_token:'private-access-token',refresh_token:'private-refresh-token',expires_in:14400,token_type:'Bearer'}):json(reply)});
+    await assert.rejects(provider.verifyCode({code:'private-code',codeVerifier:'private-verifier'}),error=>{
+      assert.equal(error.message,'wix_authentication_failed');assert.deepEqual(Object.keys(error),[]);return true;
+    });
+    assert.deepEqual(diagnostics,[{event:'portal_staging.wix_failure',stage:'token_info',reason,http_status:null}]);
+    assert.doesNotMatch(JSON.stringify(diagnostics),/private|https:|subject_id|client_id|site_id|fingerprint/);
+  }
+});
+test('canonical token-info success stays silent and identity diagnostic logger cannot change denial',async()=>{
+  let calls=0,events=0;
+  const provider=createWixMemberProvider({config,now:()=>now,onDiagnostic:()=>events++,fetchImpl:async()=>++calls===1?json({access_token:'private-member-access',expires_in:14400,token_type:'Bearer'}):json({...info,active:'true',exp:String(info.exp),iat:String(info.iat)})});
+  const result=await provider.verifyCode({code:'private-code',codeVerifier:'private-verifier'});
+  assert.deepEqual(result,{fingerprint:memberFingerprint(info.subject_id,config),expiresAt:new Date(info.exp*1000).toISOString()});
+  assert.equal(events,0);assert.doesNotMatch(JSON.stringify(result),/private|synthetic-member/);
+  calls=0;
+  const failing=createWixMemberProvider({config,now:()=>now,onDiagnostic:()=>{throw new Error('private-observer');},fetchImpl:async()=>++calls===1?json({access_token:'private-member-access',expires_in:14400,token_type:'Bearer'}):json({...info,subject_type:'VISITOR'})});
+  await assert.rejects(failing.verifyCode({code:'private-code',codeVerifier:'private-verifier'}),/wix_authentication_failed/);
 });

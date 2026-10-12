@@ -6,7 +6,8 @@ const REDIRECT_URL = 'https://www.wixapis.com/_api/redirects-api/v1/redirect-ses
 const LOGOUT_URL = 'https://www.wixapis.com/_api/iam/authentication/v1/logout';
 const CREDENTIAL_QUERY_KEYS = new Set(['accesstoken','refreshtoken','idtoken','clientsecret','codeverifier']);
 const fail = () => { throw new Error('wix_authentication_failed'); };
-const DIAGNOSTIC_REASONS = new Set(['network_failure','http_failure','content_type','response_too_large','response_parse','token_shape','redirect_shape','redirect_origin','redirect_userinfo','redirect_fragment','redirect_length','redirect_query','identity_validation','unknown']);
+const IDENTITY_REASONS = ['identity_response_shape','identity_active_shape','identity_inactive','identity_alias_conflict','identity_not_member','identity_client_mismatch','identity_site_mismatch','identity_subject_shape','identity_expiry_shape','identity_expired','identity_issued_at_shape','identity_issued_at_future'];
+const DIAGNOSTIC_REASONS = new Set(['network_failure','http_failure','content_type','response_too_large','response_parse','token_shape','redirect_shape','redirect_origin','redirect_userinfo','redirect_fragment','redirect_length','redirect_query','identity_validation',...IDENTITY_REASONS,'unknown']);
 class ProviderFailure extends Error {
   constructor(stage, reason, status = null) { super('wix_authentication_failed'); this.stage = stage; this.reason = reason; this.status = status; }
 }
@@ -15,18 +16,41 @@ function alias(object, snake, camel) {
   if (Object.hasOwn(object, snake) && Object.hasOwn(object, camel) && object[snake] !== object[camel]) fail();
   return Object.hasOwn(object, snake) ? object[snake] : object[camel];
 }
-export function validateWixMemberInfo(info, config, now = Date.now()) {
+// Wix's REST example uses canonical strings; its schema/SDK use JSON primitives.
+// Accept only equivalent representations, never JavaScript truthy coercion.
+const activeValue = value => typeof value === 'boolean' ? value : value === 'true' ? true : value === 'false' ? false : null;
+function unixSeconds(value) {
+  const number = typeof value === 'string' && /^(0|[1-9][0-9]{0,12})$/.test(value) ? Number(value) : value;
+  return typeof number === 'number' && Number.isSafeInteger(number) && number >= 0 && number <= 8640000000000 ? number : null;
+}
+function inspectWixMemberInfo(info, config, now) {
   assertStagingConfig(config);
-  if (!info || typeof info !== 'object' || info.active !== true) fail();
+  if (!info || typeof info !== 'object' || Array.isArray(info)) return {reason:'identity_response_shape'};
+  const active = activeValue(info.active);
+  if (active === null) return {reason:'identity_active_shape'};
+  if (active !== true) return {reason:'identity_inactive'};
+  for (const [snake,camel] of [['subject_type','subjectType'],['subject_id','subjectId'],['client_id','clientId'],['site_id','siteId']]) {
+    if (Object.hasOwn(info,snake) && Object.hasOwn(info,camel) && info[snake] !== info[camel]) return {reason:'identity_alias_conflict'};
+  }
   const subjectType = alias(info, 'subject_type', 'subjectType');
   const subjectId = alias(info, 'subject_id', 'subjectId');
   const clientId = alias(info, 'client_id', 'clientId');
   const siteId = alias(info, 'site_id', 'siteId');
-  if (subjectType !== 'MEMBER' || clientId !== config.wixClientId || siteId !== config.wixSiteId
-    || !bounded(subjectId, 128) || !/^[A-Za-z0-9_-]+$/.test(subjectId)
-    || typeof info.exp !== 'number' || !Number.isSafeInteger(info.exp) || info.exp * 1000 <= now
-    || (info.iat !== undefined && (typeof info.iat !== 'number' || !Number.isSafeInteger(info.iat) || info.iat * 1000 > now + 30000))) fail();
-  return { subjectId, expiresAt: new Date(info.exp * 1000).toISOString() };
+  if (subjectType !== 'MEMBER') return {reason:'identity_not_member'};
+  if (clientId !== config.wixClientId) return {reason:'identity_client_mismatch'};
+  if (siteId !== config.wixSiteId) return {reason:'identity_site_mismatch'};
+  if (!bounded(subjectId,128) || !/^[A-Za-z0-9_-]+$/.test(subjectId)) return {reason:'identity_subject_shape'};
+  const exp = unixSeconds(info.exp), iat = info.iat === undefined ? undefined : unixSeconds(info.iat);
+  if (exp === null) return {reason:'identity_expiry_shape'};
+  if (exp * 1000 <= now) return {reason:'identity_expired'};
+  if (iat === null) return {reason:'identity_issued_at_shape'};
+  if (iat !== undefined && iat * 1000 > now + 30000) return {reason:'identity_issued_at_future'};
+  return {value:{subjectId,expiresAt:new Date(exp * 1000).toISOString()}};
+}
+export function validateWixMemberInfo(info, config, now = Date.now()) {
+  const result = inspectWixMemberInfo(info,config,now);
+  if (result.reason) fail();
+  return result.value;
 }
 export function memberFingerprint(subjectId, config) {
   assertStagingConfig(config);
@@ -93,7 +117,9 @@ export function createWixMemberProvider({ config, fetchImpl = globalThis.fetch, 
       const result = await post('member_token',TOKEN_URL, { clientId: config.wixClientId, grantType: 'authorization_code', redirectUri: `${config.origin}/api/auth/callback`, code, codeVerifier });
       const access = token('member_token',result);
       const response = await post('token_info',INFO_URL, { token: access });
-      let info; try { info = validateWixMemberInfo(response, config, now()); } catch { reject('token_info','identity_validation'); }
+      let inspected; try { inspected = inspectWixMemberInfo(response, config, now()); } catch { reject('token_info','identity_validation'); }
+      if (inspected.reason) reject('token_info',inspected.reason);
+      const info = inspected.value;
       // Provider access/refresh tokens are never retained, returned or sent to the browser.
       return { fingerprint: memberFingerprint(info.subjectId, config), expiresAt: new Date(Math.min(Date.parse(info.expiresAt), now() + result.expires_in * 1000)).toISOString() };
       });
