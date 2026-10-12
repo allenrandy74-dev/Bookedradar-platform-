@@ -4,6 +4,7 @@ const TOKEN_URL = 'https://www.wixapis.com/oauth2/token';
 const INFO_URL = 'https://www.wixapis.com/oauth2/token-info';
 const REDIRECT_URL = 'https://www.wixapis.com/_api/redirects-api/v1/redirect-session';
 const LOGOUT_URL = 'https://www.wixapis.com/_api/iam/authentication/v1/logout';
+const CREDENTIAL_QUERY_KEYS = new Set(['accesstoken','refreshtoken','idtoken','clientsecret','codeverifier']);
 const fail = () => { throw new Error('wix_authentication_failed'); };
 const DIAGNOSTIC_REASONS = new Set(['network_failure','http_failure','content_type','response_too_large','response_parse','token_shape','redirect_shape','redirect_origin','redirect_userinfo','redirect_fragment','redirect_length','redirect_query','identity_validation','unknown']);
 class ProviderFailure extends Error {
@@ -60,16 +61,31 @@ export function createWixMemberProvider({ config, fetchImpl = globalThis.fetch, 
   return Object.freeze({
     async loginUrl({ state, codeChallenge }) {
       return observed(async () => {
-      const visitor = token('visitor_token',await post('visitor_token',TOKEN_URL, { clientId: config.wixClientId, grantType: 'anonymous' }));
+      const visitorResponse = await post('visitor_token',TOKEN_URL, { clientId: config.wixClientId, grantType: 'anonymous' });
+      const visitor = token('visitor_token',visitorResponse);
       const result = await post('login_redirect',REDIRECT_URL, { auth: { authRequest: { redirectUri: `${config.origin}/api/auth/callback`, clientId: config.wixClientId, codeChallenge, codeChallengeMethod: 'S256', responseMode: 'fragment', responseType: 'code', scope: 'offline_access', state } } }, visitor);
-      let url; try { url = new URL(result?.redirectSession?.fullUrl); } catch { reject('login_redirect','redirect_shape'); }
+      const fullUrl = result?.redirectSession?.fullUrl;
+      if (typeof fullUrl !== 'string' || /[\x00-\x20\x7f\\]/.test(fullUrl)) reject('login_redirect','redirect_shape');
+      let url, decodedFullUrl; try { url = new URL(fullUrl); decodedFullUrl = decodeURIComponent(fullUrl); } catch { reject('login_redirect','redirect_shape'); }
       // Fixed, verified published Wix site; unfamiliar destinations fail closed.
       if (url.origin !== 'https://www.bookedradar.com') reject('login_redirect','redirect_origin');
       if (url.username || url.password) reject('login_redirect','redirect_userinfo');
       if (url.hash) reject('login_redirect','redirect_fragment');
-      if (url.href.length > 8192) reject('login_redirect','redirect_length');
-      if ([...url.searchParams.keys()].some(key => /token|secret/i.test(key))) reject('login_redirect','redirect_query');
-      return url.href;
+      if (fullUrl.length > 8192 || url.href.length > 8192) reject('login_redirect','redirect_length');
+      // Wix documents fullUrl as an opaque provider-issued navigation URL. Its SDK
+      // returns it unchanged; query names containing "token" are not inherently
+      // access/refresh credentials. Keep destination checks above and prevent
+      // actual issued credentials or standard credential fields from escaping.
+      const credentials = [visitor, visitorResponse.refresh_token].filter(value => typeof value === 'string' && value.length > 0);
+      const keys = new Set();
+      for (const [key,value] of url.searchParams) {
+        if (!key || keys.has(key) || /[\x00-\x1f\x7f]/.test(key + value)
+          || CREDENTIAL_QUERY_KEYS.has(key.replace(/[^a-z0-9]/gi,'').toLowerCase())) reject('login_redirect','redirect_query');
+        keys.add(key);
+      }
+      if (/[\x00-\x1f\x7f]/.test(decodedFullUrl)
+        || credentials.some(credential => fullUrl.includes(credential) || decodedFullUrl.includes(credential))) reject('login_redirect','redirect_query');
+      return fullUrl;
       });
     },
     async verifyCode({ code, codeVerifier }) {

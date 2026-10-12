@@ -23,7 +23,7 @@ test('provider failure diagnostics have fixed labels only and never expose sensi
     {redirect:true,reply:()=>new Response('private-provider-body',{status:400}),stage:'login_redirect',reason:'http_failure',status:400},
     {redirect:true,reply:()=>json(null),stage:'login_redirect',reason:'redirect_shape',status:null},
     {redirect:true,reply:()=>json({redirectSession:{fullUrl:'https://private.example.test/?state=private'}}),stage:'login_redirect',reason:'redirect_origin',status:null},
-    {redirect:true,reply:()=>json({redirectSession:{fullUrl:'https://www.bookedradar.com/?token=private'}}),stage:'login_redirect',reason:'redirect_query',status:null},
+    {redirect:true,reply:()=>json({redirectSession:{fullUrl:'https://www.bookedradar.com/?access_token=private'}}),stage:'login_redirect',reason:'redirect_query',status:null},
   ];
   for(const item of cases){
     const diagnostics=[];let count=0;
@@ -39,7 +39,7 @@ test('diagnostic observer failure cannot change fail-closed behavior; success pr
   const failing=createWixMemberProvider({config,fetchImpl:async()=>{throw new Error('private');},onDiagnostic:()=>{throw new Error('observer-private');}});
   await assert.rejects(failing.loginUrl({state:'x',codeChallenge:'x'}),/wix_authentication_failed/);
   let count=0,events=0;
-  const success=createWixMemberProvider({config,onDiagnostic:()=>events++,fetchImpl:async()=>++count===1?json({access_token:'private',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl:'https://www.bookedradar.com/login?state=private'}})});
+  const success=createWixMemberProvider({config,onDiagnostic:()=>events++,fetchImpl:async()=>++count===1?json({access_token:'private-access-only',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl:'https://www.bookedradar.com/login?state=private'}})});
   await success.loginUrl({state:'private',codeChallenge:'private'});assert.equal(events,0);
 });
 test('member exchange diagnostics never include the member token or identity',async()=>{
@@ -47,4 +47,38 @@ test('member exchange diagnostics never include the member token or identity',as
   const provider=createWixMemberProvider({config,now:()=>now,onDiagnostic:record=>diagnostics.push(record),fetchImpl:async()=>++count===1?json({access_token:'private-member-token',expires_in:14400,token_type:'Bearer'}):json({...info,subject_id:'private-member',site_id:'wrong'})});
   await assert.rejects(provider.verifyCode({code:'private-code',codeVerifier:'private-verifier'}));
   assert.deepEqual(diagnostics,[{event:'portal_staging.wix_failure',stage:'token_info',reason:'identity_validation',http_status:null}]);
+});
+
+
+test('provider preserves opaque Wix redirect-session query data without treating names as credentials',async()=>{
+  for(const query of ['sessionToken=synthetic-session','token=synthetic-session','wixSessionToken=synthetic-session','session_secret=synthetic-session','scope=openid%20offline_access','opaque=synthetic%2fsession']){
+    const fullUrl='https://www.bookedradar.com/_api/oauth2/authorize?clientId=synthetic&'+query;
+    let calls=0;const diagnostics=[];
+    const provider=createWixMemberProvider({config,onDiagnostic:event=>diagnostics.push(event),fetchImpl:async()=>++calls===1?json({access_token:'synthetic-access-only',refresh_token:'synthetic-refresh-only',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl}})});
+    assert.equal(await provider.loginUrl({state:'synthetic-state',codeChallenge:'synthetic-challenge'}),fullUrl);
+    assert.deepEqual(diagnostics,[]);
+  }
+});
+test('opaque redirects still reject credential fields, issued credentials, ambiguous keys and controls',async()=>{
+  const queries=[
+    'access_token=synthetic','accessToken=synthetic','ACCESS-TOKEN=synthetic','access.token=synthetic','access%20token=synthetic',
+    'refresh_token=synthetic','refreshToken=synthetic','id_token=synthetic','idToken=synthetic',
+    'client_secret=synthetic','clientSecret=synthetic','code_verifier=synthetic','codeVerifier=synthetic',
+    'opaque=synthetic-access-only','opaque=prefix-synthetic-refresh-only-suffix',
+    'synthetic-access-only=opaque','opaque=synthetic%2Daccess%2Donly',
+    '=synthetic','state=one&state=two','state=one&st%61te=two','opaque=bad%0Avalue','bad%00key=value',
+  ];
+  for(const query of queries){
+    let calls=0;const diagnostics=[];
+    const provider=createWixMemberProvider({config,onDiagnostic:event=>diagnostics.push(event),fetchImpl:async()=>++calls===1?json({access_token:'synthetic-access-only',refresh_token:'synthetic-refresh-only',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl:'https://www.bookedradar.com/_api/oauth2/authorize?'+query}})});
+    await assert.rejects(provider.loginUrl({state:'synthetic-state',codeChallenge:'synthetic-challenge'}),/wix_authentication_failed/);
+    assert.deepEqual(diagnostics,[{event:'portal_staging.wix_failure',stage:'login_redirect',reason:'redirect_query',http_status:null}]);
+    assert.doesNotMatch(JSON.stringify(diagnostics),/synthetic|https:|opaque=|state=/);
+  }
+});
+test('opaque redirect support never widens destination or structural constraints',async()=>{
+  for(const fullUrl of ['https://attacker.test/?sessionToken=synthetic','http://www.bookedradar.com/?sessionToken=synthetic','https://user@www.bookedradar.com/?sessionToken=synthetic','https://www.bookedradar.com/?sessionToken=synthetic#fragment','https://www.bookedradar.com/synthetic-access-only','https://www.bookedradar.com/%73ynthetic-access-only','https://www.bookedradar.com/\n?sessionToken=synthetic']){
+    let calls=0;const provider=createWixMemberProvider({config,fetchImpl:async()=>++calls===1?json({access_token:'synthetic-access-only',expires_in:14400,token_type:'Bearer'}):json({redirectSession:{fullUrl}})});
+    await assert.rejects(provider.loginUrl({state:'synthetic-state',codeChallenge:'synthetic-challenge'}),/wix_authentication_failed/);
+  }
 });
