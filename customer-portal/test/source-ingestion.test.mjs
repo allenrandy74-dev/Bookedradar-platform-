@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { createPostgresRecoverySourceReader, SourceIngestionError } from '../server/source-reader.mjs';
 import { createPostgresSourceImporter } from '../server/source-importer.mjs';
 import { projectRecoveryInquiry } from '../server/source-projection.mjs';
+import { createSourceVisibilityPredicate, planSourceVisibility, SourceVisibilityError, SOURCE_REJECTION_CODES } from '../server/source-visibility.mjs';
 
 const tenantId = 'tenant_a';
 const T0 = '2026-10-12T08:00:00.000Z';
@@ -26,7 +27,7 @@ function harness({ existing = false } = {}) {
     contactRows: [{ tenant_id: tenantId, id: f.contact.contactKey, payload: f.contact }],
     eventRows: [{ tenant_id: tenantId, id: 'evt_a', opportunity_id: null, contact_key: null, occurred_at: T0, payload: f.sourceEvent }],
     events: [], actions: [], attribution: [], ids: ['opp_a'], active: true,
-    current: null, link: null, observedAt: T2, fail: null, commitCommand: 'COMMIT', insertCount: 1, updateCount: 1,
+    current: null, link: null, visibility: null, observedAt: T2, fail: null, commitCommand: 'COMMIT', insertCount: 1, updateCount: 1, visibilityUpdateCount: 1,
   };
   if (existing) {
     const source = projectRecoveryInquiry(f);
@@ -36,13 +37,15 @@ function harness({ existing = false } = {}) {
       notes: [{ id: 'note_a', tenant_id: tenantId, inquiry_id: 'opp_a', author_id: 'member_a', text: 'Keep synthetic note', created_at: T1 }] };
     state.link = { tenant_id: tenantId, inquiry_id: 'opp_a', source_kind: 'recovery', source_opportunity_id: 'opp_a', source_contact_key: f.contact.contactKey,
       source_event_id: 'evt_a', source_fingerprint: 'a'.repeat(64), first_imported_at: T1, last_observed_at: T1 };
+    state.visibility = { tenant_id: tenantId, inquiry_id: 'opp_a', state: 'active', revision: '1', source_fingerprint: 'a'.repeat(64), checked_at: T1, valid_until: '2026-10-12T09:01:00.000Z', reason_code: null };
   }
   const calls = []; const releases = []; let connects = 0;
   const rows = values => ({ rows: structuredClone(values), rowCount: values.length });
   const db = {
     async query(sql, values = []) {
       calls.push({ sql, values: structuredClone(values) });
-      if (state.fail?.(sql, values)) throw new Error('PRIVATE_PARAMETER_DB_DETAIL');
+      const failure = state.fail?.(sql, values);
+      if (failure) throw failure instanceof Error ? failure : new Error('PRIVATE_PARAMETER_DB_DETAIL');
       if (sql === 'COMMIT') return { command: state.commitCommand, rows: [] };
       if (/^BEGIN|^SET |^ROLLBACK|pg_advisory_xact_lock/.test(sql)) return rows([]);
       if (/clock_timestamp/.test(sql)) return rows([{ observed_at: state.observedAt }]);
@@ -56,9 +59,11 @@ function harness({ existing = false } = {}) {
       if (/SELECT id FROM .*\.inquiries/.test(sql)) return rows(state.current ? [{ id: 'opp_a' }] : []);
       if (/FROM .*\.inquiries i WHERE/.test(sql)) return rows(state.current ? [state.current] : []);
       if (/SELECT tenant_id,inquiry_id,source_kind/.test(sql)) return rows(state.link ? [state.link] : []);
+      if (/SELECT tenant_id,inquiry_id,state,revision/.test(sql)) return rows(state.visibility ? [state.visibility] : []);
       if (/INSERT INTO .*\.inquiries/.test(sql)) return { rows: [], rowCount: state.insertCount };
       if (/UPDATE .*\.inquiries/.test(sql)) return { rows: [], rowCount: state.updateCount };
-      if (/INSERT INTO|UPDATE .*\.source_links/.test(sql)) return { rows: [], rowCount: 1 };
+      if (/UPDATE .*\.source_visibility SET/.test(sql)) return { rows: [], rowCount: state.visibilityUpdateCount };
+      if (/INSERT INTO|UPDATE .*\.source_(?:links|visibility)/.test(sql)) return { rows: [], rowCount: 1 };
       throw new Error(`Unexpected test query: ${sql}`);
     },
     release(broken) { releases.push(broken); if (state.releaseThrows) throw new Error('PRIVATE_RELEASE_DETAILS'); },
@@ -69,7 +74,7 @@ function harness({ existing = false } = {}) {
     importer: () => createPostgresSourceImporter(config), reader: () => createPostgresRecoverySourceReader(config) };
 }
 const code = expected => error => error.code === expected && error.message === expected && !String(error).includes('PRIVATE');
-const importOne = h => h.importer().importInquiry({ opportunityId: 'opp_a', expectedVersion: h.state.current ? 7 : null });
+const importOne = h => h.importer().importInquiry({ opportunityId: 'opp_a', expectedVersion: h.state.current ? Number(h.state.current.version) : null });
 
 test('inactive construction, explicit scope, schema allowlists and top-level pool contract', () => {
   const h = harness();
@@ -229,7 +234,7 @@ test('identical projection is a no-op for inquiry version, update time and audit
 test('expected version and immutable lineage reject takeover, rebind, and lost update', async () => {
   for (const key of ['source_kind', 'source_opportunity_id', 'source_contact_key', 'source_event_id']) {
     const h = harness({ existing: true }); h.state.link[key] = 'different';
-    await assert.rejects(importOne(h), code('source_binding_conflict'));
+    assert.deepEqual(await importOne(h), { kind: 'quarantined', inquiryId: 'opp_a', version: 8, reasonCode: 'source_binding_conflict' });
   }
   const missing = harness({ existing: true }); missing.state.link = null;
   await assert.rejects(importOne(missing), code('source_binding_missing'));
@@ -298,7 +303,140 @@ test('new modules have no runtime import, automatic migration, CLI or source wri
   }
   for (const filename of ['app.mjs', 'staging-app.mjs', 'preview.mjs']) assert.doesNotMatch(await readFile(new URL(filename, base), 'utf8'), /source-(?:reader|importer)/);
   const ddl = await readFile(new URL('server/schema.source-ingestion.sql', base), 'utf8');
-  assert.doesNotMatch(ddl, /\b(?:GRANT|ALTER TABLE|CREATE ROLE|DROP|INSERT INTO|UPDATE|DELETE FROM)\b/i);
+  assert.doesNotMatch(ddl, /^\s*(?:GRANT|ALTER TABLE|CREATE ROLE|DROP|INSERT INTO|UPDATE|DELETE FROM)\b/im);
   assert.match(ddl, /CREATE TABLE bookedradar_portal.source_links/); assert.match(ddl, /CREATE TABLE bookedradar_portal.source_ingestion_audit/);
   assert.equal(new SourceIngestionError('test_code').message, 'test_code');
+});
+
+test('visibility predicate is a schema-safe same-statement linked freshness gate', () => {
+  const sql = createSourceVisibilityPredicate({ schema: 'bookedradar_portal', inquiryAlias: 'i' });
+  for (const pattern of [/source_links/, /source_visibility/, /sl.tenant_id=i.tenant_id/, /sl.inquiry_id=i.id/,
+    /sv.state='active'/, /sv.reason_code IS NULL/, /sv.source_fingerprint=sl.source_fingerprint/,
+    /sv.checked_at<=clock_timestamp\(\)/, /sv.valid_until>clock_timestamp\(\)/, /INTERVAL '60 seconds'/]) assert.match(sql, pattern);
+  assert.doesNotMatch(sql, /reason_code AS|contact_key|source_event_id|CURRENT_TIMESTAMP/);
+  for (const schema of ['public', 'bookedradar_portal_staging', 'bookedradar_portal;--']) assert.throws(() => createSourceVisibilityPredicate({ schema }), error => error instanceof SourceVisibilityError);
+  for (const inquiryAlias of ['i;--', 'i.id', 'I', '']) assert.throws(() => createSourceVisibilityPredicate({ schema: 'bookedradar_portal', inquiryAlias }), error => error instanceof SourceVisibilityError);
+});
+
+test('visibility plans enforce bounded leases, closed reasons, revision CAS metadata and overflow', () => {
+  const args = { state: 'active', sourceFingerprint: 'a'.repeat(64), checkedAt: T2 };
+  const first = planSourceVisibility(args);
+  assert.equal(first.value.validUntil, '2026-10-12T10:01:00.000Z'); assert.equal(first.value.revision, 1);
+  assert.equal(first.audit.action, 'source.verified'); assert.equal(first.audit.previousRevision, null);
+  for (const leaseMs of [0, 999, 60001, '1000', 1000.5]) assert.throws(() => planSourceVisibility({ ...args, leaseMs }), code('invalid_visibility_lease'));
+  const hidden = planSourceVisibility({ ...args, previous: first.value, state: 'quarantined', reasonCode: 'source_event_missing' });
+  assert.equal(hidden.value.validUntil, null); assert.equal(hidden.value.revision, 2);
+  assert.equal(hidden.audit.action, 'source.quarantined'); assert.equal(hidden.audit.previousRevision, 1);
+  assert.equal(planSourceVisibility({ ...args, previous: hidden.value, state: 'quarantined', reasonCode: 'source_event_missing' }).kind, 'unchanged');
+  const restored = planSourceVisibility({ ...args, previous: hidden.value }); assert.equal(restored.value.revision, 3);
+  for (const reasonCode of ['source_database_error', 'PRIVATE_DATA', null]) assert.throws(() => planSourceVisibility({ ...args, state: 'quarantined', reasonCode }), code('invalid_visibility_reason'));
+  assert.throws(() => planSourceVisibility({ ...args, previous: { ...first.value, revision: Number.MAX_SAFE_INTEGER } }), code('visibility_revision_exhausted'));
+  assert.throws(() => planSourceVisibility({ ...args, previous: first.value, checkedAt: T1 }), code('visibility_time_regressed'));
+});
+
+test('known source failures quarantine bound rows, invalidate drafts and preserve workflow despite stale expected version', async () => {
+  const h = harness({ existing: true }); h.state.eventRows = [];
+  const before = structuredClone(h.state.current);
+  const result = await h.importer().importInquiry({ opportunityId: 'opp_a', expectedVersion: 1 });
+  assert.deepEqual(result, { kind: 'quarantined', inquiryId: 'opp_a', version: 8, reasonCode: 'source_event_missing' });
+  const parent = h.calls.findIndex(c => /SELECT id FROM .*\.inquiries/.test(c.sql));
+  const link = h.calls.findIndex(c => /SELECT tenant_id,inquiry_id,source_kind/.test(c.sql));
+  const visibility = h.calls.findIndex(c => /SELECT tenant_id,inquiry_id,state,revision/.test(c.sql));
+  const source = h.calls.findIndex(c => /FROM .*\.recovery_opportunities/.test(c.sql));
+  assert.ok(parent < link && link < visibility && visibility < source);
+  const version = h.calls.find(c => /UPDATE .*\.inquiries/.test(c.sql));
+  assert.match(version.sql, /SET version=\$3,updated_at=\$4/); assert.deepEqual(version.values, [tenantId, 'opp_a', 8, T2, 7]);
+  assert.deepEqual(h.state.current, before); assert.ok(!h.calls.some(c => /UPDATE .*\.source_links|INSERT INTO .*\.source_ingestion_audit|(?:INSERT INTO|UPDATE|DELETE FROM) .*\.notes/.test(c.sql)));
+  const update = h.calls.find(c => /UPDATE .*\.source_visibility SET/.test(c.sql));
+  assert.equal(update.values[2], 'quarantined'); assert.equal(update.values[3], 2); assert.equal(update.values[6], null);
+  assert.equal(update.values[7], 'source_event_missing'); assert.equal(update.values[8], 1);
+  const audit = h.calls.find(c => /INSERT INTO .*\.source_visibility_audit/.test(c.sql));
+  assert.deepEqual(audit.values.slice(3), ['source.quarantined', 1, 2, 'active', 'quarantined', 'source_event_missing', T2, null, 7, 8]);
+  assert.doesNotMatch(JSON.stringify(audit.values), /Customer|fixture@example|155501|crm_a|evt_a/);
+  assert.equal(h.calls.at(-1).sql, 'COMMIT');
+});
+
+test('quarantine is idempotent and restoration requires fresh source plus original binding', async () => {
+  const hidden = () => {
+    const h = harness({ existing: true }); h.state.current.version = '8';
+    h.state.visibility = { ...h.state.visibility, state: 'quarantined', revision: '2', checked_at: T2, valid_until: null, reason_code: 'source_event_missing' };
+    return h;
+  };
+  const repeated = hidden(); repeated.state.eventRows = [];
+  assert.equal((await importOne(repeated)).version, 8);
+  assert.ok(!repeated.calls.some(c => /^INSERT INTO|^UPDATE /.test(c.sql)));
+  const restore = hidden();
+  assert.deepEqual(await importOne(restore), { kind: 'restored', inquiryId: 'opp_a', version: 9 });
+  assert.equal(restore.calls.filter(c => /UPDATE .*\.inquiries/.test(c.sql)).length, 1);
+  assert.ok(!restore.calls.some(c => /INSERT INTO .*\.source_ingestion_audit/.test(c.sql)));
+  assert.equal(restore.calls.find(c => /UPDATE .*\.source_visibility SET/.test(c.sql)).values[2], 'active');
+  const changed = hidden(); changed.state.contactRows[0].payload.name = 'Changed Synthetic';
+  assert.deepEqual(await importOne(changed), { kind: 'restored', inquiryId: 'opp_a', version: 9 });
+  assert.equal(changed.calls.filter(c => /UPDATE .*\.inquiries/.test(c.sql)).length, 1);
+  assert.equal(changed.calls.filter(c => /INSERT INTO .*\.source_ingestion_audit/.test(c.sql)).length, 1);
+  const rebound = hidden(); rebound.state.link.source_event_id = 'different';
+  assert.equal((await importOne(rebound)).kind, 'quarantined');
+  assert.ok(!rebound.calls.some(c => /UPDATE .*\.inquiries|UPDATE .*\.source_links/.test(c.sql)));
+  const stale = hidden(); await assert.rejects(stale.importer().importInquiry({ opportunityId: 'opp_a', expectedVersion: 7 }), code('version_conflict'));
+  assert.ok(!stale.calls.some(c => /^INSERT INTO|^UPDATE /.test(c.sql)));
+});
+
+test('unexpected/spoofed source failures and visibility audit failures never report successful hiding', async () => {
+  const driver = harness({ existing: true });
+  driver.state.fail = sql => sql.includes('.recovery_opportunities') ? Object.assign(new Error('PRIVATE_DIAGNOSTIC'), { code: 'source_event_missing', name: 'SourceIngestionError' }) : false;
+  await assert.rejects(importOne(driver), code('source_database_error'));
+  assert.ok(!driver.calls.some(c => /UPDATE .*\.source_visibility|INSERT INTO .*\.source_visibility_audit/.test(c.sql)));
+  const audit = harness({ existing: true }); audit.state.eventRows = [];
+  audit.state.fail = sql => /INSERT INTO .*\.source_visibility_audit/.test(sql);
+  await assert.rejects(importOne(audit), code('source_database_error')); assert.equal(audit.calls.at(-1).sql, 'ROLLBACK');
+  const unknown = harness({ existing: true }); unknown.state.eventRows = []; unknown.state.fail = sql => sql === 'COMMIT';
+  await assert.rejects(importOne(unknown), code('source_commit_uncertain')); assert.deepEqual(unknown.releases, [true]);
+});
+
+test('schema visibility constraints match closed reason list and make binding identity immutable', async () => {
+  const ddl = await readFile(new URL('../server/schema.source-ingestion.sql', import.meta.url), 'utf8');
+  assert.match(ddl, /CREATE TABLE bookedradar_portal.source_visibility \(/);
+  assert.match(ddl, /CREATE TABLE bookedradar_portal.source_visibility_audit \(/);
+  assert.match(ddl, /source_link_identity_immutable BEFORE UPDATE/);
+  assert.match(ddl, /source_binding_immutable/);
+  assert.match(ddl, /valid_until<=checked_at\+INTERVAL '60 seconds'/);
+  for (const reason of SOURCE_REJECTION_CODES) assert.ok(ddl.includes(`'${reason}'`));
+});
+
+
+test('visibility CAS and version exhaustion cannot report a completed safety transition', async () => {
+  const stale = harness({ existing: true }); stale.state.eventRows = []; stale.state.visibilityUpdateCount = 0;
+  await assert.rejects(importOne(stale), code('visibility_revision_conflict'));
+  assert.equal(stale.calls.at(-1).sql, 'ROLLBACK');
+  assert.ok(!stale.calls.some(c => /INSERT INTO .*\.source_visibility_audit/.test(c.sql)));
+  const exhausted = harness({ existing: true }); exhausted.state.eventRows = []; exhausted.state.current.version = String(Number.MAX_SAFE_INTEGER);
+  await assert.rejects(importOne(exhausted), code('version_exhausted'));
+  assert.equal(exhausted.calls.at(-1).sql, 'ROLLBACK');
+  assert.ok(!exhausted.calls.some(c => /^INSERT INTO|^UPDATE /.test(c.sql)));
+});
+
+
+test('SQL projection redacts malformed roots, subtrees and scalar fields before materialization', async () => {
+  const h = harness(); await h.reader().readInquiry({ opportunityId: 'opp_a' });
+  const queries = h.calls.filter(c => c.sql.includes('FROM "bookedradar".recovery_'));
+  for (const { sql } of queries) {
+    assert.doesNotMatch(sql, /ELSE r\.payload|ELSE v\b/);
+    assert.match(sql, /ELSE 'null'::jsonb END/);
+    assert.match(sql, /WHEN 'synthetic' THEN CASE WHEN jsonb_typeof\(v\) IN \('boolean'\)/);
+  }
+  const contact = queries.find(c => c.sql.includes('.recovery_contacts'));
+  assert.match(contact.sql, /CASE WHEN NOT EXISTS/);
+  assert.match(contact.sql, /WHEN 'kind' THEN jsonb_typeof\(v\) IN \('string'\)/);
+  assert.match(contact.sql, /WHEN 'name' THEN CASE WHEN jsonb_typeof\(v\) IN \('string'\) THEN v ELSE 'null'::jsonb END/);
+  const event = queries.find(c => c.sql.includes('r.event_id=$2'));
+  assert.match(event.sql, /WHEN 'occurredAt' THEN CASE WHEN jsonb_typeof\(v\) IN \('string','number'\)/);
+  for (const [collection, key, expected] of [['opportunityRows', null, 'invalid_source_payload'], ['contactRows', 'metadata', 'invalid_source_metadata'],
+    ['eventRows', 'contact', 'invalid_event_contact'], ['contactRows', 'name', 'invalid_contact_name'], ['eventRows', 'id', 'source_column_id_mismatch']]) {
+    const rejected = harness();
+    // Model the fixed null emitted by SQL for synthetic array/string/object
+    // canaries. Real PostgreSQL integration tests verify raw result redaction.
+    if (key === null) rejected.state[collection][0].payload = null;
+    else rejected.state[collection][0].payload[key] = null;
+    await assert.rejects(importOne(rejected), code(expected));
+  }
 });

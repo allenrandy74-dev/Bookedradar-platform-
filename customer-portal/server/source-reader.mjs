@@ -2,6 +2,7 @@
 // source writes, provider calls, or migration execution. See SOURCE_INGESTION.md.
 import { createHash } from 'node:crypto';
 import { projectRecoveryInquiry, SourceProjectionError } from './source-projection.mjs';
+import { SourceVisibilityError } from './source-visibility.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const SOURCE_SCHEMA = /^bookedradar(?:_test_[a-f0-9]{12})?$/;
@@ -17,13 +18,23 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
 const linkText = value => typeof value === 'string' && value.length > 0 && value.length <= 512 && !CONTROL.test(value);
 
 // Extract only fixed keys in Postgres, not a complete payload in application
-// memory. Missing keys stay missing; JSON null/incorrect types remain invalid.
+// memory. Missing keys stay missing; wrong types become fixed JSON null
+// sentinels so malformed fields cannot smuggle an unapproved subtree into memory.
 function pickSql(expression, keys, nested = {}) {
-  const cases = Object.entries(nested).map(([key, sql]) => `WHEN '${key}' THEN ${sql}`).join(' ');
+  const typesFor = key => Object.hasOwn(nested, key) ? ['object']
+    : key === 'synthetic' ? ['boolean'] : key === 'occurredAt' ? ['string', 'number'] : ['string'];
+  const expectedType = key => `jsonb_typeof(v) IN (${typesFor(key).map(type => `'${type}'`).join(',')})`;
+  const typeCases = keys.map(key => `WHEN '${key}' THEN ${expectedType(key)}`).join(' ');
+  const cases = keys.map(key => Object.hasOwn(nested, key) ? `WHEN '${key}' THEN ${nested[key]}`
+    : `WHEN '${key}' THEN CASE WHEN ${expectedType(key)} THEN v ELSE 'null'::jsonb END`).join(' ');
+  const allowedKeys = keys.map(key => `'${key}'`).join(',');
   return `(CASE WHEN jsonb_typeof(${expression})='object' THEN
-    COALESCE((SELECT jsonb_object_agg(k,${cases ? `CASE k ${cases} ELSE v END` : 'v'})
-      FROM jsonb_each(${expression}) AS kv(k,v) WHERE k IN (${keys.map(key => `'${key}'`).join(',')})), '{}'::jsonb)
-    ELSE ${expression} END)`;
+    CASE WHEN NOT EXISTS (SELECT 1 FROM jsonb_each(${expression}) AS kt(k,v)
+      WHERE k IN (${allowedKeys}) AND NOT (CASE k ${typeCases} ELSE true END)) THEN
+      COALESCE((SELECT jsonb_object_agg(k,CASE k ${cases} ELSE 'null'::jsonb END)
+        FROM jsonb_each(${expression}) AS kv(k,v) WHERE k IN (${allowedKeys})), '{}'::jsonb)
+      ELSE 'null'::jsonb END
+    ELSE 'null'::jsonb END)`;
 }
 const metadataSql = pickSql("r.payload->'metadata'", ['synthetic']);
 const embeddedContactSql = pickSql("r.payload->'contact'", ['tenantId', 'contactKey', 'externalId', 'phone', 'email']);
@@ -164,7 +175,7 @@ export function createPostgresRecoverySourceReader({ pool, tenantId, sourceSchem
       if (commitAttempted) broken = true;
       if (db) try { await db.query('ROLLBACK'); } catch { broken = true; }
       // Never forward SQL details, parameter values or driver diagnostics.
-      failure = error instanceof SourceIngestionError || error instanceof SourceProjectionError
+      failure = error instanceof SourceIngestionError || error instanceof SourceProjectionError || error instanceof SourceVisibilityError
         ? error : new SourceIngestionError(commitAttempted ? 'source_commit_uncertain' : 'source_database_error');
       throw failure;
     } finally {

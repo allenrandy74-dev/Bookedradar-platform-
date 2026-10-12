@@ -1,4 +1,5 @@
 import { assertStagingConfig, guardStagingPool } from './staging-config.mjs';
+import { createSourceVisibilityPredicate } from './source-visibility.mjs';
 // No pg import or connection creation: inject an already authorized pg Pool.
 // No migration execution, session creation, membership grants, or provider writes.
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -18,17 +19,23 @@ const inquiryDto = row => row && ({
 });
 const unchangedNote = (a, b) => a.id === b.id && a.tenantId === b.tenantId && a.inquiryId === b.inquiryId && a.authorId === b.authorId && a.text === b.text && a.createdAt === b.createdAt;
 
-export function createPostgresPortalStore({ pool, schema = 'bookedradar_portal', stagingConfig } = {}) {
+export function createPostgresPortalStore({ pool, schema = 'bookedradar_portal', stagingConfig, sourceVisibility = 'off' } = {}) {
   ensure(pool && typeof pool.query === 'function' && typeof pool.connect === 'function', 'portal_pool_required');
   ensure(SCHEMA.test(schema), 'invalid_portal_schema');
+  ensure(['off', 'required'].includes(sourceVisibility), 'invalid_source_visibility_mode');
+  ensure(sourceVisibility !== 'required' || schema !== 'bookedradar_portal_staging', 'source_visibility_staging_forbidden');
   if (schema === 'bookedradar_portal_staging') { assertStagingConfig(stagingConfig); pool = guardStagingPool(pool, stagingConfig); }
   const s = `"${schema}"`;
+  // Opt-in imported-only mode. No runtime enables this candidate mode; legacy
+  // synthetic reads remain unchanged. Missing visibility tables fail closed.
+  const visibility = sourceVisibility === 'required' ? createSourceVisibilityPredicate({ schema, inquiryAlias: 'i' }) : null;
+  const visibilityWhere = visibility ? ` AND ${visibility}` : '';
   const memberSql = `SELECT m.id,m.tenant_id,m.user_id,m.name,m.role,m.active FROM ${s}.memberships m JOIN ${s}.tenants t ON t.id=m.tenant_id WHERE m.tenant_id=$1 AND m.id=$2 AND t.active=true`;
   const inquirySql = `SELECT i.id,i.tenant_id,i.customer_name,i.contact_email,i.contact_phone,i.subject,i.summary,i.source,i.received_at,i.updated_at,i.status,i.assignee_id,i.version,
     COALESCE((SELECT jsonb_agg(n ORDER BY n.created_at,n.id) FROM
       (SELECT n.id,n.tenant_id,n.inquiry_id,n.author_id,n.text,n.created_at FROM ${s}.notes n
        WHERE n.tenant_id=i.tenant_id AND n.inquiry_id=i.id ORDER BY n.created_at,n.id LIMIT 1001) n), '[]'::jsonb) AS notes
-    FROM ${s}.inquiries i WHERE i.tenant_id=$1`;
+    FROM ${s}.inquiries i WHERE i.tenant_id=$1${visibilityWhere}`;
   const checkTenant = tenantId => ensure(validId(tenantId), 'invalid_tenant');
   const getMember = async (db, tenantId, id, lock = false) => {
     checkTenant(tenantId); ensure(validId(id), 'invalid_member');
@@ -145,9 +152,22 @@ export function createPostgresPortalStore({ pool, schema = 'bookedradar_portal',
               const author = await tx.getMember(note.authorId);
               ensure(author?.active && author.role === 'operator', 'invalid_note_author');
             }
-            const changed = await client.query(`UPDATE ${s}.inquiries SET status=$3,assignee_id=$4,version=$5,updated_at=$6 WHERE tenant_id=$1 AND id=$2 AND version=$7`, [tenantId, next.id, next.status, next.assigneeId, next.version, next.updatedAt, previous.version]);
-            ensure(changed.rowCount === 1, 'version_conflict');
-            for (const note of added) await client.query(`INSERT INTO ${s}.notes (tenant_id,inquiry_id,id,author_id,text,created_at) VALUES ($1,$2,$3,$4,$5,$6)`, [tenantId, next.id, note.id, note.authorId, note.text, note.createdAt]);
+            const updateSql = visibility
+              ? `UPDATE ${s}.inquiries i SET status=$3,assignee_id=$4,version=$5,updated_at=$6 WHERE i.tenant_id=$1 AND i.id=$2 AND i.version=$7${visibilityWhere}`
+              : `UPDATE ${s}.inquiries SET status=$3,assignee_id=$4,version=$5,updated_at=$6 WHERE tenant_id=$1 AND id=$2 AND version=$7`;
+            const changed = await client.query(updateSql, [tenantId, next.id, next.status, next.assigneeId, next.version, next.updatedAt, previous.version]);
+            ensure(changed.rowCount === 1, visibility ? 'source_visibility_or_version_conflict' : 'version_conflict');
+            for (const note of added) {
+              // The lease can expire after the workflow UPDATE even while the
+              // parent lock prevents quarantine from racing us. Recheck it at
+              // the note mutation itself; a denial rolls back both statements.
+              if (visibility) {
+                const inserted = await client.query(`INSERT INTO ${s}.notes (tenant_id,inquiry_id,id,author_id,text,created_at)
+                  SELECT $1,$2,$3,$4,$5,$6 FROM ${s}.inquiries i WHERE i.tenant_id=$1 AND i.id=$2${visibilityWhere}`,
+                [tenantId, next.id, note.id, note.authorId, note.text, note.createdAt]);
+                ensure(inserted.rowCount === 1, 'source_visibility_or_version_conflict');
+              } else await client.query(`INSERT INTO ${s}.notes (tenant_id,inquiry_id,id,author_id,text,created_at) VALUES ($1,$2,$3,$4,$5,$6)`, [tenantId, next.id, note.id, note.authorId, note.text, note.createdAt]);
+            }
             changes.set(next.id, { previous, next: copy(next), fields, added });
           },
           async appendAudit(event) {
