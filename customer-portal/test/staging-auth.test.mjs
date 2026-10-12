@@ -46,23 +46,93 @@ test('login and logout bridges broadcast only an auth-change signal before porta
   assert.doesNotMatch(result.body,/localStorage|sessionStorage|document.cookie|access_token|refresh_token/);
 });
 
-test('stale/replayed callback bridge cannot clear a newer signed-in tab',async()=>{
+function callbackHarness({status=403,data={error:'membership_binding_required',fingerprint:'0123456789abcdef'.repeat(4)},fragment='#state=synthetic-state&code=synthetic-code',clipboard,fetchImpl}={}) {
   const script=callbackPage().body.match(/<script>([\s\S]*)<\/script>/)[1];
+  const broadcasts=[],navigation=[],requests=[],historyCalls=[];
+  const elements=Object.fromEntries(['result','identity-confirmation','fingerprint','copy-fingerprint','copy-status'].map(id=>[id,{
+    textContent:'',value:'',hidden:id==='identity-confirmation',disabled:false,listeners:{},
+    addEventListener(type,listener){this.listeners[type]=listener;},focus(){this.focused=true;},select(){this.selected=true;},
+  }]));
+  runInNewContext(script,{
+    URLSearchParams,document:{getElementById:id=>elements[id]},navigator:{clipboard},
+    history:{replaceState:(...args)=>historyCalls.push(args)},location:{hash:fragment,replace:value=>navigation.push(value)},
+    fetch:async(...args)=>{requests.push(args);return fetchImpl?fetchImpl(...args):{ok:status>=200&&status<300,json:async()=>data};},
+    BroadcastChannel:class{constructor(name){assert.equal(name,'bookedradar-portal-auth');}postMessage(message){assert.equal(message.type,'auth-changed');assert.equal(Object.keys(message).length,1);broadcasts.push(message);}close(){}},
+  });
+  return {elements,broadcasts,navigation,requests,historyCalls};
+}
+const callbackSettled=()=>new Promise(resolve=>setImmediate(resolve));
+const callbackFailure='We couldn’t confirm portal sign-in. Return to the portal to check your access. If it’s still unavailable, contact the owner.';
+
+test('callback CSP hashes match the actual inline script and mobile wrapping stylesheet',()=>{
+  const page=callbackPage(),script=page.body.match(/<script>([\s\S]*)<\/script>/)[1],style=page.body.match(/<style>([\s\S]*)<\/style>/)[1];
+  assert.ok(page.csp.includes(`script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'`));
+  assert.ok(page.csp.includes(`style-src 'sha256-${createHash('sha256').update(style).digest('base64')}'`));
+  assert.doesNotMatch(page.csp,/unsafe-inline|unsafe-eval/);
+  assert.match(style,/overflow-wrap:anywhere/);assert.match(style,/word-break:break-all/);
+  assert.match(page.body,/<label for="fingerprint">Test-account fingerprint<\/label>/);
+  assert.match(page.body,/<textarea id="fingerprint"[^>]*readonly[^>]*wrap="soft"/);
+  assert.match(page.body,/<button id="copy-fingerprint" type="button">Copy fingerprint<\/button>/);
+  assert.match(page.body,/<p id="copy-status" role="status" aria-live="polite" aria-atomic="true">/);
+  assert.doesNotMatch(script,/execCommand|permissions\.|readText|requestPermission/);
+});
+
+test('pending binding exposes the complete synthetic fingerprint without copying or claiming access was requested',async()=>{
+  const writes=[],f=callbackHarness({clipboard:{writeText:async value=>writes.push(value)}});await callbackSettled();
+  assert.equal(f.elements.result.textContent,'Wix sign-in verified. Portal access needs owner confirmation. Ask the owner to review this test-account fingerprint:');
+  assert.equal(f.elements.fingerprint.value,'0123456789abcdef'.repeat(4));assert.equal(f.elements.fingerprint.value.length,64);
+  assert.equal(f.elements['identity-confirmation'].hidden,false);assert.deepEqual(writes,[]);assert.deepEqual(f.navigation,[]);
+  assert.equal(f.elements['copy-status'].textContent,'');assert.doesNotMatch(f.elements.result.textContent,/request sent|has been sent|approved/i);
+  assert.deepEqual(f.historyCalls.map(args=>args[2]),['/api/auth/callback']);assert.equal(f.requests.length,1);
+});
+
+test('copy waits for the clipboard result, suppresses duplicate pending clicks, and allows a deliberate retry',async()=>{
+  const writes=[],pending=deferred(),f=callbackHarness({clipboard:{writeText:async value=>{writes.push(value);await pending.promise;}}});await callbackSettled();
+  const copy=f.elements['copy-fingerprint'],status=f.elements['copy-status'];
+  const copying=copy.listeners.click();assert.equal(copy.disabled,true);assert.equal(status.textContent,'Copying fingerprint…');
+  await copy.listeners.click();assert.equal(writes.length,1);assert.doesNotMatch(status.textContent,/copied/i);
+  pending.resolve();await copying;assert.equal(copy.disabled,false);assert.equal(status.textContent,'Fingerprint copied.');
+  await copy.listeners.click();assert.deepEqual(writes,['0123456789abcdef'.repeat(4),'0123456789abcdef'.repeat(4)]);
+});
+
+test('unavailable and denied clipboard access offer manual copy without false success or permission escalation',async()=>{
+  for(const clipboard of [undefined,{}, {writeText:async()=>{throw new Error('synthetic denial');}}]) {
+    const f=callbackHarness({clipboard});await callbackSettled();await f.elements['copy-fingerprint'].listeners.click();
+    assert.equal(f.elements['copy-status'].textContent,'Couldn’t copy automatically. Select the fingerprint and use your device’s copy command.');
+    assert.equal(f.elements.fingerprint.focused,true);assert.equal(f.elements.fingerprint.selected,true);
+    assert.equal(f.elements['copy-fingerprint'].disabled,false);assert.equal(f.elements.fingerprint.value,'0123456789abcdef'.repeat(4));
+    assert.deepEqual(f.navigation,[]);assert.equal(f.requests.length,1);
+  }
+});
+
+test('failed, malformed and interrupted callbacks show neutral access guidance and no fingerprint controls',async()=>{
+  const scenarios=[
+    {fragment:''},{fragment:'#state=one&state=two&code=synthetic'},
+    {status:400,data:{error:'invalid_login_flow'}},{status:401,data:{error:'sign_in_cancelled'}},
+    {status:403,data:{error:'membership_binding_required',fingerprint:'<img src=x onerror=alert(1)>'}},
+    {status:403,data:{error:'membership_binding_required',fingerprint:'a'.repeat(63)}},
+    {status:403,data:{error:'membership_binding_required',fingerprint:'a'.repeat(65)}},
+    {status:503,data:{error:'authentication_unavailable'}},
+    {fetchImpl:async()=>{throw new Error('synthetic network interruption');}},
+    {fetchImpl:async()=>({ok:false,json:async()=>{throw new Error('synthetic invalid JSON');}})},
+  ];
+  for(const scenario of scenarios) {
+    const f=callbackHarness(scenario);await callbackSettled();
+    assert.equal(f.elements.result.textContent,callbackFailure);assert.equal(f.elements['identity-confirmation'].hidden,true);
+    assert.equal(f.elements.fingerprint.value,'');assert.equal(f.elements['copy-fingerprint'].listeners.click,undefined);
+    assert.deepEqual(f.broadcasts,[]);assert.deepEqual(f.navigation,[]);
+  }
+});
+
+test('stale/replayed callback bridge cannot clear a newer signed-in tab',async()=>{
   for(const [status,data,expected] of [
     [400,{error:'invalid_login_flow'},0], [400,{error:'invalid_auth_request'},0],
     [401,{error:'sign_in_cancelled'},0], [503,{error:'authentication_unavailable'},0],
     [403,{error:'membership_binding_required',fingerprint:'bad'},0],
     [403,{error:'membership_binding_required',fingerprint:'a'.repeat(64)},1], [200,{ok:true},1],
   ]){
-    const broadcasts=[],navigation=[],out={textContent:''};
-    runInNewContext(script,{
-      URLSearchParams,document:{getElementById:()=>out},history:{replaceState:()=>{}},
-      location:{hash:'#state=synthetic-state&code=synthetic-code',replace:value=>navigation.push(value)},
-      fetch:async()=>({ok:status>=200&&status<300,json:async()=>data}),
-      BroadcastChannel:class{constructor(name){assert.equal(name,'bookedradar-portal-auth');}postMessage(message){assert.equal(message.type,'auth-changed');assert.equal(Object.keys(message).length,1);broadcasts.push(message);}close(){}},
-    });
-    await new Promise(resolve=>setImmediate(resolve));
-    assert.equal(broadcasts.length,expected,`${status}: ${data.error||'success'}`);
-    assert.deepEqual(navigation,status===200?['/portal']:[]);
+    const f=callbackHarness({status,data});await callbackSettled();
+    assert.equal(f.broadcasts.length,expected,`${status}: ${data.error||'success'}`);
+    assert.deepEqual(f.navigation,status===200?['/portal']:[]);
   }
 });

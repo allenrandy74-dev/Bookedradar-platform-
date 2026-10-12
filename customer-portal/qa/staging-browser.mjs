@@ -217,6 +217,80 @@ try {
     await page.getByRole('button',{name:'Close inquiry',exact:true}).focus();await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('dialog').evaluate(element=>element.contains(document.activeElement)),true);
     await page.keyboard.press('Escape');await page.locator('dialog[open]').waitFor({state:'detached'});await expect(page.locator(':focus')).toHaveAttribute('data-open','inquiry-a');
   });
+  await page.addInitScript(()=>{
+    // This controls only the OS clipboard boundary. The page, CSP, wrapping,
+    // keyboard interactions and callback request run in real Chromium.
+    const clipboard={writes:[],mode:'success',release:null};
+    window.__callbackClipboard=clipboard;window.__callbackCspViolations=[];
+    document.addEventListener('securitypolicyviolation',event=>window.__callbackCspViolations.push(event.violatedDirective));
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{
+      clipboard.writes.push(value);
+      if(clipboard.mode==='denied')throw new Error('Synthetic clipboard denial');
+      if(clipboard.mode==='pending')await new Promise(resolve=>{clipboard.release=resolve;});
+    }}});
+  });
+  const syntheticFingerprint='0123456789abcdef'.repeat(4);
+  async function pendingBinding(){
+    harness.reset();harness.state.authenticated=false;
+    await page.goto(`${harness.origin}/api/auth/callback#state=synthetic-state&code=synthetic-code`);
+    await expect(page.getByLabel('Test-account fingerprint',{exact:true})).toBeVisible();
+  }
+  for(const width of [320,390,1440])await check(`pending identity confirmation at ${width}px keeps all 64 characters visible with keyboard copy`,async()=>{
+    await page.setViewportSize({width,height:950});await pendingBinding();
+    const fingerprint=page.getByLabel('Test-account fingerprint',{exact:true});
+    await expect(page.locator('#result')).toHaveText('Wix sign-in verified. Portal access needs owner confirmation. Ask the owner to review this test-account fingerprint:');
+    assert.equal(await fingerprint.inputValue(),syntheticFingerprint);await expect(fingerprint).toHaveAttribute('readonly','');
+    assert.equal(await page.evaluate(()=>location.hash),'');
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+    assert.equal(await fingerprint.evaluate(element=>element.scrollWidth<=element.clientWidth&&element.scrollHeight<=element.clientHeight),true);
+    assert.deepEqual(await page.evaluate(()=>window.__callbackClipboard.writes),[]);
+    await fingerprint.focus();await page.keyboard.press('Tab');await expect(page.getByRole('button',{name:'Copy fingerprint',exact:true})).toBeFocused();
+    await page.keyboard.press('Enter');await expect(page.locator('#copy-status')).toHaveText('Fingerprint copied.');
+    assert.deepEqual(await page.evaluate(()=>window.__callbackClipboard.writes),[syntheticFingerprint]);
+    await page.getByRole('button',{name:'Copy fingerprint',exact:true}).focus();
+    await page.keyboard.press('Tab');await expect(page.getByRole('link',{name:'Back to the portal'})).toBeFocused();
+    assert.deepEqual(await page.evaluate(()=>window.__callbackCspViolations),[]);
+    assert.equal(harness.state.requests.length,1);assert.equal(harness.state.requests[0].path,'/api/auth/callback');
+    assert.deepEqual(harness.state.requests[0].body,{state:'synthetic-state',code:'synthetic-code'});
+    assert.equal(harness.state.authenticated,false);await shot(`pending-binding-${width}.png`);
+  });
+  await check('callback copy reports success only after settlement and suppresses repeated pending clicks',async()=>{
+    await pendingBinding();await page.evaluate(()=>{window.__callbackClipboard.mode='pending';});
+    const copy=page.getByRole('button',{name:'Copy fingerprint',exact:true});
+    await copy.click();await expect(copy).toBeDisabled();await expect(page.locator('#copy-status')).toHaveText('Copying fingerprint…');
+    await copy.dispatchEvent('click');assert.deepEqual(await page.evaluate(()=>window.__callbackClipboard.writes),[syntheticFingerprint]);
+    await page.evaluate(()=>window.__callbackClipboard.release());await expect(page.locator('#copy-status')).toHaveText('Fingerprint copied.');await expect(copy).toBeEnabled();
+    await page.evaluate(()=>{window.__callbackClipboard.mode='success';});await copy.focus();await page.keyboard.press('Space');
+    await expect.poll(()=>page.evaluate(()=>window.__callbackClipboard.writes.length)).toBe(2);
+    await expect(page.locator('#copy-status')).toHaveText('Fingerprint copied.');
+  });
+  await check('denied or unavailable callback clipboard offers a focused manual-copy fallback without false success',async()=>{
+    await page.setViewportSize({width:320,height:950});
+    for(const mode of ['denied','unavailable']){
+      await pendingBinding();await page.evaluate(mode=>{
+        if(mode==='unavailable')Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});
+        else window.__callbackClipboard.mode='denied';
+      },mode);
+      await page.getByRole('button',{name:'Copy fingerprint',exact:true}).click();
+      await expect(page.locator('#copy-status')).toHaveText('Couldn’t copy automatically. Select the fingerprint and use your device’s copy command.');
+      const fingerprint=page.getByLabel('Test-account fingerprint',{exact:true});await expect(fingerprint).toBeFocused();
+      assert.deepEqual(await fingerprint.evaluate(element=>[element.selectionStart,element.selectionEnd]),[0,64]);
+      assert.equal(await fingerprint.inputValue(),syntheticFingerprint);await expect(page.getByRole('button',{name:'Copy fingerprint',exact:true})).toBeEnabled();
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+      assert.deepEqual(await page.evaluate(()=>window.__callbackCspViolations),[]);assert.equal(harness.state.requests.length,1);
+      await shot(`pending-binding-copy-${mode}-320.png`);
+    }
+  });
+  await check('callback failure stays neutral and does not expose pending identity controls or claim a request was sent',async()=>{
+    harness.reset();harness.state.callbackStatus=400;harness.state.callbackData={ok:false,error:'invalid_login_flow'};
+    await page.goto(`${harness.origin}/api/auth/callback#state=synthetic-state&code=synthetic-code`);
+    await expect(page.locator('#result')).toHaveText('We couldn’t confirm portal sign-in. Return to the portal to check your access. If it’s still unavailable, contact the owner.');
+    await expect(page.getByRole('button',{name:'Copy fingerprint',exact:true})).toBeHidden();
+    assert.doesNotMatch(await page.locator('main').innerText(),/request sent|has been sent|Wix sign-in verified/i);
+    assert.deepEqual(await page.evaluate(()=>window.__callbackClipboard.writes),[]);assert.equal(await page.evaluate(()=>location.hash),'');
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);await shot('callback-failure-320.png');
+    await page.getByRole('link',{name:'Back to the portal'}).click();await ready();
+  });
   await check('no external requests, uncaught JavaScript, browser tenant authority or secret storage',async()=>{
     assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
     for(const request of harness.state.requests){assert.equal(request.headers.authorization,undefined);assert.equal(Object.keys(request.headers).some(key=>key.includes('tenant')),false);if(request.body)assert.equal(Object.keys(request.body).some(key=>key.toLowerCase().includes('tenant')),false);}
@@ -226,6 +300,6 @@ try {
 } catch(error) {
   await page?.screenshot({path:path.join(evidence,'failure.png'),fullPage:true}).catch(()=>{});console.error(error);process.exitCode=1;results.push({status:'failed',error:String(error)});
 } finally {
-  await writeFile(path.join(evidence,'results.json'),JSON.stringify({scope:'Synthetic loopback API service and connected UI only. No real Wix login or persistent database is exercised by this suite.',results},null,2));
+  await writeFile(path.join(evidence,'results.json'),JSON.stringify({scope:'Synthetic loopback API service, connected UI and real callback page with synthetic auth responses and a controlled clipboard boundary. No real Wix login, OS clipboard permissions or persistent database is exercised by this suite.',results},null,2));
   await browser?.close();await harness?.close();
 }

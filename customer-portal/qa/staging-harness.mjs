@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {createCustomerPortalService,API_PREFIX} from '../server/api.mjs';
+import {callbackPage} from '../server/staging-auth.mjs';
 
 const root=fileURLToPath(new URL('..',import.meta.url));
 const clone=value=>structuredClone(value);
@@ -15,7 +16,7 @@ const row=(id,tenantId,customerName,subject,status='new',assigneeId=null)=>({id,
 export async function createStagingHarness() {
   const state={};
   function reset() {
-    Object.assign(state,{authenticated:true,account:'a',viewer:false,failList:false,empty:false,sessionDelay:0,listDelay:0,memberDelay:0,logoutDelay:0,detailDelays:{},writeDelay:0,failWrite:false,uncertainCommit:false,logoutFail:false,requests:[],audits:[]});
+    Object.assign(state,{authenticated:true,account:'a',viewer:false,failList:false,empty:false,sessionDelay:0,listDelay:0,memberDelay:0,logoutDelay:0,detailDelays:{},writeDelay:0,failWrite:false,uncertainCommit:false,logoutFail:false,callbackStatus:403,callbackData:{ok:false,error:'membership_binding_required',fingerprint:'0123456789abcdef'.repeat(4)},requests:[],audits:[]});
     state.members=[member('owner','lab-a','Alex Lee'),member('sam','lab-a','Sam Patel'),member('viewer','lab-a','Read Only','viewer'),member('other','lab-b','Other owner'),member('owner-b','lab-b','Other account owner')];
     state.records=[row('inquiry-a','lab-a','Jamie Brooks','AC running, but not cooling'),row('inquiry-b','lab-a','Taylor Reed','Follow-up on heat pump estimate','waiting','sam'),row('inquiry-c','lab-a','Morgan Ellis','Thermostat appointment','closed','owner'),row('foreign-inquiry','lab-b','Other workspace customer','Never display this foreign record'),row('inquiry-a','lab-b','Account B customer','Same ID from account B')];
   }
@@ -38,11 +39,19 @@ export async function createStagingHarness() {
   const server=createServer(async(req,res)=>{
     try {
       const pathname=new URL(req.url,origin).pathname;
+      if(pathname==='/api/auth/callback'&&req.method==='GET') {
+        const page=callbackPage();
+        res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':page.csp,'x-content-type-options':'nosniff','referrer-policy':'no-referrer'});
+        return res.end(page.body);
+      }
       if(pathname.startsWith('/api/')) {
         const chunks=[];for await(const chunk of req)chunks.push(chunk);
         const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')):undefined;
         state.requests.push({path:pathname,method:req.method,headers:clone(req.headers),body});
         const reply=(status,payload)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(payload));};
+        // Exercise the real callback page with synthetic responses only. No Wix
+        // provider exchange, identity binding or session issuance occurs here.
+        if(pathname==='/api/auth/callback'&&req.method==='POST')return reply(state.callbackStatus,state.callbackData);
         if(pathname==='/api/auth/logout') {
           await wait(state.logoutDelay);
           if(state.logoutFail)return reply(503,{ok:false,error:'unavailable'});

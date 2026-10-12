@@ -20,11 +20,12 @@ function loginCookie(headers) {
 }
 const CALLBACK_SCRIPT = `(() => {
   const out = document.getElementById('result');
+  const failure = 'We couldn’t confirm portal sign-in. Return to the portal to check your access. If it’s still unavailable, contact the owner.';
   const fragment = new URLSearchParams(location.hash.slice(1));
   history.replaceState(null, '', '/api/auth/callback');
   const keys = [...fragment.keys()];
   const state = fragment.get('state');
-  if (!state || fragment.getAll('state').length !== 1 || keys.some(key => !['state','code','error','error_description'].includes(key)) || fragment.getAll('code').length > 1) { out.textContent = 'Sign-in could not be verified. Start again from the portal.'; return; }
+  if (!state || fragment.getAll('state').length !== 1 || keys.some(key => !['state','code','error','error_description'].includes(key)) || fragment.getAll('code').length > 1) { out.textContent = failure; return; }
   const body = fragment.has('error') ? {state,error:'provider_denied'} : {state,code:fragment.get('code')};
   fetch('/api/auth/callback', {method:'POST',credentials:'same-origin',redirect:'error',headers:{'Content-Type':'application/json','X-Login-CSRF':state},body:JSON.stringify(body)})
     .then(async response => ({response,data:await response.json()}))
@@ -36,12 +37,32 @@ const CALLBACK_SCRIPT = `(() => {
       }
       if (response.ok) { location.replace('/portal'); return; }
       if (bindingRequired) {
-        out.textContent = 'Wix verified your sign-in, but this identity has no portal access. Ask the owner to approve this test identity fingerprint: ' + data.fingerprint;
-      } else { out.textContent = 'Sign-in could not be completed. Start again from the portal.'; }
-    }).catch(() => { out.textContent = 'Sign-in could not be completed. Start again from the portal.'; });
+        out.textContent = 'Wix sign-in verified. Portal access needs owner confirmation. Ask the owner to review this test-account fingerprint:';
+        const fingerprint = document.getElementById('fingerprint');
+        const copy = document.getElementById('copy-fingerprint');
+        const copyStatus = document.getElementById('copy-status');
+        fingerprint.value = data.fingerprint;
+        document.getElementById('identity-confirmation').hidden = false;
+        copy.addEventListener('click', async () => {
+          if (copy.disabled) return;
+          copy.disabled = true;
+          copyStatus.textContent = 'Copying fingerprint…';
+          try {
+            if (typeof navigator.clipboard?.writeText !== 'function') throw new Error('clipboard_unavailable');
+            await navigator.clipboard.writeText(fingerprint.value);
+            copyStatus.textContent = 'Fingerprint copied.';
+          } catch {
+            fingerprint.focus();
+            fingerprint.select();
+            copyStatus.textContent = 'Couldn’t copy automatically. Select the fingerprint and use your device’s copy command.';
+          } finally { copy.disabled = false; }
+        });
+      } else { out.textContent = failure; }
+    }).catch(() => { out.textContent = failure; });
 })();`;
+const CALLBACK_STYLE = `*{box-sizing:border-box}body{margin:0;padding:1rem;background:#f5f7f9;color:#172535;font-family:system-ui,sans-serif;line-height:1.6}main{max-width:44rem;margin:clamp(1rem,6vw,4rem) auto;padding:clamp(1rem,4vw,2rem);background:#fff;border:1px solid #cbd5df;border-radius:1rem}h1{margin:0 0 1rem;font-size:clamp(1.5rem,5vw,2rem);line-height:1.25}p{margin:1rem 0;overflow-wrap:anywhere}label{display:block;margin-bottom:.5rem;font-weight:650}textarea{display:block;width:100%;min-width:0;max-width:100%;min-height:5.5em;padding:.75rem;border:1px solid #65788a;border-radius:.5rem;background:#f5f7f9;color:#172535;font:1rem/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;resize:vertical}button{max-width:100%;min-height:44px;padding:.65rem 1rem;border:1px solid #135e5a;border-radius:.5rem;background:#135e5a;color:#fff;font:inherit;font-weight:650;cursor:pointer}button:disabled{cursor:wait}a{color:#135e5a;text-underline-offset:.2em}a:focus-visible,button:focus-visible,textarea:focus-visible{outline:3px solid #135e5a;outline-offset:3px}#copy-status{min-height:1.6em}#fingerprint-help{font-size:.9375rem}`;
 export function callbackPage() {
-  return { body:`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BookedRadar sign-in</title><main><h1>BookedRadar sign-in</h1><p id="result" role="status">Verifying your sign-in…</p><p><a href="/portal">Back to the portal</a></p></main><script>${CALLBACK_SCRIPT}</script></html>`, csp:`default-src 'none'; script-src 'sha256-${createHash('sha256').update(CALLBACK_SCRIPT).digest('base64')}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'` };
+  return { body:`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BookedRadar sign-in</title><style>${CALLBACK_STYLE}</style></head><body><main><h1>BookedRadar sign-in</h1><p id="result" role="status" aria-live="polite" aria-atomic="true">Verifying your sign-in…</p><div id="identity-confirmation" hidden><label for="fingerprint">Test-account fingerprint</label><textarea id="fingerprint" rows="3" readonly spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-describedby="fingerprint-help copy-status"></textarea><p id="fingerprint-help">Share this fingerprint with the owner to review portal access.</p><button id="copy-fingerprint" type="button">Copy fingerprint</button><p id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p></div><p><a href="/portal">Back to the portal</a></p></main><script>${CALLBACK_SCRIPT}</script></body></html>`, csp:`default-src 'none'; script-src 'sha256-${createHash('sha256').update(CALLBACK_SCRIPT).digest('base64')}'; style-src 'sha256-${createHash('sha256').update(CALLBACK_STYLE).digest('base64')}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'` };
 }
 export function createStagingAuthService({config,store,provider,resolveSession,now=()=>Date.now(),randomBytes=secureRandomBytes}={}) {
   let configured=false; try { assertStagingConfig(config); configured=!!store&&!!provider&&typeof resolveSession==='function'; } catch {}
