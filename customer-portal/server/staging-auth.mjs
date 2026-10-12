@@ -128,7 +128,7 @@ export function createStagingAuthHandler({pool,config,fetchImpl=globalThis.fetch
   const store=createStagingAuthStore({pool,config});
   const portalStore=createPostgresPortalStore({pool,schema:config.schema,stagingConfig:config});
   const resolveSession=createOpaqueSessionResolver({store:portalStore});
-  const service=createStagingAuthService({config,store,provider:createWixMemberProvider({config,fetchImpl}),resolveSession});
+  const service=createStagingAuthService({config,store,provider:createWixMemberProvider({config,fetchImpl,onDiagnostic:record=>console.warn(JSON.stringify(record))}),resolveSession});
   const handler=async(req,res)=>{
     const path=String(req.url||'').split('?')[0]; if(!path.startsWith('/api/auth/')) return false;
     let size=0; const chunks=[];
