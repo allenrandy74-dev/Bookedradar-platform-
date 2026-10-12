@@ -232,6 +232,8 @@ try {
   const syntheticFingerprint='0123456789abcdef'.repeat(4);
   async function pendingBinding(){
     harness.reset();harness.state.authenticated=false;
+    // Model a provider round trip, not same-document fragment navigation.
+    await page.goto('about:blank');
     await page.goto(`${harness.origin}/api/auth/callback#state=synthetic-state&code=synthetic-code`);
     await expect(page.getByLabel('Test-account fingerprint',{exact:true})).toBeVisible();
   }
@@ -283,6 +285,7 @@ try {
   });
   await check('callback failure stays neutral and does not expose pending identity controls or claim a request was sent',async()=>{
     harness.reset();harness.state.callbackStatus=400;harness.state.callbackData={ok:false,error:'invalid_login_flow'};
+    await page.goto('about:blank');
     await page.goto(`${harness.origin}/api/auth/callback#state=synthetic-state&code=synthetic-code`);
     await expect(page.locator('#result')).toHaveText('We couldn’t confirm portal sign-in. Return to the portal to check your access. If it’s still unavailable, contact the owner.');
     await expect(page.getByRole('button',{name:'Copy fingerprint',exact:true})).toBeHidden();
