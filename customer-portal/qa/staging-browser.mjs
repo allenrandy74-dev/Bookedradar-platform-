@@ -14,7 +14,15 @@ await mkdir(evidence,{recursive:true});
 const results=[],errors=[],external=[];
 let harness,browser,page;
 async function check(name,fn){await fn();results.push({name,status:'passed'});console.log(`PASS ${name}`);}
-async function shot(name,fullPage=true){await page.locator('main').focus();await page.screenshot({path:path.join(evidence,name),fullPage,animations:'disabled'});}
+async function shot(name,fullPage=true){
+  // Full-page capture must start at the document origin so fixed navigation and
+  // the intentionally offscreen skip link are not composited at a stale scroll offset.
+  await page.evaluate(()=>{
+    if(!document.querySelector('dialog[open]'))document.querySelector('main')?.focus({preventScroll:true});
+    window.scrollTo(0,0);
+  });
+  await page.screenshot({path:path.join(evidence,name),fullPage,animations:'disabled'});
+}
 async function ready(){await page.getByRole('heading',{name:'A clear view of what’s next.'}).waitFor();}
 async function open(id='inquiry-a'){await page.locator(`#list-results [data-open="${id}"]`).click();await expect(page.locator('#detail-title')).not.toHaveText('Loading inquiry…');await page.getByLabel('Internal note',{exact:true}).waitFor();}
 async function close(){await page.getByRole('button',{name:'Close inquiry',exact:true}).click();await page.locator('dialog[open]').waitFor({state:'detached'});}
