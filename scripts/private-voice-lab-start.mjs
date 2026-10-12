@@ -156,6 +156,11 @@ export async function startLabMaintenance(env) {
 
 export async function main(env = process.env) {
   if (labMaintenanceEnabled(env)) return startLabMaintenance(env);
+  // Explicit setup-only portal deployment. Existing voice-lab startup is otherwise unchanged.
+  if (env.PORTAL_STAGING_SETUP !== undefined && env.PORTAL_STAGING_SETUP !== "false") {
+    const { runStagingSetupMode } = await import("../customer-portal/server/staging-setup-entry.mjs");
+    return runStagingSetupMode({ env });
+  }
   const numbers=validateLabEnvironment(env);
   const connectionString=labDatabaseConnectionString(env);
   const sources = await Promise.all(CRAFTS.map(async craft =>
@@ -184,3 +189,4 @@ export async function main(env = process.env) {
 if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch(error=>{console.error(JSON.stringify({event:'private_voice_lab.failed',error:String(error.message).replace(/(?:postgres(?:ql)?:\/\/|sk-)[^\s]+/g,'[redacted]')}));process.exitCode=1;});
 }
+
