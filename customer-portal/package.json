@@ -1,0 +1,16 @@
+{
+  "name": "bookedradar-customer-portal-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node preview.mjs",
+    "test": "node --test test/*.test.mjs qa/staging-client.test.mjs",
+    "check": "node qa/check-syntax.mjs",
+    "test:browser": "node qa/browser.mjs",
+    "test:postgres": "node --test --test-concurrency=1 test/*.integration.mjs",
+    "test:browser:staging": "node qa/staging-browser.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

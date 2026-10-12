@@ -1,0 +1,100 @@
+name: Portal staging isolated QA
+on:
+  pull_request:
+    branches: [codex/portal-staging-baseline-20261012]
+permissions:
+  contents: read
+concurrency:
+  group: portal-staging-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  existing-service-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run check
+      - run: node --check scripts/private-voice-lab-start.mjs
+      - run: npm test
+      - run: SIM_SCENARIOS=200 npm run simulate
+  portal-and-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check --prefix customer-portal && npm test --prefix customer-portal
+      - run: npm ci --prefix qa/reporting-browser
+      - name: Install pinned Chromium
+        working-directory: qa/reporting-browser
+        run: npx playwright install --with-deps chromium
+      - name: Original synthetic demo browser regression
+        run: node customer-portal/qa/browser.mjs
+      - name: Connected staging UI against synthetic loopback API
+        run: node customer-portal/qa/staging-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portal-staging-browser-evidence
+          path: |
+            customer-portal/qa/evidence/
+            customer-portal/qa/staging-evidence/
+          if-no-files-found: warn
+  portal-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: bookedradar_portal_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test_user -d bookedradar_portal_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Real PostgreSQL authorization, PKCE, concurrency and rollback
+        run: npm run test:postgres --prefix customer-portal
+        env:
+          PORTAL_TEST_DATABASE_URL: postgresql://test_user:disposable_ci_only@127.0.0.1:5432/bookedradar_portal_test
+          PORTAL_TEST_ACK: disposable
+  existing-postgres-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: bookedradar_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test_user -d bookedradar_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:postgres
+        env:
+          POSTGRES_TEST_URL: postgresql://test_user:disposable_ci_only@127.0.0.1:5432/bookedradar_test

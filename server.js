@@ -278,6 +278,14 @@ app.use(securityHeaders);
 app.use("/api", createRateLimiter({ max: 600 }));
 app.use("/openai/webhook", createRateLimiter({ max: 1200 }));
 
+// Additive private-lab portal. Disabled imports nothing and changes no existing route.
+let portalStaging = null;
+if (process.env.PORTAL_STAGING_ENABLED !== undefined && process.env.PORTAL_STAGING_ENABLED !== "false") {
+  const { createStagingRuntime } = await import("./customer-portal/server/staging-runtime.mjs");
+  portalStaging = await createStagingRuntime({ env: process.env });
+  if (portalStaging) app.use(portalStaging.middleware);
+}
+
 // OpenAI signature verification requires raw JSON text.
 app.use("/openai/webhook", express.text({ type: "application/json", limit: "256kb" }));
 app.use('/stripe/webhook', express.raw({ type: 'application/json', limit: '256kb' }));
@@ -2670,8 +2678,12 @@ const server = app.listen(Number(PORT), "0.0.0.0", () => {
 async function shutdown(signal) {
   if (dispatchTimer) clearInterval(dispatchTimer);
   console.log(JSON.stringify({ event: "server.shutdown", signal }));
-  callLifecycle.shutdown(done => server.close(done));
+  callLifecycle.shutdown(done => server.close(() => {
+    if (!portalStaging) return done();
+    portalStaging.close().then(done, done);
+  }));
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
