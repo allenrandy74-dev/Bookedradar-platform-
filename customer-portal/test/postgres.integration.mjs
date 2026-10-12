@@ -56,8 +56,9 @@ await test('isolated PostgreSQL 18 portal persistence and authorization', { time
   const service = createCustomerPortalService({ store, resolveSession, allowedOrigins: [ORIGIN] });
   const request = async (method, path, body, token = tokenA, override = {}) => {
     const headers = { cookie: `${SESSION_COOKIE_NAME}=${token}` };
+    const session = await resolveSession({ headers });
+    if (method === 'GET' && path !== '/session') headers['x-csrf-token'] = session?.csrfToken || 'invalid';
     if (body !== undefined) {
-      const session = await resolveSession({ headers });
       Object.assign(headers, { origin: ORIGIN, 'content-type': 'application/json', 'x-csrf-token': session?.csrfToken || 'invalid' });
     }
     return service({ method, url: `${API_PREFIX}${path}`, body, headers: { ...headers, ...override } });
@@ -119,6 +120,11 @@ await test('isolated PostgreSQL 18 portal persistence and authorization', { time
     assert.equal(await resolveSession({ headers: { cookie: `${SESSION_COOKIE_NAME}=${tokenA}` } }), null);
   });
   await run('identical object IDs and linked reads stay inside the server-bound tenant', async () => {
+    // Reads bind the tab's marker to its cookie-backed session, even when IDs match.
+    const otherSession = await resolveSession({ headers: { cookie: `${SESSION_COOKIE_NAME}=${tokenB}` } });
+    for (const marker of [undefined, 'invalid', otherSession.csrfToken]) {
+      assert.equal((await request('GET', '/inquiries/same-id', undefined, tokenA, { 'x-csrf-token': marker })).status, 401);
+    }
     assert.equal((await request('GET', '/inquiries/same-id')).body.inquiry.customerName, 'Customer A');
     assert.equal((await request('GET', '/inquiries/same-id', undefined, tokenB)).body.inquiry.customerName, 'Customer B');
     assert.equal((await request('GET', '/inquiries/only-b')).status, 404);

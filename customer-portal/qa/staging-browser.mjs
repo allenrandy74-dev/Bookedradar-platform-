@@ -23,7 +23,8 @@ async function reset(){harness.reset();await reload();}
 try {
   harness=await createStagingHarness();
   browser=await chromium.launch({headless:true,...(process.env.PORTAL_CHROMIUM?{executablePath:process.env.PORTAL_CHROMIUM}:{})});
-  page=await browser.newPage({viewport:{width:1440,height:1000}});
+  const context=await browser.newContext({viewport:{width:1440,height:1000}});
+  page=await context.newPage();
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(!request.url().startsWith(harness.origin)&&!request.url().startsWith('data:'))external.push(request.url());});
   await check('anonymous session gates data and offers provider login without token inputs',async()=>{
