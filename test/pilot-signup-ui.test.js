@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 
 const script = await fs.readFile(new URL("../public/pilot-signup.js", import.meta.url), "utf8");
-function page(response = async () => Response.json({ ok: true })) {
+function page(response = async () => Response.json({ ok: true }), timers = { setTimeout, clearTimeout }) {
   const fields = new Map();
   for (const id of ["pilot-request", "contact-preference", "phone-field", "phone", "submit-request", "status", "success", "confirmation"]) {
     fields.set(id, { value: "", hidden: false, disabled: false, required: false, textContent: "", listeners: {}, addEventListener(name, fn) { this.listeners[name] = fn; }, focus() { this.focused = true; } });
@@ -22,7 +22,7 @@ function page(response = async () => Response.json({ ok: true })) {
       return Object.entries(data);
     }
   }
-  vm.runInNewContext(script, { document: { getElementById: id => fields.get(id) }, FormData, fetch: async (_url, options) => { requests.push(JSON.parse(options.body)); return response(); } });
+  vm.runInNewContext(script, { AbortController, ...timers, document: { getElementById: id => fields.get(id) }, FormData, fetch: async (_url, options) => { requests.push(JSON.parse(options.body)); return response(options); } });
   return { fields, heading, requests, choose(value) { fields.get("contact-preference").value = value; fields.get("contact-preference").listeners.change(); }, submit() { return fields.get("pilot-request").listeners.submit({ preventDefault() {} }); } };
 }
 
@@ -57,12 +57,12 @@ test("phone choice reaches the submitted request and matching confirmation", asy
   assert.match(p.fields.get("confirmation").textContent, /asked for a phone call/);
 });
 
-test("an unconfirmed submission keeps the form and enables correction", async () => {
+test("an unconfirmed submission keeps the form and pauses resubmission for reconciliation", async () => {
   const p = page(async () => Response.json({ ok: false }, { status: 503 }));
   await p.submit();
   assert.equal(p.fields.get("success").hidden, true);
   assert.equal(p.fields.get("pilot-request").hidden, false);
-  assert.equal(p.fields.get("submit-request").disabled, false);
+  assert.equal(p.fields.get("submit-request").disabled, true);
   assert.match(p.fields.get("status").textContent, /details are still here/);
 });
 
@@ -92,6 +92,97 @@ test("pending409 preserves signup details and gives email reconciliation fallbac
   assert.equal(p.fields.get("phone").value, "+14095550100");
   assert.equal(p.fields.get("pilot-request").hidden, false);
   assert.equal(p.fields.get("success").hidden, true);
-  assert.equal(p.fields.get("submit-request").disabled, false);
+  assert.equal(p.fields.get("submit-request").disabled, true);
   assert.match(p.fields.get("status").textContent, /randy@bookedradar.com.*don’t submit repeatedly/);
+});
+
+
+function manualTimers() {
+  let expire;
+  let cleared = 0;
+  return {
+    setTimeout(fn, ms) { assert.equal(ms, 20000); expire = fn; return 1; },
+    clearTimeout(id) { assert.equal(id, 1); cleared++; },
+    expire() { expire(); },
+    get cleared() { return cleared; },
+  };
+}
+
+for (const stage of ["fetch", "body"]) {
+  test(`a stalled ${stage} stops pending, preserves values and blocks manual retry while receipt is uncertain`, async () => {
+    const timers = manualTimers();
+    let signal;
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    const p = page(options => {
+      signal = options.signal;
+      return stage === "fetch" ? pending : { ok: true, json: () => pending };
+    }, timers);
+    p.choose("phone");
+    p.fields.get("phone").value = "+14095550100";
+    const submitting = p.submit();
+    await Promise.resolve();
+    assert.equal(p.fields.get("submit-request").disabled, true);
+    timers.expire();
+    await submitting;
+    assert.equal(signal.aborted, true);
+    assert.equal(timers.cleared, 1);
+    assert.equal(p.requests.length, 1);
+    assert.equal(p.fields.get("phone").value, "+14095550100");
+    assert.equal(p.fields.get("submit-request").disabled, true);
+    assert.equal(p.fields.get("submit-request").textContent, "Contact us to confirm");
+    assert.match(p.fields.get("status").textContent, /may have been received/);
+    assert.match(p.fields.get("status").textContent, /don’t submit repeatedly/);
+    // A second submit event (including Enter) cannot start a second write.
+    await p.submit();
+    assert.equal(p.requests.length, 1);
+    // Editing contact details must not bypass the hold on an uncertain request.
+    p.choose("email");
+    await p.submit();
+    assert.equal(p.requests.length, 1);
+    assert.match(p.fields.get("status").textContent, /Online resubmission is paused/);
+    // Even a transport that ignores abort cannot overwrite the uncertain state.
+    finish(stage === "fetch" ? Response.json({ ok: true }) : { ok: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(p.fields.get("success").hidden, true);
+    assert.equal(p.fields.get("pilot-request").hidden, false);
+    assert.equal(p.requests.length, 1);
+  });
+}
+
+for (const outcome of ["success", "invalid-json", "network-failure"]) {
+  test(`${outcome} clears the deadline without an automatic retry`, async () => {
+    const timers = manualTimers();
+    const p = page(async () => {
+      if (outcome === "network-failure") throw new TypeError("offline");
+      return outcome === "success" ? Response.json({ ok: true }) : new Response("not JSON");
+    }, timers);
+    await p.submit();
+    assert.equal(timers.cleared, 1);
+    assert.equal(p.requests.length, 1);
+    assert.equal(p.fields.get("submit-request").disabled, outcome !== "success");
+    assert.equal(p.fields.get("success").hidden, outcome !== "success");
+    if (outcome !== "success") {
+      await p.submit();
+      assert.equal(p.requests.length, 1);
+    }
+  });
+}
+
+
+test("late rejection after timeout preserves reconciliation hold and cannot trigger manual retry", async () => {
+  const timers = manualTimers();
+  let rejectRequest;
+  const p = page(() => new Promise((_, reject) => { rejectRequest = reject; }), timers);
+  const submitting = p.submit();
+  timers.expire();
+  await submitting;
+  const message = p.fields.get("status").textContent;
+  rejectRequest(new TypeError("late connection failure"));
+  await new Promise(resolve => setImmediate(resolve));
+  await p.submit();
+  assert.equal(p.requests.length, 1);
+  assert.equal(p.fields.get("status").textContent, message);
+  assert.equal(p.fields.get("submit-request").disabled, true);
+  assert.equal(p.fields.get("success").hidden, true);
 });
