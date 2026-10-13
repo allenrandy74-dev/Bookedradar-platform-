@@ -2,8 +2,26 @@ name: Reporting browser QA
 
 on:
   pull_request:
-    branches: [main]
+    # Temporary stacked review target; remove after PR108 lands and this PR is retargeted.
+    branches: [main, fix/public-intake-chat-accessibility-20261013]
     paths:
+      # Include reporting pages and their backend/shared dependencies.
+      - 'public/signup.html'
+      - 'public/pilot-signup.js'
+      - 'public/bookedradar-chat.js'
+      - 'website/src/demo-chat.js'
+      - 'website/src/demo-chat.html'
+      - 'public/owner-brief.html'
+      - 'public/radarproof-dashboard.html'
+      - 'server.js'
+      - 'startup.mjs'
+      - 'scripts/**'
+      - 'src/**'
+      - 'config/**'
+      - 'db/**'
+      - 'test/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'qa/reporting-browser/**'
       - '.github/workflows/reporting-browser-qa.yml'
 
@@ -28,14 +46,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.22.0'
-      - name: Verify combined source provenance
+      - name: Verify current source provenance
+        env:
+          QA_COMMIT: ${{ github.event.pull_request.head.sha }}
         run: node qa/reporting-browser/verify-source.mjs
       - name: Install existing dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Combined syntax checks
         run: npm run check
-      - name: Combined reporting and request-state cases
-        run: node --test test/customer-results-acceptance.test.js test/customer-results-requests.test.js
+      - name: Reporting, request-state and provenance regressions
+        run: node --test test/customer-results-acceptance.test.js test/customer-results-requests.test.js qa/reporting-browser/verify-source.test.mjs qa/reporting-browser/public-network-policy.test.mjs
       - name: Combined ordinary suite
         run: npm test
       - name: Combined deterministic simulation
@@ -67,8 +87,8 @@ jobs:
             -e CI=true -e QA_COMMIT \
             -v "$GITHUB_WORKSPACE:/work" -w /work/qa/reporting-browser \
             mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 npm test
-      - name: Package proof within remaining aggregate storage allowance
-        if: always()
+      - name: Package only the historically authorized proof
+        if: ${{ always() && github.event.pull_request.number == 94 && github.run_number == 7 && github.run_attempt == 1 }}
         id: evidence
         run: python3 qa/reporting-browser/package-evidence.py
       # One owner-authorized acceptance upload only: PR94, workflow run 7, first attempt; preserve the prior artifact.

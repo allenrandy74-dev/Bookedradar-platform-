@@ -1,28 +1,42 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-const m = JSON.parse(fs.readFileSync(new URL('./source-manifest.json', import.meta.url)));
+
+// source-manifest.json records historical acceptance, not a freeze on future
+// product changes. Verify the exact current checkout and record its identities.
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
-for (const [path, sha] of Object.entries({ ...m.mainFiles, ...m.reportingFiles })) {
-  const edit = m.approvedStyleChanges?.[path];
-  if (!edit) assert.equal(git('rev-parse', 'HEAD:' + path), sha, 'preserved Git blob: ' + path);
-  else {
-    assert.equal(git('rev-parse', m.reporting + ':' + path), sha, 'original reviewed blob');
-    const original = execFileSync('git', ['show', m.reporting + ':' + path], { encoding: 'utf8' });
-    assert.equal(original.split(edit.before).length, 2, 'exactly one approved style target');
-    const actual = execFileSync('git', ['show', 'HEAD:' + path], { encoding: 'utf8' });
-    assert.equal(actual, original.replace(edit.before, edit.after), 'only approved foreground delta: ' + path);
+const head = git('rev-parse', 'HEAD');
+if (process.env.CI) assert(process.env.QA_COMMIT, 'CI must identify the requested QA commit');
+if (process.env.QA_COMMIT) assert.equal(head, process.env.QA_COMMIT, 'requested QA commit');
+const inputs = [
+  'public/signup.html', 'public/pilot-signup.js', 'public/bookedradar-chat.js',
+  'website/src/demo-chat.js', 'website/src/demo-chat.html',
+  'public/owner-brief.html', 'public/radarproof-dashboard.html',
+  'server.js', 'startup.mjs', 'src', 'test', 'scripts', 'config', 'db', 'package.json', 'package-lock.json',
+  'qa/reporting-browser', '.github/workflows/reporting-browser-qa.yml'
+];
+// Discover expected inputs from the verified commit, never the mutable index.
+const paths = git('ls-tree', '-r', '--name-only', '-z', head, '--', ...inputs).split('\0').filter(Boolean);
+assert.equal(git('diff', '--cached', '--name-only', head, '--', ...inputs), '', 'index matches commit');
+for (const required of ['public/owner-brief.html', 'public/radarproof-dashboard.html',
+  'public/signup.html', 'public/pilot-signup.js', 'public/bookedradar-chat.js', 'website/src/demo-chat.js', 'package-lock.json'])
+  assert(paths.includes(required), 'required tracked source: ' + required);
+const files = {};
+for (const path of paths) {
+  const parts = path.split('/');
+  for (let index = 1; index < parts.length; index++) {
+    const parent = parts.slice(0, index).join('/');
+    assert(fs.lstatSync(parent).isDirectory(), 'regular source directory: ' + parent);
   }
+  assert(fs.lstatSync(path).isFile(), 'regular source file: ' + path);
+  const blob = git('rev-parse', 'HEAD:' + path);
+  assert.equal(git('hash-object', '--no-filters', '--', path), blob, 'checkout matches commit: ' + path);
+  files[path] = blob;
 }
-const integration = m.integration;
-assert.equal(git('rev-parse', integration + '^{tree}'), m.integrationTree);
-const parents = git('show', '-s', '--format=%P', integration).split(' ');
-assert.deepEqual(parents, [m.main, m.reporting], 'combined candidate parents');
-const changes = git('diff', '--name-only', m.main, integration).split('\n').filter(Boolean).sort();
-assert.deepEqual(changes, Object.keys(m.reportingFiles).sort(), 'only 16 reporting changes over main');
-for (const path of git('diff', '--name-only', integration, 'HEAD').split('\n').filter(Boolean))
-  assert(path.startsWith('qa/reporting-browser/') || path === '.github/workflows/reporting-browser-qa.yml' || Object.hasOwn(m.approvedStyleChanges || {}, path), 'QA or exact approved style change only: ' + path);
-const evidence = { main: m.main, reporting: m.reporting, integration, integrationTree: git('rev-parse', integration + '^{tree}'), head: git('rev-parse', 'HEAD'), headTree: git('rev-parse', 'HEAD^{tree}'), preservedMainFiles: 7, baselineReportingFiles: 16, unchangedReportingFiles: 14, exactApprovedStyleChanges: m.approvedStyleChanges };
+const evidence = {
+  head, headTree: git('rev-parse', 'HEAD^{tree}'), files,
+  scope: 'Current committed reporting inputs; synthetic QA only, not production acceptance'
+};
 fs.mkdirSync('qa/reporting-browser/evidence', { recursive: true });
-fs.writeFileSync('qa/reporting-browser/evidence/commits.json', JSON.stringify(evidence, null, 2));
-console.log(JSON.stringify(evidence, null, 2));
+fs.writeFileSync('qa/reporting-browser/evidence/commits.json', JSON.stringify(evidence, null, 2) + '\n');
+console.log(JSON.stringify({ head, headTree: evidence.headTree, verifiedFiles: paths.length }));
