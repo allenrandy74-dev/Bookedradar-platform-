@@ -67,9 +67,13 @@ test("search, empty state, text preview and no horizontal page overflow", async 
   await expect(
     page.getByRole("switch", { name: "Larger text preview" }),
   ).toBeChecked();
+  await expect(
+    page.getByText("Larger text preview", { exact: true }),
+  ).toHaveCSS("font-size", "20px");
   await page.screenshot({
     path: testInfo.outputPath("settings-large-text-browser.png"),
     fullPage: true,
+    animations: "disabled",
   });
   expect(
     await page.evaluate(
