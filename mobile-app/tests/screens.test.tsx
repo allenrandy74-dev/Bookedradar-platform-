@@ -1,4 +1,4 @@
-import {beforeEach, expect, jest, test} from "@jest/globals";
+import { beforeEach, expect, jest, test } from "@jest/globals";
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AppProvider, useApp } from "../src/state/AppState";
@@ -31,11 +31,15 @@ jest.mock("react-native-safe-area-context", () => {
 function renderApp(children: React.ReactNode) {
   return render(<AppProvider>{children}</AppProvider>);
 }
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 test("Today identifies sample data and routes the priority action to an inquiry", async () => {
   await renderApp(<Today />);
   expect(screen.getByText("SAMPLE")).toBeTruthy();
-  await fireEvent.press(screen.getByRole("button", { name: "Review next inquiry" }));
+  await fireEvent.press(
+    screen.getByRole("button", { name: "Review next inquiry" }),
+  );
   expect(mockPush).toHaveBeenCalledWith({
     pathname: "/inquiry/[id]",
     params: { id: "inq-1042" },
@@ -43,7 +47,10 @@ test("Today identifies sample data and routes the priority action to an inquiry"
 });
 test("Search finds subject and empty results without fabricating inquiries", async () => {
   await renderApp(<Inquiries />);
-  await fireEvent.changeText(screen.getByLabelText("Search inquiries"), "heat pump");
+  await fireEvent.changeText(
+    screen.getByLabelText("Search inquiries"),
+    "heat pump",
+  );
   expect(screen.getByText("Taylor Reed")).toBeTruthy();
   expect(screen.queryByText("Jamie Brooks")).toBeNull();
   await fireEvent.changeText(
@@ -61,7 +68,9 @@ test("Filter separates closed workflow from active inquiries", async () => {
 test("Detail changes status through permitted transition and keeps source intact", async () => {
   await renderApp(<Detail />);
   await fireEvent.press(screen.getByRole("button", { name: "Change status" }));
-  await fireEvent.press(screen.getByRole("button", { name: "Start / resume work" }));
+  await fireEvent.press(
+    screen.getByRole("button", { name: "Start / resume work" }),
+  );
   expect(screen.getAllByText("In progress").length).toBeGreaterThan(0);
   expect(screen.getByText("Jamie Brooks")).toBeTruthy();
   expect(screen.getByText("Saved in this sample session.")).toBeTruthy();
@@ -81,7 +90,9 @@ test("Internal note is saved locally, appears once and clears draft", async () =
     screen.getByLabelText("Internal note"),
     "Check the upstairs unit first.",
   );
-  await fireEvent.press(screen.getByRole("button", { name: "Save sample note" }));
+  await fireEvent.press(
+    screen.getByRole("button", { name: "Save sample note" }),
+  );
   expect(screen.getAllByText("Check the upstairs unit first.")).toHaveLength(1);
   expect(screen.getByLabelText("Internal note").props.value).toBe("");
   expect(
@@ -105,11 +116,11 @@ test("Overlong note remains in draft and cannot be submitted", async () => {
   ).toBe(true);
 });
 function DetailMode({ mode }: { mode: "offline" | "expired" | "viewer" }) {
-  const {setViewer,setMode} = useApp();
+  const { setViewer, setMode } = useApp();
   React.useEffect(() => {
     if (mode === "viewer") setViewer(true);
     else setMode(mode);
-  }, [mode,setViewer,setMode]);
+  }, [mode, setViewer, setMode]);
   return <Detail />;
 }
 test("Offline sample disables writes and explains no queued actions", async () => {
@@ -151,6 +162,32 @@ test("Settings safely previews text size, roles and unavailable sign-in", async 
     screen.getByRole("button", { name: "Live sign-in · Not connected" }).props
       .accessibilityState.disabled,
   ).toBe(true);
-  await fireEvent(screen.getByLabelText("Larger text preview"), "valueChange", true);
+  await fireEvent(
+    screen.getByLabelText("Larger text preview"),
+    "valueChange",
+    true,
+  );
   expect(screen.getByLabelText("Larger text preview").props.value).toBe(true);
+});
+
+function ReassignPriority() {
+  const app = useApp();
+  const prepared = React.useRef(false);
+  React.useEffect(() => {
+    if (prepared.current) return;
+    prepared.current = true;
+    app.workflow("inq-1042", 1, { assigneeId: "alex" });
+    app.workflow("inq-1041", 1, { assigneeId: null });
+  }, [app]);
+  return <Today />;
+}
+test("Next inquiry prioritizes an unassigned record before an earlier assigned one", async () => {
+  await renderApp(<ReassignPriority />);
+  await fireEvent.press(
+    screen.getByRole("button", { name: "Review next inquiry" }),
+  );
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: "/inquiry/[id]",
+    params: { id: "inq-1041" },
+  });
 });

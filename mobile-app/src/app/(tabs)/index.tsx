@@ -25,18 +25,19 @@ export default function Today() {
   );
   const unassigned = attention.filter((x) => !x.inquiry.assigneeId);
   const assigned = attention.filter((x) => x.inquiry.assigneeId);
-  const first = attention[0];
+  const first = unassigned[0] ?? assigned[0];
   return (
     <Screen
       title="A clear next step."
-      subtitle="Your team's work, in one place."
+      subtitle={`${summary.total} sample inquiries. Your team's next steps.`}
     >
       <StateGate>
         <Card
           style={{
             backgroundColor: "#17332F",
             borderColor: "#2F594B",
-            gap: 18,
+            gap: 10,
+            padding: 18,
           }}
         >
           <View style={[s.row, { justifyContent: "space-between" }]}>
@@ -46,8 +47,8 @@ export default function Today() {
           <View style={[s.row, { alignItems: "baseline", gap: 10 }]}>
             <T
               style={{
-                fontSize: 58,
-                lineHeight: 66,
+                fontSize: 42,
+                lineHeight: 50,
                 fontWeight: "600",
                 letterSpacing: -2,
                 color: C.mint,
@@ -63,13 +64,13 @@ export default function Today() {
                 flex: 1,
               }}
             >
-              inquiries ready{"\n"}for your team
+              inquiries need attention
             </T>
           </View>
           <T style={{ fontSize: 14, lineHeight: 22, color: "#B5CEC3" }}>
             {unassigned.length
-              ? `${unassigned.length} ${unassigned.length === 1 ? "needs an owner" : "need an owner"}. Start there, then move the rest forward.`
-              : "Every open inquiry has an owner. Keep the next steps moving."}
+              ? `${unassigned.length} unassigned · ${assigned.length} with your team`
+              : "Every inquiry needing attention has an owner."}
           </T>
           {first && (
             <Button
@@ -84,6 +85,29 @@ export default function Today() {
             />
           )}
         </Card>
+        <Section
+          title="Needs an owner"
+          action="View all"
+          onPress={() => router.push("/inquiries")}
+        />
+        {unassigned.length ? (
+          unassigned.map((r) => (
+            <InquiryCard compact key={r.inquiry.id} record={r} />
+          ))
+        ) : (
+          <Empty
+            title="All assigned"
+            detail="Every inquiry needing attention has an owner."
+          />
+        )}
+        {assigned.length > 0 && (
+          <>
+            <Section title="Keep things moving" />
+            {assigned.map((r) => (
+              <InquiryCard compact key={r.inquiry.id} record={r} />
+            ))}
+          </>
+        )}
         <View style={[s.row, { alignItems: "stretch" }]}>
           <Card style={{ flex: 1, padding: 16, gap: 3 }}>
             <T style={{ fontSize: 26, lineHeight: 34, fontWeight: "700" }}>
@@ -102,27 +126,6 @@ export default function Today() {
             </T>
           </Card>
         </View>
-        <Section
-          title="Needs an owner"
-          action="View all"
-          onPress={() => router.push("/inquiries")}
-        />
-        {unassigned.length ? (
-          unassigned.map((r) => <InquiryCard key={r.inquiry.id} record={r} />)
-        ) : (
-          <Empty
-            title="All assigned"
-            detail="Every inquiry needing attention has an owner."
-          />
-        )}
-        {assigned.length > 0 && (
-          <>
-            <Section title="Keep things moving" />
-            {assigned.map((r) => (
-              <InquiryCard compact key={r.inquiry.id} record={r} />
-            ))}
-          </>
-        )}
         <Notice text="Sample workspace. All people, requests and changes are fictional. No calls or messages will be sent." />
         <Section title="Follow-ups" />
         <Card>

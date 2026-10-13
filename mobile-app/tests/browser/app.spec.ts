@@ -7,12 +7,22 @@ test("today, inquiry workflow, notes and truthful results", async ({
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByText("A clear next step.")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect(
+    page.getByText("Jamie Brooks", { exact: true }),
+  ).toBeInViewport();
   await page.screenshot({
     path: testInfo.outputPath("today-browser-render.png"),
     fullPage: true,
   });
   await page.getByRole("button", { name: "Review next inquiry" }).click();
-  await expect(page.getByText("Jamie Brooks", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Jamie Brooks", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("inquiry-top-browser-render.png"),
+    fullPage: true,
+  });
   await expect(
     page.getByRole("button", { name: "Call", exact: true }),
   ).toBeDisabled();
@@ -49,6 +59,9 @@ test("search, empty state, text preview and no horizontal page overflow", async 
   await expect(page.getByText("No matching inquiries")).toBeVisible();
   await page.goto("/settings");
   await page.getByRole("switch", { name: "Larger text preview" }).click();
+  await expect(
+    page.getByRole("switch", { name: "Larger text preview" }),
+  ).toBeChecked();
   await page.screenshot({
     path: testInfo.outputPath("settings-large-text-browser.png"),
     fullPage: true,
