@@ -27,3 +27,10 @@ export function syntheticBody(target, body) {
     && [...fields].filter(key => !['name', 'business', 'email', 'contactPreference', 'phone'].includes(key))
       .every(key => body[key] === undefined || body[key] === '');
 }
+
+export function sourceContentType(path) {
+  return path.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8';
+}
+export function syntheticChatDocument(src, origin) {
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Synthetic chat QA</title><body><button id="outside">Outside chat</button><script src="${src}" data-tenant="qa-browser" data-api="${origin}"></script></body></html>`;
+}

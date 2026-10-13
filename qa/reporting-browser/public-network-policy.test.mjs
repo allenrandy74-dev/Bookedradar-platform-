@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { allowedRequest, syntheticBody, signupPath, chatPath } from './tests/public-network-policy.mjs';
+import { allowedRequest, syntheticBody, signupPath, chatPath, sourceContentType, syntheticChatDocument } from './tests/public-network-policy.mjs';
 const origin = 'http://127.0.0.1:12345';
 test('public browser fixture permits only its exact loopback assets and POST targets', () => {
   assert(allowedRequest(origin + '/dashboard/signup.html', 'GET', origin));
@@ -24,4 +24,14 @@ test('public browser fixture rejects non-synthetic payloads and extra fields', (
   assert(syntheticBody(chatPath, { sessionId: '', message: 'SYNTHETIC QA hello' }));
   for (const body of [{ sessionId: 'real-session', message: 'SYNTHETIC QA hello' }, { sessionId: '', message: 'hello' }, { sessionId: '', message: 'SYNTHETIC QA hello', extra: '' }])
     assert.equal(syntheticBody(chatPath, body), false);
+});
+
+test('synthetic embedding pages and unchanged scripts declare UTF-8 explicitly', () => {
+  assert.equal(sourceContentType('/public/bookedradar-chat.js'), 'text/javascript; charset=utf-8');
+  assert.equal(sourceContentType('/website/src/demo-chat.js'), 'text/javascript; charset=utf-8');
+  assert.equal(sourceContentType('/qa/chat.html'), 'text/html; charset=utf-8');
+  const html = syntheticChatDocument('/public/bookedradar-chat.js', origin);
+  assert.match(html, /<meta charset="utf-8">/);
+  assert(html.indexOf('<meta charset="utf-8">') < html.indexOf('<script'));
+  assert(html.includes(`data-api="${origin}"`));
 });

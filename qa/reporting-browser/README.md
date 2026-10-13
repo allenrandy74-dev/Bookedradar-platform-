@@ -46,10 +46,10 @@ success/failure after dismissal or focus moving outside. Initial geometry and
 synthetic screenshots cover 320/390/1440px. The network-denial probe stays blocked
 at routing and must never reach a transport.
 
-These new browser cases have not been executed: the available local browser
-launch route was denied and is not retried. Syntax and pure fixture-network policy
-tests are only preparation evidence, not browser acceptance. Hosted execution
-requires separate authorization and this workflow candidate must accompany PR108
+The available local browser launch route was denied and is not retried. Syntax
+and pure fixture-network policy tests are only preparation evidence, not browser
+acceptance. Authorized hosted results must be checked on the exact current PR
+head; this workflow candidate must accompany PR108
 (or a descendant with its changes); main alone intentionally fails its new
 behavioral expectations. Screen-reader announcements, Safari/physical devices,
 zoom/reflow and hosted delivery remain separate acceptance gates.
@@ -59,3 +59,11 @@ For the separate stacked review, the workflow also targets the exact PR108 branc
 fix/public-intake-chat-accessibility-20261013. This temporary explicit target
 allows the QA-only draft diff to run before its product dependency is merged.
 Remove that target after PR108 lands and this draft is retargeted to main.
+
+The terminal network-failure case uses an explicit Playwright route abort before
+server transport; native fetch is unchanged. The first hosted raw-socket-close
+probe observed two POST deliveries and then waited on the second response. That
+is retained as an acceptance limit: a lost response after receipt can produce
+transport redelivery despite no application retry, and a page-local resubmission
+hold is not durable server idempotency. This suite does not certify ambiguous
+post-write disconnect handling or hosted backend duplicate reconciliation.

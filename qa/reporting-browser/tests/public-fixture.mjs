@@ -3,7 +3,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { allowedRequest, syntheticBody, signupPath, chatPath } from './public-network-policy.mjs';
+import { allowedRequest, syntheticBody, signupPath, chatPath, sourceContentType, syntheticChatDocument } from './public-network-policy.mjs';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 export const test = base.extend({
   publicQA: async ({ context, page, browser }, use, info) => {
@@ -22,7 +22,7 @@ export const test = base.extend({
     function expectedResourceError(url, detail) {
       expectedConsoleFailures.push({ url, text: 'Failed to load resource: ' + detail });
     }
-    let expectedDenied = [], origin;
+    let expectedDenied = [], origin, abortNext = false, serverPosts = 0;
     const server = http.createServer(async (req, res) => {
       if (!allowedRequest(origin + req.url, req.method, origin)) {
         unexpected.push(req.method + ' ' + req.url); res.writeHead(404); res.end(); return;
@@ -31,13 +31,13 @@ export const test = base.extend({
       if (req.method === 'GET') {
         if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
         if (assets[req.url]) {
-          res.setHeader('Content-Type', req.url.endsWith('.js') ? 'text/javascript' : 'text/html');
+          res.setHeader('Content-Type', sourceContentType(req.url));
           res.end(assets[req.url]); return;
         }
         // Synthetic embedding page only; production script bytes are unchanged.
         const src = req.url === '/qa/demo.html' ? '/website/src/demo-chat.js' : '/public/bookedradar-chat.js';
-        res.setHeader('Content-Type', 'text/html');
-        res.end(`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Synthetic chat QA</title><body><button id="outside">Outside chat</button><script src="${src}" data-tenant="qa-browser" data-api="${origin}"></script></body></html>`);
+        res.setHeader('Content-Type', sourceContentType(req.url));
+        res.end(syntheticChatDocument(src, origin));
         return;
       }
       try {
@@ -48,6 +48,7 @@ export const test = base.extend({
         }
         const body = JSON.parse(raw);
         if (!syntheticBody(req.url, body)) throw new Error('non-synthetic input');
+        serverPosts++;
         requests.push({ path: req.url, body,
           reply(data, status = 200) {
             if (status >= 400) expectedResourceError(origin + req.url, `the server responded with a status of ${status} (${http.STATUS_CODES[status]})`);
@@ -56,7 +57,6 @@ export const test = base.extend({
           invalid() { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{ invalid synthetic JSON'); },
           startJSON() { res.writeHead(200, { 'Content-Type': 'application/json' }); res.flushHeaders(); res.write(' '); },
           finishJSON(data) { res.end(JSON.stringify(data)); },
-          disconnect() { expectedResourceError(origin + req.url, 'net::ERR_EMPTY_RESPONSE'); res.destroy(); },
           expectAbort() { expectedResourceError(origin + req.url, 'net::ERR_ABORTED'); }
         });
       } catch {
@@ -74,7 +74,16 @@ export const test = base.extend({
         try { return syntheticBody(target.pathname + target.search, request.postDataJSON()); }
         catch { return false; }
       })();
-      if (allowedRequest(request.url(), request.method(), origin) && bodySafe) await route.continue();
+      if (allowedRequest(request.url(), request.method(), origin) && bodySafe) {
+        if (abortNext && request.method() === 'POST') {
+          abortNext = false;
+          requests.push({ path: target.pathname + target.search, body: request.postDataJSON(), injected: true,
+            async fail() { expectedResourceError(request.url(), 'net::ERR_FAILED'); await route.abort('failed'); }
+          });
+          return;
+        }
+        await route.continue();
+      }
       else {
         denied.push(request.method() + ' ' + request.url());
         expectedResourceError(request.url(), 'net::ERR_BLOCKED_BY_CLIENT.Inspector');
@@ -86,6 +95,8 @@ export const test = base.extend({
     await page.clock.pauseAt(new Date('2026-10-13T12:00:01Z'));
     const qa = {
       origin, requests,
+      get serverPosts() { return serverPosts; },
+      failNextRequest() { abortNext = true; },
       expectDenied(values) { expectedDenied = values; },
       async open(kind) { await page.goto(origin + (kind === 'signup' ? '/dashboard/signup.html' : `/qa/${kind}.html`), { waitUntil: 'domcontentloaded' }); },
       async request(index = 0) { await expect.poll(() => requests.length).toBeGreaterThan(index); return requests[index]; },
@@ -104,13 +115,13 @@ export const test = base.extend({
       console.log('QA_PUBLIC_BROWSER_EVIDENCE', JSON.stringify({
         test: info.title, browser: browser.version(), viewport: page.viewportSize(),
         commit: process.env.QA_COMMIT || 'local-uncommitted',
-        syntheticRequests: requests.length, denied: denied.length,
+        syntheticRequests: requests.length, serverPosts, injectedNetworkFailures: requests.filter(request => request.injected).length, denied: denied.length,
         unexpectedRequests: unexpected.length, pageErrors: errors.length,
         unexpectedConsoleErrors: unexpectedConsoleErrors.length
       }));
       await info.attach('public-network-and-source-evidence', { body: Buffer.from(JSON.stringify({
         browser: browser.version(), commit: process.env.QA_COMMIT || 'local-uncommitted',
-        viewport: page.viewportSize(), syntheticRequests: requests.map(({ path }) => path),
+        viewport: page.viewportSize(), syntheticRequests: requests.map(({ path, injected }) => ({ path, injectedNetworkFailure: !!injected })),
         sourceSHA256: Object.fromEntries(Object.entries(assets).map(([url, bytes]) => [source[url], crypto.createHash('sha256').update(bytes).digest('hex')])),
         denied, expectedDenied, unexpected, errors, consoleErrors, expectedConsoleFailures, unexpectedConsoleErrors
       }, null, 2)), contentType: 'application/json' });

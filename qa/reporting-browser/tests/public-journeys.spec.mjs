@@ -41,9 +41,10 @@ test('signup native validation blocks missing callback and permits switching bac
   const request = await qa.request(); expect(request.body).not.toHaveProperty('phone');
   request.reply({ ok: true }); await expect(page.locator('#success')).toBeVisible();
 });
-for (const failure of ['stalled response', 'stalled JSON', 'HTTP error', 'invalid JSON', 'network disconnect']) {
+for (const failure of ['stalled response', 'stalled JSON', 'HTTP error', 'invalid JSON', 'network abort']) {
   test(`signup ${failure}: preserve values and block repeated uncertain writes`, async ({ page, publicQA: qa }) => {
     await qa.open('signup'); await qa.fillSignup();
+    if (failure === 'network abort') qa.failNextRequest();
     await page.locator('#submit-request').click();
     const request = await qa.request();
     if (failure === 'stalled JSON') {
@@ -53,7 +54,10 @@ for (const failure of ['stalled response', 'stalled JSON', 'HTTP error', 'invali
     }
     if (failure === 'HTTP error') request.reply({ ok: false }, 503);
     if (failure === 'invalid JSON') request.invalid();
-    if (failure === 'network disconnect') request.disconnect();
+    if (failure === 'network abort') {
+      await request.fail();
+      expect(qa.serverPosts).toBe(0);
+    }
     if (failure.startsWith('stalled')) {
       request.expectAbort();
       await page.clock.fastForward(19999);
