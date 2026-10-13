@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "BookedRadar",
+    "slug": "bookedradar-mobile",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/bookedradar-icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/bookedradar-icon.png",
+        "backgroundColor": "#0A1323"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_CONTACTS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/bookedradar-icon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "bookedradar-demo",
+    "extra": {
+      "sampleOnly": true
+    }
+  }
+}
