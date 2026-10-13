@@ -1,37 +1,40 @@
 # First mobile slice: acceptance record
 
-Sample-only source implementation. Latest verification details are finalized after the last code check below.
+This is a fictional, sample-only React Native application. It has no live transport, production credentials, customer data or installable native binary.
 
-## Completed implementation
+## Implemented and checked
 
-- Four native-oriented Expo Router tabs with an inquiry detail stack
-- Focused dark navy/mint visual system, system typography and scalable body text
-- Meaningful names, labels, disabled states and 48px-or-larger principal controls
-- Six fictional inquiries; real status/assignment/note semantics simulated locally
-- Search, status filtering, append-only notes, draft retention while navigating, local reset
-- Offline, loading, empty, connection-error, expired session, read-only role and larger-text previews
-- Honest financial labels: fictional pipeline separated from unknown revenue/bookings/conversion
-- Default-deny native login; no live transport, secrets, credential storage, tenant selector or public publication
+- Four Expo Router tabs and an inquiry-detail stack
+- Compact actionable inquiry queue, unassigned-first next action, search and filters
+- Exact workflow transitions, version-aware assignment and append-only notes
+- Preserved in-session note drafts, reset, read-only and offline behavior
+- Loading, empty, error, expired-session and larger-text previews
+- Scalable text, labeled controls, priority/source/age in inquiry accessibility labels, and an inset-aware 48-point tab touch row
+- Clear separation of fictional opportunity estimates from unavailable booking/payment outcomes
+- Default-deny native sign-in and disabled outbound actions
 
-## Verified on the source candidate
+## Source verification
 
-- 25/25 domain tests passed
-- TypeScript check passed across app, domain, component and browser-test source
-- Lint passed
-- 12/12 React Native screen-interaction tests passed using mocked native modules
-- Expo Doctor: 21/21 checks passed after final dependency and app-configuration verification
-- iOS and Android Hermes JavaScript exports both succeeded (not native binaries)
-- Browser production bundle exported successfully
+The latest local source check passed TypeScript, lint, 27 domain/layout tests and 14 React Native component tests. The component suite uses mocked native modules and does not establish device correctness. Expo Doctor passed 21/21 checks after dependency and app-configuration validation.
 
-## Pending / blocked
+Both iOS and Android Hermes JavaScript exports succeeded, as did the production browser export. These are JavaScript bundles, **not IPA/APK files**.
 
-- **Actual visual render review and screenshots:** Chromium launch is blocked by the executor runtime's socket restriction. Reviewed escalation returned the same runtime error. No screenshots are claimed.
-- **Prepared browser interaction tests:** authored but not yet run in a Chromium-capable environment.
-- **Native-device/simulator testing:** no Xcode, Android SDK/emulator, `xcrun` or `adb` is available here. No IPA/APK or signed app has been created.
-- Live native login, source ingestion, push, calendar, recording, communication and payment integrations remain disconnected.
+## Browser-rendered review
 
-## Bounded next verification route
+[Draft PR #109](https://github.com/allenrandy74-dev/Bookedradar-platform-/pull/109) contains the isolated source and bounded review workflow. At commit `c61f8f59f43bd21dffac8346c78d20fd039ecec6`, the [browser QA run](https://github.com/allenrandy74-dev/Bookedradar-platform-/actions/runs/38482784897) passed all four scenarios across 390px and 360px phone-width viewports:
 
-The approved next step is to add it on a new draft branch/PR in the existing public repository and run one standard `ubuntu-24.04` GitHub Actions job (10-minute timeout, no deployment, no secrets, no paid/larger runners). This can build the browser bundle, run phone-viewport Playwright flows and capture honest browser-rendered screenshots. It does not replace native-device testing.
+- Priority navigation, status change, owner assignment, local note save and Results
+- Search, empty results, larger-text toggle, page-width overflow and disabled live sign-in
 
-GitHub's current standard-hosted runner policy is free for public repositories: https://docs.github.com/en/actions/reference/runners/github-hosted-runners . Larger runners are excluded. Only the isolated draft review and bounded CI run are authorized; no merge, deployment or store submission.
+Actual screenshot pixels of Today, inquiry details, Results and larger text were inspected. That review improved the Today layout and revealed a screenshot captured during drawer dismissal. The follow-up test explicitly waits for dismissal before continuing and scrolls the saved note into view before capture. Follow-up code also removes unsupported inherited fixture claims and preserves the native bottom safe area. Consult the exact current-head PR check for the final follow-up run status.
+
+Local Chromium could not start because this executor denies the socket it requires; the approved GitHub runner supplied the actual browser environment. Browser-rendered React Native screens are **not native-device screenshots**.
+
+## Remaining release gates
+
+- Real iPhone and Android device/simulator testing, especially safe areas, keyboard interaction, back navigation, interruptions, VoiceOver/TalkBack and OS text scaling
+- A reviewed native authentication/session exchange and authoritative server tenant binding
+- Separately approved business data, source projection, retention and customer access
+- Native platform identifiers, signing, test distribution and store approval
+
+The draft remains isolated from main and the live lab. No merge, deployment, store submission, live data connection, account creation or payment has occurred. The workflow uses one standard `ubuntu-24.04` job, a ten-minute timeout, no deployment credentials and three-day screenshot retention. [GitHub's standard public-runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) applies; no larger or paid runners are used.

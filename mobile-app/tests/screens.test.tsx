@@ -191,3 +191,14 @@ test("Next inquiry prioritizes an unassigned record before an earlier assigned o
     params: { id: "inq-1041" },
   });
 });
+
+test("Inquiry-card accessible label includes source, age and the visible priority cue", async () => {
+  await renderApp(<Inquiries />);
+  const card = screen.getByRole("button", {
+    name: /Open inquiry from Jamie Brooks/,
+  });
+  expect(card.props.accessibilityLabel).toContain("AI phone, received 18m ago");
+  expect(card.props.accessibilityLabel).toContain(
+    "High priority, sample signal",
+  );
+});

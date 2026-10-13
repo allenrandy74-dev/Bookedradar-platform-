@@ -410,7 +410,7 @@ export function InquiryCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open inquiry from ${i.customerName}. ${i.subject}. ${STATUS[i.status]}. ${assignee?.name || "Unassigned"}.`}
+      accessibilityLabel={`Open inquiry from ${i.customerName}. ${i.subject}. ${STATUS[i.status]}. ${assignee?.name || "Unassigned"}. ${i.source}, received ${relativeTime(i.receivedAt)}.${high ? " High priority, sample signal." : ""}`}
       onPress={() =>
         router.push({ pathname: "/inquiry/[id]", params: { id: i.id } })
       }

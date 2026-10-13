@@ -1,3 +1,4 @@
+import { tabBarLayout } from "../src/components/tabBarLayout";
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -680,4 +681,25 @@ test("filters compose across status, assignee, priority and case-insensitive sea
     6,
   );
   assert.equal(records.length, 6);
+});
+
+test("closed sample wording does not claim unavailable booking or payment evidence", () => {
+  const closed = createDemoRecords().filter(
+    (record) => record.inquiry.status === "closed",
+  );
+  assert.equal(closed.length, 2);
+  for (const record of closed) {
+    assert.match(record.inquiry.summary, /not connected|does not confirm/);
+    assert.equal(record.context.preferredTime, "No requested time available");
+    assert.doesNotMatch(record.inquiry.subject, /completed/i);
+  }
+});
+
+test("tab bar preserves the home-indicator inset and a 48-point touch row", () => {
+  for (const inset of [0, 8, 21, 34]) {
+    const layout = tabBarLayout(inset);
+    assert.ok(layout.paddingBottom >= inset);
+    assert.equal(layout.height - layout.paddingTop - layout.paddingBottom, 48);
+  }
+  assert.equal(tabBarLayout(Number.NaN).paddingBottom, 8);
 });

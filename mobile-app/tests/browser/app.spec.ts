@@ -28,9 +28,11 @@ test("today, inquiry workflow, notes and truthful results", async ({
   ).toBeDisabled();
   await page.getByRole("button", { name: "Change status" }).click();
   await page.getByRole("button", { name: "Start / resume work" }).click();
+  await expect(page.getByRole("button", { name: "Close sheet" })).toBeHidden();
   await expect(page.getByText("Saved in this sample session.")).toBeVisible();
   await page.getByRole("button", { name: "Assign owner" }).click();
   await page.getByRole("button", { name: "Morgan Chen", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Close sheet" })).toBeHidden();
   await page
     .getByLabel("Internal note", { exact: true })
     .fill("Browser review: check the upstairs unit.");
@@ -38,6 +40,9 @@ test("today, inquiry workflow, notes and truthful results", async ({
   await expect(
     page.getByText("Browser review: check the upstairs unit.", { exact: true }),
   ).toBeVisible();
+  await page
+    .getByText("Browser review: check the upstairs unit.", { exact: true })
+    .scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("inquiry-browser-render.png"),
     fullPage: true,
