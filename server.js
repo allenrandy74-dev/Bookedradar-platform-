@@ -2051,6 +2051,8 @@ routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, 
       lead,
       timeoutMs,
       retries,
+      // A provider error may follow an accepted write; reconcile instead of replaying.
+      writeRetries: 0,
     });
     if (!contact?.ok || !contact?.contactId) throw new Error("contact_create_failed");
     await createWixInquiryNotes({
@@ -2060,6 +2062,8 @@ routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, 
       text: lead.notes,
       timeoutMs,
       retries,
+      // A provider error may follow an accepted write; reconcile instead of replaying.
+      writeRetries: 0,
     });
     const task = await createWixFollowupTask({
       apiKey: wix.apiKey,
@@ -2069,6 +2073,8 @@ routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, 
       dueInMinutes: 15,
       timeoutMs,
       retries,
+      // A provider error may follow an accepted write; reconcile instead of replaying.
+      writeRetries: 0,
     });
     if (!task?.ok || !task?.taskId) throw new Error("task_create_failed");
     await state.markInquiryOnce(completedKey);
