@@ -43,7 +43,7 @@ export async function findWixContact({
   return data?.contacts?.[0] || null;
 }
 
-export async function createWixContact({ apiKey, siteId, lead, previousContactId, previousName, timeoutMs = 8000, retries = 3 }) {
+export async function createWixContact({ apiKey, siteId, lead, previousContactId, previousName, timeoutMs = 8000, retries = 3, writeRetries = retries }) {
   if (!apiKey || !siteId) return { ok: false, skipped: true, reason: "wix_credentials_not_configured" };
   if (lead.callback_number || lead.email) {
     const existing = await findWixContact({ apiKey, siteId, phone: lead.callback_number || "", email: lead.email || "", timeoutMs, retries });
@@ -66,7 +66,7 @@ export async function createWixContact({ apiKey, siteId, lead, previousContactId
         const data = await wixFetch(`https://www.wixapis.com/contacts/v5/contacts/${encodeURIComponent(existing.id)}`, {
           method: "PATCH", headers: wixHeaders(apiKey, siteId),
           body: JSON.stringify({ contact: { id: existing.id, revision: existing.revision, name }, allowDuplicates: false }),
-        }, { timeoutMs, retries });
+        }, { timeoutMs, retries: writeRetries });
         if (data?.contact?.id !== existing.id) throw new Error("Wix name update did not return the expected contact");
         return { ok: true, reused: true, updated: true, contactId: existing.id, contact: data.contact };
       }
@@ -79,10 +79,10 @@ export async function createWixContact({ apiKey, siteId, lead, previousContactId
   if (lead.callback_number) contact.phone = { phone: lead.callback_number };
   if (lead.email) contact.email = { email: lead.email };
   if (!contact.name && !contact.phone && !contact.email) return { ok: false, skipped: true, reason: "insufficient_contact_identity" };
-  const data = await wixFetch("https://www.wixapis.com/contacts/v5/contacts", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ contact }) }, { timeoutMs, retries });
+  const data = await wixFetch("https://www.wixapis.com/contacts/v5/contacts", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ contact }) }, { timeoutMs, retries: writeRetries });
   return { ok: true, reused: false, contactId: data?.contact?.id || null, contact: data?.contact || null };
 }
-export async function createWixInquiryNotes({ apiKey, siteId, contactId, text, timeoutMs = 8000, retries = 3 }) {
+export async function createWixInquiryNotes({ apiKey, siteId, contactId, text, timeoutMs = 8000, retries = 3, writeRetries = retries }) {
   if (!apiKey || !siteId || !contactId || !text) return { ok: false, reason: "missing_note_prerequisite" };
   const noteIds = [];
   // Wix notes allow 2048 characters; preserve every answer across linked notes.
@@ -90,19 +90,19 @@ export async function createWixInquiryNotes({ apiKey, siteId, contactId, text, t
     const data = await wixFetch("https://www.wixapis.com/crm/notes/v2/notes", {
       method: "POST", headers: wixHeaders(apiKey, siteId),
       body: JSON.stringify({ note: { contactId, text: text.slice(offset, offset + 2000), type: "NOT_SET" } }),
-    }, { timeoutMs, retries });
+    }, { timeoutMs, retries: writeRetries });
     if (!data?.note?.id) throw new Error("inquiry_note_create_failed");
     noteIds.push(data.note.id);
   }
   return { ok: true, noteIds };
 }
 
-export async function createWixFollowupTask({ apiKey, siteId, contactId, lead, dueInMinutes = 15, timeoutMs = 8000, retries = 3 }) {
+export async function createWixFollowupTask({ apiKey, siteId, contactId, lead, dueInMinutes = 15, timeoutMs = 8000, retries = 3, writeRetries = retries }) {
   if (!apiKey || !siteId || !contactId) return { ok: false, skipped: true, reason: "missing_task_prerequisite" };
   const due = new Date(Date.now() + dueInMinutes * 60000).toISOString();
   const service = lead.service_type || "service request";
   const details = [lead.name ? `Caller: ${lead.name}` : "", lead.callback_number ? `Callback: ${lead.callback_number}` : "", lead.service_type ? `Service: ${lead.service_type}` : "", lead.urgency ? `Urgency: ${lead.urgency}` : "", lead.preferred_window ? `Preferred window: ${lead.preferred_window}` : "", lead.service_address ? `Address: ${lead.service_address}` : "", lead.city ? `City: ${lead.city}` : "", lead.notes ? `Notes: ${lead.notes}` : "", lead.call_id ? `Call ID: ${lead.call_id}` : ""].filter(Boolean).join("\n");
-  const data = await wixFetch("https://www.wixapis.com/crm/tasks/v2/tasks", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ task: { title: `AI phone lead — ${service}`.slice(0, 200), description: details, dueDate: due, status: "ACTION_NEEDED", contact: { id: contactId } } }) }, { timeoutMs, retries });
+  const data = await wixFetch("https://www.wixapis.com/crm/tasks/v2/tasks", { method: "POST", headers: wixHeaders(apiKey, siteId), body: JSON.stringify({ task: { title: `AI phone lead — ${service}`.slice(0, 200), description: details, dueDate: due, status: "ACTION_NEEDED", contact: { id: contactId } } }) }, { timeoutMs, retries: writeRetries });
   return { ok: true, taskId: data?.task?.id || null, task: data?.task || null };
 }
 export async function syncWixVoiceLead(opts) {
