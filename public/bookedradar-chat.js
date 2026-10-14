@@ -15,7 +15,7 @@
     *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     button{font:inherit}.br-launch{position:fixed;right:20px;bottom:20px;border:0;border-radius:999px;padding:13px 17px;background:#111;color:#fff;font-weight:700;box-shadow:0 10px 35px rgba(0,0,0,.25);cursor:pointer;z-index:2147483000}
     .br-panel{position:fixed;right:20px;bottom:76px;width:min(360px,calc(100vw - 28px));height:min(520px,calc(100vh - 110px));background:#fff;color:#111;border:1px solid #ddd;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;z-index:2147483000}
-    .br-panel.open{display:flex}.br-head{padding:14px 16px;background:#111;color:#fff;font-weight:800}.br-sub{font-size:12px;font-weight:500;opacity:.75;margin-top:3px}
+    .br-panel.open{display:flex}.br-head{padding:14px 16px;background:#111;color:#fff;font-weight:800}.br-close{float:right;margin-left:8px;border:1px solid #aaa;border-radius:6px;background:transparent;color:inherit;padding:4px 8px;cursor:pointer}.br-sub{font-size:12px;font-weight:500;opacity:.75;margin-top:3px}
     .br-log{flex:1;overflow:auto;padding:14px;background:#f7f7f7}.br-msg{max-width:86%;padding:10px 12px;border-radius:14px;margin:8px 0;white-space:pre-wrap;line-height:1.35;font-size:14px}.assistant{background:#fff;border:1px solid #e4e4e4}.visitor{background:#111;color:#fff;margin-left:auto}
     .br-form{display:flex;gap:8px;padding:10px;border-top:1px solid #e4e4e4}.br-input{flex:1;border:1px solid #ccc;border-radius:12px;padding:10px;font:inherit;min-width:0}.br-send{border:0;border-radius:12px;background:#111;color:#fff;padding:0 14px;font-weight:700;cursor:pointer}
     .br-note{font-size:10px;color:#777;padding:0 12px 9px;background:#fff}
@@ -26,13 +26,20 @@
   launch.className = "br-launch";
   launch.type = "button";
   launch.textContent = "Chat with us";
+  launch.setAttribute("aria-expanded", "false");
+  launch.setAttribute("aria-controls", "br-chat-panel");
+  const launchLabel = launch.textContent;
   root.appendChild(launch);
 
   const panel = document.createElement("div");
   panel.className = "br-panel";
-  panel.innerHTML = '<div class="br-head">How can we help?<div class="br-sub">Powered by BookedRadar</div></div><div class="br-log"></div><form class="br-form"><input class="br-input" autocomplete="off" maxlength="1600" placeholder="Type a message…"><button class="br-send" type="submit">Send</button></form><div class="br-note">Do not send passwords, Social Security numbers, or full payment-card numbers.</div>';
+  panel.id = "br-chat-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-labelledby", "br-chat-title");
+  panel.innerHTML = '<div class="br-head"><button class="br-close" type="button" aria-label="Close chat">Close</button><span id="br-chat-title">How can we help?</span><div class="br-sub">Powered by BookedRadar</div></div><div class="br-log" role="log" aria-label="Chat conversation" aria-live="polite" aria-relevant="additions" tabindex="0"></div><form class="br-form"><input class="br-input" aria-label="Message" autocomplete="off" maxlength="1600" placeholder="Type a message…"><button class="br-send" type="submit">Send</button></form><div class="br-note">Do not send passwords, Social Security numbers, or full payment-card numbers.</div>';
   root.appendChild(panel);
 
+  const close = panel.querySelector(".br-close");
   const log = panel.querySelector(".br-log");
   const form = panel.querySelector(".br-form");
   const input = panel.querySelector(".br-input");
@@ -43,16 +50,36 @@
   function add(role, text) {
     const div = document.createElement("div");
     div.className = `br-msg ${role}`;
-    div.textContent = String(text || "");
+    div.textContent = `${role === "visitor" ? "You" : "Assistant"}: ${String(text || "")}`;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
   }
 
   launch.addEventListener("click", () => {
-    panel.classList.toggle("open");
+    const open = panel.classList.toggle("open");
+    launch.setAttribute("aria-expanded", String(open));
+    launch.textContent = open ? "Close chat" : launchLabel;
     if (panel.classList.contains("open")) {
       if (!log.childNodes.length) add("assistant", "Hi! Tell me what you need help with.");
       input.focus();
+    } else {
+      launch.focus();
+    }
+  });
+
+  function dismiss() {
+    if (!panel.classList.contains("open")) return;
+    panel.classList.remove("open");
+    launch.setAttribute("aria-expanded", "false");
+    launch.textContent = launchLabel;
+    launch.focus();
+  }
+  close.addEventListener("click", dismiss);
+  root.addEventListener("keydown", event => {
+    if (event.key === "Escape" && panel.classList.contains("open")) {
+      event.preventDefault();
+      event.stopPropagation();
+      dismiss();
     }
   });
 
@@ -62,6 +89,7 @@
     if (!message || send.disabled) return;
     add("visitor", message);
     input.value = "";
+    input.focus();
     send.disabled = true;
     try {
       const response = await fetch(`${api}/api/v1/public/chat?tenant=${encodeURIComponent(tenant)}`, {
@@ -78,7 +106,7 @@
       add("assistant", "I’m sorry, chat is temporarily unavailable. Please call the business directly.");
     } finally {
       send.disabled = false;
-      input.focus();
+      // Do not steal focus if the visitor closed chat or moved elsewhere.
     }
   });
 })();
