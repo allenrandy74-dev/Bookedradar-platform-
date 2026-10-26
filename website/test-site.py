@@ -22,7 +22,12 @@ class WebsiteTests(unittest.TestCase):
  def test_all_pilot_ctas_are_direct(self):
   import re
   ctas=re.findall(r'<a\b[^>]*href="([^"]+)"[^>]*>(?:Start online|Request a pilot online)',self.home)
-  self.assertEqual(len(ctas),5);self.assertEqual(set(ctas),{'https://bookedradar-platform.onrender.com/dashboard/signup.html'})
+  self.assertEqual(len(ctas),5);self.assertEqual(set(ctas),{'start.html?source=homepage&variant=pilot_cta'})
+ def test_branded_pilot_entry(self):
+  start=(ROOT/'start.html').read_text();script=(ROOT/'start.js').read_text()
+  self.assertIn('three required fields',start.lower());self.assertNotIn('href="https://bookedradar-platform.onrender.com',start)
+  self.assertIn('https://bookedradar-platform.onrender.com/api/v1/public/proof-pilot',script)
+  self.assertIn('proof_pilot_start',script)
  def test_local_links_and_fragments(self):
   for f in ROOT.glob('*.html'):
    for href in Document(f.read_text()).links:
