@@ -27,7 +27,7 @@
     "test:maintenance": "node --test test/maintenance-startup.test.mjs"
   },
   "dependencies": {
-    "dotenv": "17.4.2",
+    "dotenv": "18.0.5",
     "express": "5.2.1",
     "openai": "7.17.0",
     "stripe": "22.6.2",
