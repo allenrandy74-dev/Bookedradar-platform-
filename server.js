@@ -35,6 +35,7 @@ import { normalizeProofPilotInquiry, proofPilotLead, proofPilotInquiryKey, proof
 import { proofPilotStatus, proofPilotScorecard } from "./src/proof-pilot-control.js";
 import { enforceProofPilotAdmission, readProofPilotSnapshot, preparePilotCall } from "./src/proof-pilot-admission.js";
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
+import { applyBookedRadarPublicCors } from "./src/public-site-cors.js";
 import { RecoveryStore } from "./src/recovery/store.js";
 import { RecoveryEngine } from "./src/recovery/engine.js";
 import { mountReconciliationRoutes } from "./src/recovery/reconciliation-http.js";
@@ -2021,6 +2022,14 @@ routes.post("/api/v1/public/growth-event", createRateLimiter({ windowMs: 60_000,
 
 routes.get("/api/v1/growth-metrics", requireAdmin, async (_req, res) => {
   return res.json({ ok: true, ...(await growthMetrics.summary()) });
+});
+
+app.use("/api/v1/public/proof-pilot", (req, res, next) => {
+  if (!applyBookedRadarPublicCors(req, res)) {
+    return res.status(403).json({ ok: false, error: "origin_not_allowed" });
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  return next();
 });
 
 routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
