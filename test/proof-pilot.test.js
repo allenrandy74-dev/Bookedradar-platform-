@@ -34,6 +34,14 @@ test("three-field signup defaults to email-only with trade deferred", () => {
   assert.equal(result.inquiry.email, "jane@example.com");
 });
 
+test("pilot source and variant are bounded, normalized and preserved", () => {
+  const result = normalizeProofPilotInquiry({ name: "Jane", business: "Jane HVAC", email: "jane@example.com", source: "Email Batch A!", variant: "Short CTA!" });
+  assert.equal(result.ok, true);
+  assert.equal(result.inquiry.source, "emailbatcha");
+  assert.equal(result.inquiry.variant, "shortcta");
+  assert.match(proofPilotLead(result.inquiry).notes, /Source: emailbatcha/);
+});
+
 test("email-only preference suppresses a callback even if a phone was provided", () => {
   const result = normalizeProofPilotInquiry({ name: "Jane", business: "Jane HVAC", email: "jane@example.com", phone: "+14095550100", contactPreference: "email" });
   const lead = proofPilotLead(result.inquiry);
