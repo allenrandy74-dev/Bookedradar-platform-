@@ -28,6 +28,8 @@ export function normalizeProofPilotInquiry(input = {}) {
   const auditReport = clean(input.auditReport, 5000);
   const honeypot = clean(input.company_url, 200);
   const contactPreference = clean(input.contactPreference, 20) || (email ? "email" : "phone");
+  const source = clean(input.source, 80).toLowerCase().replace(/[^a-z0-9_-]/g, "") || "site";
+  const variant = clean(input.variant, 40).toLowerCase().replace(/[^a-z0-9_-]/g, "") || "short_form";
   if (honeypot) return { ok: false, error: "invalid_submission" };
   if (!["pilot", "audit", "setup"].includes(inquiryType)) return { ok: false, error: "invalid_inquiry_type" };
   if (inquiryType === "audit" && !auditReport) return { ok: false, error: "audit_report_required" };
@@ -38,7 +40,7 @@ export function normalizeProofPilotInquiry(input = {}) {
   if (contactPreference === "phone" && !phone) return { ok: false, error: "phone_required_for_phone_followup" };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "invalid_email" };
   if (phone && !/^[+()\d\s.-]{7,40}$/.test(phone)) return { ok: false, error: "invalid_phone" };
-  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website, serviceArea, businessHours, services, inquiryType, auditReport, ...(setupAnswers ? { setupAnswers } : {}) } };
+  return { ok: true, inquiry: { name, business, trade, email, phone, contactPreference, currentWorkflow, goal, website, serviceArea, businessHours, services, inquiryType, auditReport, source, variant, ...(setupAnswers ? { setupAnswers } : {}) } };
 }
 
 export function proofPilotLead(inquiry) {
@@ -64,7 +66,7 @@ export function proofPilotLead(inquiry) {
       inquiry.goal ? `What they want to improve: ${inquiry.goal}` : "",
       inquiry.inquiryType === "setup" ? quickStartReport(inquiry.setupAnswers) : "",
       inquiry.inquiryType === "audit" ? `Self-reported audit results — illustrative scenario, not a revenue guarantee:\n${inquiry.auditReport}` : "",
-      inquiry.inquiryType === "setup" ? "Source: bookedradar.com/setup" : inquiry.inquiryType === "audit" ? "Source: bookedradar.com/audit.html" : "Source: bookedradar.com/try",
+      inquiry.inquiryType === "setup" ? "Source: bookedradar.com/setup" : inquiry.inquiryType === "audit" ? "Source: bookedradar.com/audit.html" : `Source: ${inquiry.source || "site"}`,
     ].filter(Boolean).join("\n"),
   };
 }

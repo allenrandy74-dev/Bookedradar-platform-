@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Start online | BookedRadar</title>
+  <meta name="description" content="Request a BookedRadar Proof Pilot online. Three required fields. Choose email-only follow-up or ask for a call.">
+  <link rel="canonical" href="https://www.bookedradar.com/start.html">
+  <meta name="theme-color" content="#0a1628">
+  <style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#12213f;background:#f5f7fb}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0}main{max-width:760px;margin:auto;padding:28px 20px 60px}.brand{font-weight:850;letter-spacing:.04em;color:inherit;text-decoration:none}.eyebrow{font-size:12px;letter-spacing:.1em;color:#365a94;font-weight:750;margin-top:40px}h1{font-size:clamp(32px,6vw,48px);line-height:1.08;letter-spacing:-.035em;margin:12px 0 16px}.intro{font-size:18px;line-height:1.55;color:#52617a;max-width:600px}.card{background:white;border:1px solid #dce3ee;border-radius:20px;padding:28px;margin-top:24px;box-shadow:0 10px 30px #12213f08}form{display:grid;gap:18px}label{display:grid;gap:7px;font-size:15px;font-weight:650}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;border:1px solid #aebdd2;border-radius:9px;padding:12px;color:#12213f;background:white}input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:3px solid #9ac8ff;outline-offset:3px}.hint{font-size:13px;font-weight:400;color:#52617a;line-height:1.5}details{border-top:1px solid #e2e8f0;padding-top:18px}summary{cursor:pointer;font-size:14px;font-weight:650}.optional{display:grid;gap:16px;margin-top:16px}textarea{min-height:90px;resize:vertical}button{border:0;border-radius:10px;padding:15px 20px;background:#12213f;color:white;font-weight:750;cursor:pointer}button:disabled{opacity:.65;cursor:wait}.fine{font-size:13px;color:#52617a;line-height:1.55;margin:0}.fine a,.help a{color:#245c9f}.help{font-size:14px;line-height:1.6;margin:20px 0 0}.next{margin:28px 0}.next h2{font-size:22px}.next ol{padding-left:22px;display:grid;gap:12px;line-height:1.55;color:#52617a}.status{font-size:14px;line-height:1.6;color:#b33428}.success{border:1px solid #b9dccb;background:#eff9f4;border-radius:16px;padding:24px;line-height:1.6}.success h2{margin:0 0 12px;font-size:26px}.hp{position:absolute;left:-9999px}footer{border-top:1px solid #dce3ee;padding-top:18px;font-size:12px;color:#52617a;line-height:1.5}@media(max-width:430px){main{padding:22px 16px 40px}.card{padding:22px 18px}.eyebrow{margin-top:30px}}
+  </style>
+</head>
+<body>
+<main>
+  <a class="brand" href="/">◉ BOOKEDRADAR</a>
+  <p class="eyebrow">START ONLINE</p>
+  <h1>See if BookedRadar fits your business.</h1>
+  <p class="intro">Request a Proof Pilot with three required fields. This does not activate service. Email-only follow-up is the default; a sales call is your choice.</p>
+  <section class="card" id="pilot" aria-label="Pilot request">
+    <noscript><p>Please enable JavaScript for the form, or email randy@bookedradar.com to request a pilot.</p></noscript>
+    <form id="pilot-request" hidden>
+      <label>Your name<input name="name" autocomplete="name" maxlength="120" required></label>
+      <label>Business name<input name="business" autocomplete="organization" maxlength="160" required></label>
+      <label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
+      <label>How should we follow up?
+        <select name="contactPreference" id="contact-preference">
+          <option value="email">Email only — no sales call</option>
+          <option value="phone">I’d prefer a phone call</option>
+        </select>
+      </label>
+      <label id="phone-field" hidden>Phone number<input name="phone" id="phone" type="tel" autocomplete="tel" maxlength="40" disabled><span class="hint">Only needed when you ask us to call.</span></label>
+      <details><summary>Add business details (optional)</summary><div class="optional">
+        <label>Your trade<select name="trade"><option value="">Choose later</option><option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>Roofing</option><option>Multi-Trade Home Services</option><option>Other</option></select></label>
+        <label>Service area<input name="serviceArea" maxlength="500" placeholder="Cities, counties or ZIP codes you serve"></label>
+        <label>Business hours<input name="businessHours" maxlength="500" placeholder="For example: weekdays 8–5, emergency service after hours"></label>
+        <label>Main services<textarea name="services" maxlength="1200" placeholder="The jobs your team handles"></textarea></label>
+        <label>How do you handle missed or after-hours calls now?<textarea name="currentWorkflow" maxlength="1200" placeholder="For example: voicemail, an answering service or the owner's phone."></textarea></label>
+        <label>Business website<input name="website" maxlength="300" placeholder="Your public business website (optional)"></label>
+        <label>What would you like help with?<textarea name="goal" maxlength="1200" placeholder="For example: calls while everyone is on a job."></textarea></label>
+        <p class="hint">You can leave these blank and share them later. Please do not include passwords, payment details or customer information.</p>
+      </div></details>
+      <input class="hp" name="company_url" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button id="submit-request" type="submit">Request my pilot</button>
+      <p class="fine">No payment card required to request a pilot. No automatic subscription. We agree availability, scope and any evaluation/provider costs before activation.</p>
+      <p class="fine">By submitting, you ask BookedRadar to evaluate and follow up on your request using your chosen contact method. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </form>
+    <section class="success" id="success" tabindex="-1" hidden>
+      <h2>Request received.</h2>
+      <p id="confirmation"></p>
+      <p>Your request does not activate service. We review your needs, agree the coverage and commercial terms, then test the call flow with you. Activation requires your approval.</p>
+      <p>The Proof Pilot is capped at 14 days or 25 real calls, whichever comes first. Paid continuation requires separate approval.</p>
+    </section>
+    <p class="help">Prefer to email directly? Write to <a href="mailto:randy@bookedradar.com?subject=BookedRadar%20pilot%20request">randy@bookedradar.com</a>.</p>
+  </section>
+  <section class="next"><h2>What happens next</h2><ol><li>We review your request and use the follow-up method you chose.</li><li>We agree one clear workflow, human handoff and commercial terms.</li><li>We test the experience together. Real customer calls are forwarded only after testing and your approval.</li></ol></section>
+  <footer>BookedRadar LLC · Proof Pilot for qualified businesses: 14 days or 25 real calls, whichever comes first. No automatic paid conversion or scope expansion.</footer>
+</main>
+<script src="start.js"></script>
+</body>
+</html>

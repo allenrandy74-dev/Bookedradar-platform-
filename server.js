@@ -2080,7 +2080,7 @@ routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, 
     await state.markInquiryOnce(completedKey);
     // CRM capture is already complete. A metrics failure must not release the
     // submission key or tell the visitor to retry a successfully captured lead.
-    await growthMetrics.record({ event: parsed.inquiry.inquiryType === "setup" ? "setup_answers_submit" : parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: "site", variant: parsed.inquiry.inquiryType === "setup" ? "detailed_setup" : parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : "short_form" }).catch(error => {
+    await growthMetrics.record({ event: parsed.inquiry.inquiryType === "setup" ? "setup_answers_submit" : parsed.inquiry.inquiryType === "audit" ? "audit_review_submit" : "proof_pilot_submit", trade: String(parsed.inquiry.trade || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_"), source: parsed.inquiry.inquiryType === "pilot" ? (parsed.inquiry.source || "site") : "site", variant: parsed.inquiry.inquiryType === "setup" ? "detailed_setup" : parsed.inquiry.inquiryType === "audit" ? "seven_question_audit" : (parsed.inquiry.variant || "short_form") }).catch(error => {
       console.error(JSON.stringify({ event: "growth.proof_pilot_metric_failed", reason: String(error?.message || "failed").slice(0, 120) }));
     });
     console.log(JSON.stringify({
