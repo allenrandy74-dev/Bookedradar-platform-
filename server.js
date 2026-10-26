@@ -2024,12 +2024,15 @@ routes.get("/api/v1/growth-metrics", requireAdmin, async (_req, res) => {
   return res.json({ ok: true, ...(await growthMetrics.summary()) });
 });
 
-app.options("/api/v1/public/proof-pilot", (req, res) => {
-  return applyBookedRadarPublicCors(req, res) ? res.sendStatus(204) : res.sendStatus(403);
+app.use("/api/v1/public/proof-pilot", (req, res, next) => {
+  if (!applyBookedRadarPublicCors(req, res)) {
+    return res.status(403).json({ ok: false, error: "origin_not_allowed" });
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  return next();
 });
 
 routes.post("/api/v1/public/proof-pilot", createRateLimiter({ windowMs: 60_000, max: 8 }), async (req, res) => {
-  if (!applyBookedRadarPublicCors(req, res)) return res.status(403).json({ ok: false, error: "origin_not_allowed" });
   const parsed = normalizeProofPilotInquiry(req.body || {});
   if (!parsed.ok) return res.status(400).json({ ok: false, error: parsed.error });
   const crmTenant = registry.get("demo-hvac");
