@@ -27,6 +27,7 @@ test("schema inspection reads metadata only inside repeatable-read transaction",
           {table_name:"call_turns",constraint_name:"call_turns_pkey",constraint_type:"PRIMARY KEY",column_name:"sequence",ordinal_position:2},
         ]};
       }
+      if(text.includes("FROM pg_catalog.pg_attrdef ad")) return {rows:[]};
       if(text.includes("pg_catalog.pg_index") || text.includes("pg_catalog.pg_constraint")) return {rows:[]};
       throw new Error("unexpected_query");
     },
@@ -109,4 +110,40 @@ test("schema inspection rolls back on metadata query failure", async () => {
   );
   assert.equal(queries.at(-1),"ROLLBACK");
   assert.equal(released,true);
+});
+
+test("catalog normalization verifies builtin defaults and preserves fence metadata without raw defaults", async () => {
+  const inspect = async ({expression="now()",precision=6,functions=[],metadata=true,validated=true,referencedSchema="bookedradar"}={}) => {
+    const client={release(){},async query(sql){
+      const text=String(sql);
+      if(text.startsWith("BEGIN") || text==="COMMIT") return {rows:[]};
+      if(text.includes("information_schema.columns")) return {rows:[
+        {table_name:"ops_notifications",column_name:"created_at",data_type:"timestamp with time zone",is_nullable:"NO",column_default:expression,datetime_precision:precision,ordinal_position:1},
+        {table_name:"ops_incidents",column_name:"last_notified_at",data_type:"timestamp with time zone",is_nullable:"YES",column_default:null,datetime_precision:precision,ordinal_position:1},
+      ]};
+      if(text.includes("FROM pg_catalog.pg_attrdef ad")) return {rows:metadata?[{table_name:"ops_notifications",column_name:"created_at",builtin_now_oid:"1299",builtin_transaction_timestamp_oid:"2647",function_oids:functions}]:[]};
+      if(text.includes("c.contype='f'")) return {rows:[{table_name:"ops_notifications",validated,columns:["incident_key"],referenced_schema:referencedSchema,referenced_table:"ops_incidents",referenced_columns:["incident_key"]}]};
+      if(text.includes("information_schema.table_constraints") || text.includes("pg_catalog.pg_index") || text.includes("c.contype='c'")) return {rows:[]};
+      throw new Error("unexpected_query");
+    }};
+    return inspectPostgresSchema({connect:async()=>client});
+  };
+  for(const options of [{},{expression:"pg_catalog.now()",functions:["1299"]},{expression:"transaction_timestamp()",functions:["2647"]},{expression:"CURRENT_TIMESTAMP"}]) {
+    const result=await inspect(options);
+    assert.equal(result.tables.ops_notifications.columns[0].defaultKind,"transaction_time");
+    assert.equal(result.tables.ops_notifications.columns[0].datetimePrecision,6);
+    assert.equal(result.tables.ops_incidents.columns[0].datetimePrecision,6);
+    assert.equal(JSON.stringify(result).includes('column_default'),false);
+  }
+  for(const options of [{functions:["99999"]},{metadata:false},{functions:null},{expression:"clock_timestamp()"},{expression:"CURRENT_TIMESTAMP(3)"},{expression:"NULL::timestamptz"}]) {
+    assert.equal((await inspect(options)).tables.ops_notifications.columns[0].defaultKind,"unverified");
+  }
+  for(const precision of [3,null]) {
+    const result=await inspect({precision});
+    assert.equal(result.tables.ops_notifications.columns[0].datetimePrecision,precision);
+    assert.equal(result.tables.ops_incidents.columns[0].datetimePrecision,precision);
+  }
+  const bad=await inspect({validated:false,referencedSchema:"public"});
+  assert.equal(bad.tables.ops_notifications.foreignKeys[0].validated,false);
+  assert.equal(bad.tables.ops_notifications.foreignKeys[0].referencedSchema,"public");
 });

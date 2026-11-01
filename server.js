@@ -433,7 +433,7 @@ async function performOpsAlertCheck() {
       if (!observed.shouldNotify) continue;
 
       if (!OPS_ALERT_EMAIL || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        await opsIncidentStore.releaseNotification(candidate.incidentKey, observed.notification.notification_id);
         console.error(JSON.stringify({
           event:"ops.alert_delivery_unconfigured",
           scope_key:scopeKey,
@@ -444,30 +444,35 @@ async function performOpsAlertCheck() {
       }
 
       try {
-        const delivered = await sendOpsAlertEmail({
+        const accepted = await sendOpsAlertEmail({
           apiKey:process.env.RESEND_API_KEY,
           from:process.env.RESEND_FROM_EMAIL,
           to:OPS_ALERT_EMAIL,
           candidate,
           incidentId:candidate.incidentKey,
+          notificationId:observed.notification.notification_id,
         });
+        await opsIncidentStore.acceptNotification(candidate.incidentKey, observed.notification.notification_id, accepted.id);
         console.log(JSON.stringify({
-          event:"ops.alert_delivered",
+          event:"ops.alert_accepted",
           scope_key:scopeKey,
           severity:candidate.severity,
           incident_key:candidate.incidentKey,
           provider:"resend",
-          provider_id:delivered.id || null,
+          provider_id:accepted.id,
         }));
       } catch (error) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
-        console.error(JSON.stringify({
-          event:"ops.alert_delivery_failed",
-          scope_key:scopeKey,
-          severity:candidate.severity,
-          incident_key:candidate.incidentKey,
-          error:String(error?.message || "ops_alert_delivery_failed").slice(0,160),
-        }));
+        try {
+          console.error(JSON.stringify({
+            event:"ops.alert_acceptance_uncertain",
+            scope_key:scopeKey,
+            severity:candidate.severity,
+            incident_key:candidate.incidentKey,
+            error:String(error?.message || "ops_alert_delivery_failed").slice(0,160),
+          }));
+        } finally {
+          await opsIncidentStore.holdNotification(candidate.incidentKey, observed.notification.notification_id);
+        }
       }
     }
   } finally {
