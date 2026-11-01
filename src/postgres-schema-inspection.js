@@ -20,17 +20,49 @@ const EXPECTED_TABLES = [
   "growth_metrics",
   "migration_runs",
   "ops_incidents",
+  "ops_notifications",
 ];
+
+// Keep catalog defaults private; only recognized transaction-time semantics leave inspection.
+function classifyTransactionTimeDefault(expression, dependencies) {
+  const normalized = typeof expression === "string" ? expression.trim().toLowerCase().replace(/\s+/g, "") : "";
+  if (!dependencies || !Array.isArray(dependencies.function_oids)
+      || !/^[1-9][0-9]*$/.test(dependencies.builtin_now_oid || "")
+      || !/^[1-9][0-9]*$/.test(dependencies.builtin_transaction_timestamp_oid || "")) return "unverified";
+  const expected = ["now()", "pg_catalog.now()"].includes(normalized) ? dependencies.builtin_now_oid
+    : ["transaction_timestamp()", "pg_catalog.transaction_timestamp()"].includes(normalized) ? dependencies.builtin_transaction_timestamp_oid
+    : normalized === "current_timestamp" ? null : undefined;
+  if (expected === undefined) return "unverified";
+  // pg_depend omits references to pinned builtins. An explicitly returned empty
+  // array is valid; absent metadata is not. Shadowing user functions have their
+  // own dependency OIDs and must never pass merely because their name matches.
+  return dependencies.function_oids.every(oid => expected !== null && oid === expected)
+    ? "transaction_time" : "unverified";
+}
 
 export async function inspectPostgresSchema(pool) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const columns = await client.query(
-      `SELECT table_name,column_name,data_type,is_nullable,column_default,ordinal_position
+      `SELECT table_name,column_name,data_type,is_nullable,column_default,datetime_precision,ordinal_position
        FROM information_schema.columns
        WHERE table_schema='bookedradar'
        ORDER BY table_name,ordinal_position`
+    );
+    const defaultFunctions = await client.query(
+      `SELECT t.relname AS table_name, a.attname AS column_name,
+              'pg_catalog.now()'::pg_catalog.regprocedure::pg_catalog.oid::text AS builtin_now_oid,
+              'pg_catalog.transaction_timestamp()'::pg_catalog.regprocedure::pg_catalog.oid::text AS builtin_transaction_timestamp_oid,
+              ARRAY(SELECT d.refobjid::text FROM pg_catalog.pg_depend d
+                    WHERE d.classid='pg_catalog.pg_attrdef'::pg_catalog.regclass AND d.objid=ad.oid
+                      AND d.refclassid='pg_catalog.pg_proc'::pg_catalog.regclass
+                    ORDER BY d.refobjid) AS function_oids
+       FROM pg_catalog.pg_attrdef ad
+       JOIN pg_catalog.pg_class t ON t.oid=ad.adrelid
+       JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
+       JOIN pg_catalog.pg_attribute a ON a.attrelid=ad.adrelid AND a.attnum=ad.adnum
+       WHERE n.nspname='bookedradar' AND t.relname='ops_notifications' AND a.attname='created_at'`
     );
     const constraints = await client.query(
       `SELECT tc.table_name,tc.constraint_name,tc.constraint_type,
@@ -64,6 +96,22 @@ export async function inspectPostgresSchema(pool) {
        JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
        WHERE n.nspname='bookedradar' AND c.contype='c'`
     );
+    const foreignKeys = await client.query(
+      `SELECT t.relname AS table_name, c.convalidated AS validated,
+              rn.nspname AS referenced_schema, rt.relname AS referenced_table,
+              ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum, position)
+                    JOIN pg_catalog.pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum
+                    ORDER BY k.position) AS columns,
+              ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY k(attnum, position)
+                    JOIN pg_catalog.pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum
+                    ORDER BY k.position) AS referenced_columns
+       FROM pg_catalog.pg_constraint c
+       JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+       JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
+       JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+       JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.relnamespace
+       WHERE n.nspname='bookedradar' AND c.contype='f'`
+    );
     await client.query("COMMIT");
 
     const byTable = {};
@@ -74,6 +122,9 @@ export async function inspectPostgresSchema(pool) {
         type: row.data_type,
         nullable: row.is_nullable === "YES",
         hasDefault: row.column_default != null,
+        datetimePrecision: Number.isInteger(row.datetime_precision) ? row.datetime_precision : null,
+        ...(row.table_name === "ops_notifications" && row.column_name === "created_at"
+          ? { defaultKind: classifyTransactionTimeDefault(row.column_default, defaultFunctions.rows?.find(d => d.table_name === row.table_name && d.column_name === row.column_name)) } : {}),
         position: Number(row.ordinal_position),
       });
     }
@@ -97,6 +148,15 @@ export async function inspectPostgresSchema(pool) {
     }
     for (const row of checks.rows || []) {
       if (byTable[row.table_name]) (byTable[row.table_name].checks ??= []).push(row);
+    }
+    for (const row of foreignKeys.rows || []) {
+      if (byTable[row.table_name]) (byTable[row.table_name].foreignKeys ??= []).push({
+        columns: row.columns,
+        referencedSchema: row.referenced_schema,
+        referencedTable: row.referenced_table,
+        referencedColumns: row.referenced_columns,
+        validated: row.validated === true,
+      });
     }
     for (const table of Object.values(byTable)) {
       for (const constraint of table.constraints) delete constraint.key;
@@ -187,7 +247,34 @@ export function validatePostgresReleaseSchema(inspection) {
   const eventIndexes = tables.recovery_events?.indexes || [];
   if (!eventIndexes.some(i => usable(i) && exactKeys(i, ['tenant_id', 'idempotency_key']))) issues.push('recovery_events_tenant_unique_key_required');
   if (eventIndexes.some(i => i.unique && exactKeys(i, ['idempotency_key']))) issues.push('recovery_events_legacy_global_unique_key');
-  return { ok: issues.length === 0, issues, requirement: 'db/postgres-schema.sql', version: 'durable-provider-attempts-v1' };
+  column('ops_notifications', 'notification_id', 'text', true);
+  column('ops_notifications', 'incident_key', 'text', true);
+  column('ops_notifications', 'state', 'text', true);
+  column('ops_notifications', 'created_at', 'timestamp with time zone', true);
+  column('ops_incidents', 'last_notified_at', 'timestamp with time zone');
+  for (const [table, name] of [['ops_notifications', 'created_at'], ['ops_incidents', 'last_notified_at']]) {
+    if (tables[table]?.columns?.find(c => c.name === name)?.datetimePrecision !== 6) {
+      issues.push(`ops_notification_fence_full_precision_required:${table}.${name}`);
+    }
+  }
+  column('ops_notifications', 'provider_receipt', 'text');
+  column('ops_notifications', 'payload', 'jsonb', true);
+  const notificationIndexes = tables.ops_notifications?.indexes || [];
+  if (!notificationIndexes.some(i => usable(i) && exactKeys(i, ['notification_id']))) issues.push('ops_notifications_unique_key_required');
+  if (notificationIndexes.some(i => i.unique && !i.immediate && exactKeys(i, ['notification_id']))) issues.push('ops_notifications_deferrable_key_unsupported');
+  if (tables.ops_notifications?.columns?.find(c => c.name === 'created_at')?.defaultKind !== 'transaction_time') issues.push('ops_notifications_transaction_time_default_required');
+  const notificationForeignKeys = tables.ops_notifications?.foreignKeys || [];
+  if (!notificationForeignKeys.some(fk => fk.validated === true
+      && fk.columns?.length === 1 && fk.columns[0] === 'incident_key'
+      && fk.referencedSchema === 'bookedradar' && fk.referencedTable === 'ops_incidents'
+      && fk.referencedColumns?.length === 1 && fk.referencedColumns[0] === 'incident_key')) {
+    issues.push('ops_notifications_validated_incident_fk_required');
+  }
+  const notificationChecks = tables.ops_notifications?.checks || [];
+  if (!notificationChecks.some(c => c.validated && String(c.expression).replace(/[\s()]/g, '') === "state=ANYARRAY['pending'::text,'accepted'::text,'uncertain'::text,'not_sent'::text]")) {
+    issues.push('ops_notifications_state_check_required');
+  }
+  return { ok: issues.length === 0, issues, requirement: 'db/postgres-schema.sql', version: 'durable-provider-attempts-ops-notifications-v2' };
 }
 
 export async function verifyPostgresReleaseSchema(pool) {
