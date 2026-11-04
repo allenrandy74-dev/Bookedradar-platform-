@@ -122,10 +122,16 @@ export class PostgresOpsIncidentStore {
 }
 
 export async function sendOpsAlertEmail({
-  apiKey,from,to,candidate,incidentId,fetchImpl=fetch,timeoutMs=8000,
+  apiKey,from,to,candidate,incidentId,notificationId,fetchImpl=fetch,timeoutMs=8000,
 }={}) {
   if (!apiKey || !from || !to) throw new Error("ops_alert_email_not_configured");
   if (!candidate?.scopeKey) throw new Error("ops_alert_candidate_required");
+  // A durable notification attempt ID is necessary: an incident can alert again after cooldown.
+  const attempt = String(notificationId || "").trim();
+  if (!attempt) throw new Error("ops_alert_notification_id_required");
+  const idempotencyKey = `bookedradar/ops/${crypto.createHash("sha256")
+    .update(JSON.stringify([incidentId || candidate.incidentKey, attempt]))
+    .digest("hex")}`;
   const subject=`BookedRadar ${candidate.severity.toUpperCase()} — ${candidate.scopeKey}`;
   const signalLines=candidate.signals.map(x=>`- ${x.code}: ${x.count}`).join("\n");
   const text=[
@@ -146,7 +152,7 @@ export async function sendOpsAlertEmail({
     headers:{
       Authorization:`Bearer ${apiKey}`,
       "Content-Type":"application/json",
-      "Idempotency-Key":`bookedradar/ops/${incidentId || candidate.incidentKey}`,
+      "Idempotency-Key":idempotencyKey,
     },
     body:JSON.stringify({from,to:[to],subject,text}),
   });
