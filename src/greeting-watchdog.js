@@ -47,6 +47,8 @@ export function createGreetingWatchdog({ send, businessName, log, fallback,
   timeoutMs = 4000, schedule = setTimeout, cancel = clearTimeout, now = Date.now }) {
   let timer, stopped = false, requested = false, retried = false, startedAt = now();
   let responseId = null;
+  // Only confirmed opening-greeting responses can establish audible greeting playback.
+  const greetingIds = new Set();
   function arm() { timer = schedule(expire, timeoutMs); timer?.unref?.(); }
   function request(retry) {
     if (stopped) return;
@@ -78,9 +80,12 @@ export function createGreetingWatchdog({ send, businessName, log, fallback,
     open() { if (!requested && !stopped) { cancel(timer); request(false); } },
     event(event) {
       if (stopped) return;
-      if (event.type === 'response.created') responseId = event.response?.id || null;
+      if (event.type === 'response.created' && event.response?.metadata?.purpose === 'opening_greeting' && event.response?.id) {
+        responseId = event.response.id;
+        greetingIds.add(responseId);
+      }
       if (event.type === 'response.done' && event.response?.id === responseId) responseId = null;
-      if (event.type === 'output_audio_buffer.started') {
+      if (event.type === 'output_audio_buffer.started' && greetingIds.has(event.response_id)) {
         stopped = true; cancel(timer);
         log('greeting.first_audio', { elapsed_ms: now() - startedAt, retried });
       }

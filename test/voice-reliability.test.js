@@ -45,7 +45,7 @@ function clock() {
 test('greeting waits for actual SIP playback, retries once, cancels active generation', async () => {
   const c = clock(), sent = [], logs = []; let fallbacks = 0;
   const w = createGreetingWatchdog({ ...c, businessName: 'Acme', send: e => sent.push(e), log: e => logs.push(e), fallback: () => { fallbacks++; } });
-  w.open(); w.event({ type: 'response.created', response: { id: 'r1' } });
+  w.open(); w.event({ type: 'response.created', response: { id: 'r1', metadata: { purpose: 'opening_greeting' } } });
   w.event({ type: 'response.output_audio_transcript.done', transcript: 'hello' });
   await c.tick();
   assert.deepEqual(sent.map(x => x.type), ['response.create','response.cancel','response.create']);
@@ -58,9 +58,58 @@ test('greeting waits for actual SIP playback, retries once, cancels active gener
 test('audio-start suppresses retry and fallback; repeat open is idempotent', async () => {
   const c = clock(), logs = [], sent = [];
   const w = createGreetingWatchdog({ ...c, businessName: 'Acme', send: e => sent.push(e), log: e => logs.push(e), fallback: () => assert.fail() });
-  w.open(); w.open(); w.event({ type: 'output_audio_buffer.started' }); await c.tick();
+  w.open(); w.open();
+  w.event({ type: 'response.created', response: { id: 'opening-1', metadata: { purpose: 'opening_greeting' } } });
+  w.event({ type: 'output_audio_buffer.started', response_id: 'opening-1' }); await c.tick();
   assert.equal(sent.length, 1); assert.deepEqual(logs, ['greeting.requested','greeting.first_audio']);
 });
+test('watchdog never treats unrelated or unidentified playback as an audible greeting', async () => {
+  const scenarios = [
+    { name: 'other response', created: { id: 'other-1', metadata: { purpose: 'ordinary_turn' } }, audio: { response_id: 'other-1' } },
+    { name: 'no response ID', audio: {} },
+    { name: 'response without opening metadata', created: { id: 'unidentified-1' }, audio: { response_id: 'unidentified-1' } },
+  ];
+  for (const scenario of scenarios) {
+    const c = clock(), sent = [], logs = []; let fallbacks = 0;
+    const w = createGreetingWatchdog({ ...c, businessName: 'Acme', send: e => sent.push(e), log: e => logs.push(e), fallback: () => { fallbacks++; } });
+    w.open();
+    w.event({ type: 'response.created', response: { id: 'opening-1', metadata: { purpose: 'opening_greeting' } } });
+    if (scenario.created) w.event({ type: 'response.created', response: scenario.created });
+    w.event({ type: 'output_audio_buffer.started', ...scenario.audio });
+    await c.tick();
+    assert.deepEqual(sent.map(e => e.type), ['response.create', 'response.cancel', 'response.create'], scenario.name);
+    assert.equal(sent[1].response_id, 'opening-1', 'unrelated created events must not hijack cancellation');
+    await c.tick();
+    assert.equal(fallbacks, 1, scenario.name);
+    assert.equal(logs.includes('greeting.first_audio'), false, scenario.name);
+    assert.ok(logs.includes('greeting.failed'), scenario.name);
+  }
+});
+
+test('watchdog requires identification before playback; generation completion is not playback', async () => {
+  const c = clock(), logs = []; let fallbacks = 0;
+  const w = createGreetingWatchdog({ ...c, businessName: 'Acme', send() {}, log: event => logs.push(event), fallback: () => { fallbacks++; } });
+  w.open();
+  w.event({ type: 'output_audio_buffer.started', response_id: 'opening-1' }); // no response.created yet
+  w.event({ type: 'response.created', response: { id: 'opening-1', metadata: { purpose: 'opening_greeting' } } });
+  w.event({ type: 'response.done', response: { id: 'opening-1', status: 'completed' } });
+  await c.tick(); await c.tick();
+  assert.equal(fallbacks, 1);
+  assert.equal(logs.includes('greeting.first_audio'), false);
+});
+
+test('identified opening playback can follow completed generation and stop fallback', async () => {
+  const c = clock(), logs = []; let fallbacks = 0;
+  const w = createGreetingWatchdog({ ...c, businessName: 'Acme', send() {}, log: event => logs.push(event), fallback: () => { fallbacks++; } });
+  w.open();
+  w.event({ type: 'response.created', response: { id: 'opening-1', metadata: { purpose: 'opening_greeting' } } });
+  w.event({ type: 'response.done', response: { id: 'opening-1', status: 'completed' } });
+  w.event({ type: 'output_audio_buffer.started', response_id: 'opening-1' });
+  await c.tick(); await c.tick();
+  assert.equal(fallbacks, 0);
+  assert.equal(logs.filter(event => event === 'greeting.first_audio').length, 1);
+});
+
 test('stalled sideband handshake is bounded and falls back once', async () => {
   const c = clock(); let count = 0;
   createGreetingWatchdog({ ...c, businessName: 'Acme', send() {}, log() {}, fallback() { count++; } });
