@@ -1,6 +1,7 @@
 const ALLOWED_BOOKEDRADAR_ORIGINS = new Set([
   "https://www.bookedradar.com",
   "https://bookedradar.com",
+  "https://bookedradar-platform.onrender.com",
 ]);
 
 export function bookedRadarPublicOrigin(origin = "") {
