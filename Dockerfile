@@ -2,7 +2,7 @@
 FROM node:22.23.3-alpine3.24
 # Keep the official client package and its runtime libraries in the final image.
 # apk verifies repository signatures; do not use edge or untrusted packages.
-RUN apk add --no-cache postgresql18-client=18.6-r0 libpq=18.6-r0 \
+RUN apk add --no-cache postgresql18-client=18.7-r0 libpq=18.7-r0 \
     && psql --version | grep -E '^psql \(PostgreSQL\) 18\.' \
     && pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 18\.' \
     && pg_restore --version | grep -E '^pg_restore \(PostgreSQL\) 18\.'
