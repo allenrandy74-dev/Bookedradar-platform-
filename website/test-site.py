@@ -1,5 +1,7 @@
 from pathlib import Path
 from html.parser import HTMLParser
+from urllib.parse import unquote, urlsplit
+import subprocess
 import unittest
 ROOT=Path(__file__).parent/'src'
 class Document(HTMLParser):
@@ -26,13 +28,15 @@ class WebsiteTests(unittest.TestCase):
  def test_branded_pilot_entry(self):
   start=(ROOT/'start.html').read_text();script=(ROOT/'start.js').read_text()
   self.assertIn('three required fields',start.lower());self.assertNotIn('href="https://bookedradar-platform.onrender.com',start)
-  self.assertIn('https://bookedradar-platform.onrender.com/api/v1/public/proof-pilot',script)
+  subprocess.run(['node', str(ROOT.parent/'test-pilot-request.mjs')], check=True, timeout=10)
   self.assertIn('proof_pilot_start',script)
  def test_local_links_and_fragments(self):
   for f in ROOT.glob('*.html'):
    for href in Document(f.read_text()).links:
-    if ':' in href or href.startswith('//'):continue
-    path,_,fragment=href.partition('#');dest=(ROOT/'index.html') if path=='/' else (ROOT/path.lstrip('/')) if path else f
+    url=urlsplit(href)
+    if url.scheme or url.netloc:continue
+    path,fragment=unquote(url.path),unquote(url.fragment)
+    dest=(ROOT/'index.html') if path=='/' else (ROOT/path.lstrip('/')) if path.startswith('/') else (f.parent/path) if path else f
     self.assertTrue(dest.is_file(),f'{f.name}: {href}')
     if fragment:self.assertIn(fragment,Document(dest.read_text()).ids,f'{f.name}: {href}')
  def test_unique_ids(self):self.assertEqual(len(self.doc.ids),len(set(self.doc.ids)))
