@@ -178,10 +178,10 @@ for (const width of [320, 390]) for (const preference of ['email', 'phone']) {
       preference === 'email'
         ? 'You chose email only. We’ll follow up by email, with no sales call.'
         : 'You asked for a phone call. We’ll follow up at the number you provided.',
-      'Your request does not activate service. We’ll review your needs, agree the coverage and commercial terms, including any evaluation and provider costs, then test your call flow with you. Activation requires your approval.',
+      'Your request does not activate service. We’ll review your needs and available capacity with you. If the pilot is a fit, we’ll agree on the workflow and limits, complete onboarding and testing, and ask for your approval before activation.',
       'The Proof Pilot is capped at 14 days or 25 real calls, whichever comes first. Paid continuation requires your separate approval.'
     ]);
-    await expect(success).toContainText('Activation requires your approval.');
+    await expect(success).toContainText('ask for your approval before activation.');
     await expect(success).toContainText('Paid continuation requires your separate approval.');
     const geometry = await success.evaluate(panel => {
       const rect = el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
