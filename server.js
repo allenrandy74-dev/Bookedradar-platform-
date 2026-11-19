@@ -450,6 +450,7 @@ async function performOpsAlertCheck() {
           to:OPS_ALERT_EMAIL,
           candidate,
           incidentId:candidate.incidentKey,
+          notificationId:new Date(observed.incident.last_notified_at).toISOString(),
         });
         console.log(JSON.stringify({
           event:"ops.alert_delivered",
@@ -460,7 +461,8 @@ async function performOpsAlertCheck() {
           provider_id:delivered.id || null,
         }));
       } catch (error) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+        // Resend may have accepted an ambiguous network failure. Preserve the
+        // claimed attempt; the normal cooldown permits the next distinct alert.
         console.error(JSON.stringify({
           event:"ops.alert_delivery_failed",
           scope_key:scopeKey,
