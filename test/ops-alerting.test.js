@@ -62,7 +62,7 @@ test("ops email contains no caller content and uses deterministic idempotency",a
   });
   const result=await sendOpsAlertEmail({
     apiKey:"synthetic-key",from:"ops@example.com",to:"owner@example.com",
-    candidate,incidentId:candidate.incidentKey,fetchImpl,
+    candidate,incidentId:candidate.incidentKey,notificationId:"00000000-0000-4000-8000-000000000001",fetchImpl,
   });
   assert.equal(result.id,"email-1");
   const body=JSON.parse(request.options.body);
@@ -70,5 +70,5 @@ test("ops email contains no caller content and uses deterministic idempotency",a
   assert.match(body.subject,/CRITICAL/);
   assert.equal(body.text.includes("lead_persistence_failure"),true);
   assert.equal(body.text.includes("do not include this free text"),false);
-  assert.equal(request.options.headers["Idempotency-Key"],`bookedradar/ops/${candidate.incidentKey}`);
+  assert.equal(request.options.headers["Idempotency-Key"],"bookedradar/ops/00000000-0000-4000-8000-000000000001");
 });
