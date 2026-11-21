@@ -75,4 +75,9 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - run: npm run check
       - run: npm test
+      - name: Verify the built website and pilot request
+        working-directory: website
+        run: |
+          npm run build
+          python3 test-site.py
       - run: SIM_SCENARIOS=200 npm run simulate
