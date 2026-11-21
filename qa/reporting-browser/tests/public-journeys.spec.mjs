@@ -1,5 +1,7 @@
 import { test, expect, signupPath } from './public-fixture.mjs';
 
+const pilotReceiptTerms = 'The pilot is free for up to 14 days or 25 real calls, whichever comes first. There is no automatic billing. Paid continuation requires your separate approval.';
+
 for (const preference of ['email', 'phone']) {
   test(`signup ${preference}: native form, confirmed receipt and success focus`, async ({ page, publicQA: qa }) => {
     await qa.open('signup');
@@ -28,6 +30,7 @@ test('signup duplicate receipt stays distinct from a new request', async ({ page
   (await qa.request()).reply({ ok: true, duplicate: true });
   await expect(page.locator('#success h2')).toHaveText('A request is already recorded.');
   await expect(page.locator('#success')).toBeFocused();
+  await expect(page.locator('#success').getByText(pilotReceiptTerms, { exact: true })).toBeVisible();
 });
 test('signup native validation blocks missing callback and permits switching back to email', async ({ page, publicQA: qa }) => {
   await qa.open('signup'); await qa.fillSignup();
@@ -179,7 +182,7 @@ for (const width of [320, 390]) for (const preference of ['email', 'phone']) {
         ? 'You chose email only. We’ll follow up by email, with no sales call.'
         : 'You asked for a phone call. We’ll follow up at the number you provided.',
       'Your request does not activate service. We’ll review your needs and available capacity with you. If the pilot is a fit, we’ll agree on the workflow and limits, complete onboarding and testing, and ask for your approval before activation.',
-      'The Proof Pilot is capped at 14 days or 25 real calls, whichever comes first. Paid continuation requires your separate approval.'
+      pilotReceiptTerms
     ]);
     await expect(success).toContainText('ask for your approval before activation.');
     await expect(success).toContainText('Paid continuation requires your separate approval.');
