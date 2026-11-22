@@ -41,6 +41,10 @@ test("real Postgres 18: concurrent app instances deduplicate the same incident n
     const suppressed=await a.observe(candidate,{cooldownMinutes:30});
     assert.equal(suppressed.shouldNotify,false);
 
+    const winner=[one,two].find(result=>result.shouldNotify);
+    assert.ok(winner.notification.notification_id);
+    await a.acceptNotification(candidate.incidentKey,winner.notification.notification_id,"synthetic-receipt");
+
     const resolved=await a.resolveScope("tenant:demo-hvac");
     assert.equal(resolved.length,1);
     const active=await a.active();

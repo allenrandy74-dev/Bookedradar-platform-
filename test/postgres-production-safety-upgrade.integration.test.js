@@ -59,6 +59,9 @@ test('nonempty production incidents block lossy JSON export, rollback and logica
   assert.ok((await readPostgresSnapshot(pool)).state);
   assert.ok((await exportPostgresPlatform(pool, path.join(root, 'empty-export'), { writersQuiesced: true })).directory);
   await pool.query("INSERT INTO bookedradar.ops_incidents(incident_key,scope_key,severity,status,payload) VALUES ('synthetic-incident','synthetic-scope','warning','resolved','{\"marker\":\"preserve\"}')");
+  await pool.query("INSERT INTO bookedradar.ops_notifications(notification_id,incident_key,state,payload) VALUES ('synthetic-notification','synthetic-incident','uncertain','{\"marker\":\"preserve-ledger\"}')");
+  const ledgerIdentityBefore = (await pool.query("SELECT 'bookedradar.ops_notifications'::regclass::oid AS oid")).rows;
+  const ledgerBefore = (await pool.query('SELECT * FROM bookedradar.ops_notifications ORDER BY notification_id')).rows;
   const before = (await pool.query('SELECT * FROM bookedradar.ops_incidents')).rows;
   const error = /postgres_platform_export_requires_all_table_backup_for_ops_state/;
   await assert.rejects(exportPostgresPlatform(pool, path.join(root, 'blocked-export'), { writersQuiesced: true }), error);
@@ -77,5 +80,6 @@ test('nonempty production incidents block lossy JSON export, rollback and logica
   await assert.rejects(runPostgresTransactionalRestoreDrill(pool, schema), error);
   assert.deepEqual((await pool.query("SELECT oid FROM pg_namespace WHERE nspname='bookedradar'")).rows, namespaceBefore);
   assert.deepEqual((await pool.query('SELECT * FROM bookedradar.ops_incidents')).rows, before);
-  assert.equal((await pool.query("SELECT to_regclass('bookedradar.ops_notifications') AS t")).rows[0].t, null);
+  assert.deepEqual((await pool.query("SELECT 'bookedradar.ops_notifications'::regclass::oid AS oid")).rows, ledgerIdentityBefore);
+  assert.deepEqual((await pool.query('SELECT * FROM bookedradar.ops_notifications ORDER BY notification_id')).rows, ledgerBefore);
 });
