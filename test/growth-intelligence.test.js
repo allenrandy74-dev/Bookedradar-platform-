@@ -91,6 +91,35 @@ test("Cancellation backfill returns matching earlier-slot requests without conta
   assert.match(result.action,/Review candidates/);
 });
 
+test("Backfill only recommends a future released slot and still-current requests", async () => {
+  const now = new Date("2026-11-24T20:00:00Z");
+  const future = "2026-11-24T20:30:00Z";
+  const cancellation = { id: "cancel", tenantId: "t1", type: "appointment_cancelled", metadata: {} };
+  function request(id, expiresAt) {
+    return { id, tenantId: "t1", type: "earlier_slot_requested", metadata: { expiresAt } };
+  }
+  const opportunities = {
+    cancel: cancellation,
+    current: request("current", future),
+    open: request("open"),
+    expired: request("expired", "2026-11-24T19:59:59Z"),
+    boundary: request("boundary", now.toISOString()),
+    invalid: request("invalid", "time unknown"),
+  };
+  const store = { snapshot: async () => ({ opportunities }) };
+  for (const scheduledFor of [undefined, "time unknown", "2026-11-24T19:59:59Z", now.toISOString()]) {
+    cancellation.metadata.scheduledFor = scheduledFor;
+    const report = await cancellationBackfillCandidates(store, "t1", "cancel", { now });
+    assert.deepEqual(report.candidates, [], `slot ${scheduledFor}`);
+    assert.equal(report.candidateCount, 0);
+    assert.ok(report.action);
+  }
+  cancellation.metadata.scheduledFor = future;
+  const report = await cancellationBackfillCandidates(store, "t1", "cancel", { now });
+  assert.deepEqual(report.candidates.map(item => item.opportunityId).sort(), ["current", "open"]);
+  assert.equal(report.candidateCount, 2);
+});
+
 test("Review Radar excludes complaints and unknown satisfaction", async()=>{
   const {store,engine}=await fixture();
   await engine.ingest({idempotencyKey:"good",type:"job_completed",contact:{name:"Happy",email:"h@example.com"},metadata:{jobId:"j1",customerSatisfactionKnown:true,customerSatisfied:true,complaintOpen:false}});

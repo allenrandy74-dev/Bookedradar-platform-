@@ -278,12 +278,29 @@ export async function cancellationBackfillCandidates(store, tenantId, cancellati
   const city = String(cancelled.metadata?.city || "").trim().toLowerCase();
   const serviceType = String(cancelled.serviceType || "").trim().toLowerCase();
   const nowMs = now.getTime();
+  const slot = {
+    cancellationOpportunityId,
+    releasedSlot: cancelled.metadata?.scheduledFor || "",
+    city: cancelled.metadata?.city || "",
+    serviceType: cancelled.serviceType || "",
+  };
+  const startsAt = Date.parse(slot.releasedSlot);
+  if (!Number.isFinite(startsAt) || startsAt <= nowMs) {
+    return {
+      ...slot,
+      candidateCount: 0,
+      candidates: [],
+      action: Number.isFinite(startsAt)
+        ? "The released slot has already started."
+        : "Verify the time of the released slot before reviewing candidates.",
+    };
+  }
 
   const candidates = Object.values(data.opportunities || {})
     .filter(item => item.tenantId === tenantId && item.type === "earlier_slot_requested" && item.status !== "closed")
     .filter(item => {
-      const expires = Date.parse(item.metadata?.expiresAt || "");
-      if (Number.isFinite(expires) && expires < nowMs) return false;
+      const expiresAt = item.metadata?.expiresAt;
+      if (expiresAt && !(Date.parse(expiresAt) > nowMs)) return false;
       const candidateCity = String(item.metadata?.city || "").trim().toLowerCase();
       const candidateService = String(item.serviceType || "").trim().toLowerCase();
       if (city && candidateCity && city !== candidateCity) return false;
@@ -310,10 +327,7 @@ export async function cancellationBackfillCandidates(store, tenantId, cancellati
     });
 
   return {
-    cancellationOpportunityId,
-    releasedSlot: cancelled.metadata?.scheduledFor || "",
-    city: cancelled.metadata?.city || "",
-    serviceType: cancelled.serviceType || "",
+    ...slot,
     candidateCount: candidates.length,
     candidates,
     action: "Review candidates before contacting anyone. Matching does not itself send a message or change an appointment.",
