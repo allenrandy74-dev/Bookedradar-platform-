@@ -1,0 +1,4 @@
+node_modules/
+qa/evidence/
+qa/unit-results.txt
+qa/asset-sha256.txt

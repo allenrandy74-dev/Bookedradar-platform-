@@ -1,0 +1,15 @@
+{
+  "name": "bookedradar-customer-portal-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node preview.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check app.mjs && node --check model.mjs && node --check fixtures.mjs && node --check preview.mjs && node --check server/api.mjs && node --check client.mjs && node --check qa/browser.mjs && node --check server/postgres-store.mjs && node --check server/session-resolver.mjs && node --check server/source-projection.mjs && node --check test/postgres.integration.mjs && node --check test/disposable-postgres.mjs",
+    "test:browser": "node qa/browser.mjs",
+    "test:postgres": "node --test test/postgres.integration.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
