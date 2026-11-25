@@ -1,18 +1,18 @@
 # BookedRadar Service Scope & Pricing
 
-## Recommended launch pricing
+## Published prices for new paid service
 
-| Package | Standard monthly | Standard setup | Founding Partner monthly | Founding setup |
-| --- | ---: | ---: | ---: | ---: |
-| RadarAnswer | $149 | $199 | $149 | Waived |
-| RadarRecover | $497 | $499 | $397 | Waived |
-| RadarGrow | $697 | $749 | $597 | Waived |
-| RadarSchedule | $897 | $999 | $797 | Waived |
-| RadarDispatch | Custom | Custom | Custom | Custom |
+| Paid plan | Monthly price (USD) | Included voice minutes per month |
+| --- | ---: | ---: |
+| RadarAnswer | $99 | 200 |
+| RadarRecover | $179 | 350 |
+| RadarGrow | $249 | 500 |
+| RadarSchedule | $349 | 700 |
+| RadarDispatch | Individually quoted | Individually quoted |
 
-These prices position BookedRadar above commodity answering services while remaining in the same general range as higher-touch AI receptionist/automation offerings. The pricing assumes BookedRadar is being sold as an operating and revenue-recovery layer, not simply by the minute.
+Any setup, extra usage or provider charges for paid service require separate agreement before activation. A paid plan or minute allowance never authorizes an extra pilot call.
 
-**Important:** Do not publish unlimited-use or call-volume promises yet. Included usage/overage terms should be set only after production provider costs and pilot call volume are measured. Founding Partner pilots should use a clearly stated fair-use provision with no surprise overage billing unless separately agreed.
+The signed scope specifies which capabilities have passed customer-specific testing. Honor existing signed agreements. A new order uses the current offer unless a separate written agreement establishes different terms.
 
 ### Package intent
 
@@ -22,20 +22,15 @@ These prices position BookedRadar above commodity answering services while remai
 - **RadarSchedule:** Everything in RadarGrow plus separately approved simple live-calendar booking. It does **not** include technician routing or full field dispatch.
 - **RadarDispatch:** custom full-time scheduling/dispatch scope with technician skills, geography, travel time, buffers, capacity and override rules.
 
-## Proof Pilot evaluation
+## Free Proof Pilot
 
-The Proof Pilot is a capped evaluation for qualified businesses: after-hours OR overflow coverage, up to 14 days or 25 real calls, whichever comes first. Customer-specific scope, acceptance, human escalation and rollback must be agreed before activation. There is no automatic paid conversion or scope expansion.
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
 
-Evaluate outcomes before choosing a separate paid continuation order. A Founding Partner monthly price is not the Proof Pilot itself. Any evaluation charges or provider-cost treatment must be expressly stated in the approved customer scope; do not invent them.
+Agree on after-hours or overflow coverage, human escalation, a tested return route and the customer's authorization before accepting real calls. Record the authorized and actual UTC start, deadline and any lower call or time limit. Count unique, accepted non-test calls for this tenant. The admission control must stop new pilot calls at the earliest limit independently of periodic review. The routing owner verifies the original route and the final count. The customer can stop or request a separate paid order.
 
-## Founding Partner paid continuation
+## RadarRecover paid scope
 
-**Standard RadarRecover price:** $497/month  
-**Founding Partner RadarRecover price:** $397/month  
-**Setup fee:** Waived for approved Founding Partners  
-**Preferred payment method:** ACH; card available
-
-The Founding Partner paid continuation is designed as a revenue-recovery operating layer, not merely a phone-answering service. Voice, approved messaging, web lead capture, CRM follow-up and recovery attribution should preserve one opportunity context across channels and make the resulting value measurable.
+The published monthly price is $179 and includes 350 voice minutes per month. A separate signed order specifies coverage, enabled channels, integrations, limits and effective date. The following capabilities require customer-specific configuration and acceptance.
 
 ### Included
 
@@ -59,7 +54,7 @@ The Founding Partner paid continuation is designed as a revenue-recovery operati
 - Customer-specific service rules and safety/escalation guidance.
 - One acceptance test before activation.
 
-### Not included in RadarRecover / the Founding Partner recovery scope unless separately approved
+### Outside the standard RadarRecover scope
 
 - Full-time live scheduling or dispatch.
 - Writing appointments directly into a live calendar/dispatch system.
@@ -99,4 +94,4 @@ Customer interest is not commercial approval. A Quick Start answer such as "yes,
 
 ## Pilot capacity
 
-The current billing implementation supports up to five Founding Partner pilot accounts. Expanding beyond that limit should happen only after the first group has validated onboarding, support load, provider costs, and retention.
+All qualified businesses may apply. Confirm capacity, the admission limit, customer acceptance and the return route for each actual tenant before activation. An application reserves neither capacity nor a paid subscription.

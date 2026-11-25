@@ -94,7 +94,7 @@ End of pilot:
 - recommended configuration changes
 - continue / expand / stop decision by customer
 
-Never convert a pilot automatically to paid service unless the commercial agreement explicitly authorizes it.
+There is no automatic billing or conversion. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
 
 ## Reliability targets
 Leadership requires measurable operational quality.
@@ -138,11 +138,11 @@ Current detailed personalized email (155–181 words) + meeting/walkthrough CTA.
 Do not compare opens as the main outcome.
 Compare positive replies, demo calls, meetings and pilots.
 
-## Proof Pilot hypothesis
-For qualified Founding Partner prospects:
+## Free Proof Pilot
+All qualified businesses may apply:
 - after-hours/overflow scope first
 - up to 14 days or 25 real calls, whichever comes first
-- no setup fee during the proof period
+- the pilot is free and ends earlier if the customer agrees a lower limit
 - daytime workflow remains untouched unless prospect requests otherwise
 - human escalation preserved
 - confirm-only scheduling unless live scheduling has separately passed customer acceptance

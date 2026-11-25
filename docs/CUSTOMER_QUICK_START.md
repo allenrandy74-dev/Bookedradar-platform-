@@ -48,8 +48,7 @@ Do not ask the customer to configure phone technology during this step.
    - No
    - Sometimes
    Follow-up: Should we collect appointment requests for your team, or would you like
-   a separate quote for direct scheduling/dispatch? The $497 pilot collects requests;
-   it does not confirm calendar appointments.
+   information on separately approved direct scheduling or custom dispatch? The free pilot collects requested times for your staff to confirm.
 11. Anything else you want BookedRadar to know?
 
 ## Step 4 — Review
@@ -68,6 +67,8 @@ Every remaining setup item must be one of:
 Technical implementation details stay hidden unless the customer deliberately opens advanced details.
 
 ## Activation
+
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. Your Quick Start submission does not activate routing.
 Customer-facing progress uses business language:
 - Business setup
 - Call handling

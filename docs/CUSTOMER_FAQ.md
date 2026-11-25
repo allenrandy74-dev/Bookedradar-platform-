@@ -25,7 +25,11 @@ Not necessarily. The Quick Start asks about the tools already used. BookedRadar 
 Only if the customer explicitly approves pricing rules and the tenant is configured for it. Otherwise it should not invent or promise prices.
 
 ## Can it schedule appointments?
-The $497 pilot collects appointment requests and preferred times; your team confirms availability. Direct calendar booking, full-time scheduling and dispatch are separately scoped and priced. These services require approved scheduling rules, supported integrations and acceptance testing before activation.
+During the free pilot, we collect the caller's preferred times and your team confirms availability. RadarSchedule can support direct calendar booking after separate authorization, a supported integration and a successful acceptance test. Technician or crew assignment requires individually quoted RadarDispatch scope.
+
+## What does the pilot cost and what happens at the end?
+
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. The routing owner verifies that new pilot calls have stopped and your original route is restored. Find the paid options in the [service scope and pricing](../SERVICE_SCOPE_AND_PRICING.md).
 
 ## What happens with emergencies?
 The customer defines urgent and emergency handling rules. BookedRadar must follow approved safety/escalation boundaries and must not diagnose hazardous situations.

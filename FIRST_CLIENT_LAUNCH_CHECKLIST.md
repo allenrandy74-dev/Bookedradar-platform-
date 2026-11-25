@@ -1,5 +1,7 @@
 # BookedRadar First-Customer Launch Checklist
 
+> **Historical launch sign-offs for the founding offer.** Preserve this record for its original scope and any existing signed agreements. For new pilots and paid orders, use the [current offer](SERVICE_SCOPE_AND_PRICING.md). The current pilot is free and has no automatic billing. The billing owner must verify a separate dated approval and matching price before any new paid service.
+
 This checklist defines the minimum gates for accepting a paying customer. A customer is not considered live merely because billing or phone forwarding is enabled.
 
 ## A. Core platform — COMPLETE

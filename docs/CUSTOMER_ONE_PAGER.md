@@ -33,7 +33,7 @@ Tell us how your business works. We handle the technical setup.
 6. We activate the agreed pilot.
 
 ### Start small
-For many businesses, a capped Proof Pilot can begin with after-hours OR overflow calls. Your existing workflow stays central while BookedRadar proves its value.
+Choose after-hours or overflow coverage for a qualified free pilot after we agree the scope, test the handoff and confirm how to restore your normal route. The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
 
 ### Know what happened
 Where supported and attributable, RadarProof helps document opportunities handled and outcomes so BookedRadar can be evaluated on real operating results.
@@ -45,10 +45,14 @@ Complete the BookedRadar Quick Start and we'll prepare a setup for you to review
 ### Important
 Capabilities depend on the customer's selected configuration and connected systems. BookedRadar activates only the capabilities that have passed the applicable setup and acceptance tests.
 
-## Current evaluation and paid-continuation boundary — September 29, 2026
+## Paid plans if you choose to continue
 
-The Proof Pilot is an evaluation for qualified businesses: after-hours OR overflow, up to 14 days or 25 real calls, whichever comes first. Customer scope, acceptance, human escalation and rollback come first. There is no automatic paid conversion or scope expansion.
+| Paid plan | Monthly price (USD) | Included voice minutes per month |
+| --- | ---: | ---: |
+| RadarAnswer | $99 | 200 |
+| RadarRecover | $179 | 350 |
+| RadarGrow | $249 | 500 |
+| RadarSchedule | $349 | 700 |
+| RadarDispatch | Individually quoted | Individually quoted |
 
-Paid continuation is a separate decision and order. RadarRecover is $497/month standard or $397/month for an approved Founding Partner, with founding setup waived where approved. Use `../SERVICE_SCOPE_AND_PRICING.md` for the full current ladder and setup fees. State coverage, usage, integrations and separate costs in the order; do not promise unlimited usage or surprise overage charges.
-
-Appointment requests remain confirm-only. RadarSchedule live calendar booking requires separate approval and acceptance. Technician assignment, travel-aware routing and full dispatch are custom RadarDispatch scope. Entitled features remain gated until their customer-specific setup, consent and acceptance checks pass.
+Your staff confirms appointment requests by default. Live calendar booking requires a supported connection, your separate authorization and an acceptance test. Travel-aware technician assignment is individually scoped through RadarDispatch. Any setup, extra usage or provider charges for paid service require separate agreement before activation. A paid plan or minute allowance never authorizes an extra pilot call.

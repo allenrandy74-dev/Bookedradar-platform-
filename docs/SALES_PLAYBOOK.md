@@ -1,4 +1,4 @@
-# BookedRadar Founding Customer Sales Playbook
+# BookedRadar Customer Sales Playbook
 
 ## Core promise
 BookedRadar helps service businesses respond when their team cannot get to the phone, capture the information needed for follow-up, and hand important opportunities to a real person when appropriate.
@@ -38,10 +38,11 @@ If the business is interested:
 7. Customer approves the pilot.
 8. Activate only the agreed routing scope.
 
-## Founding-customer pilot
-Proof Pilot scope: after-hours OR overflow calls.
+## Free Proof Pilot
 
-Before offering a commercial price, use the approved BookedRadar pricing sheet. Do not improvise discounts or contractual terms.
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
+
+Start with after-hours or overflow coverage after confirming admission limits, acceptance and a tested return route. Discuss only the capabilities verified for the customer's proposed setup. A fictional walkthrough can illustrate the agreed workflow before a live demonstration is available.
 
 ## Objection handling
 ### “I already have voicemail.”
@@ -65,10 +66,8 @@ Each tenant must have an escalation/rollback path and pass readiness testing bef
 ## Sales rule
 Use the Package Matrix to distinguish purchased scope from activated capabilities. Demonstrate only the verified configuration. Describe included but gated capabilities with their remaining setup and acceptance requirements; never represent them as active.
 
-## Current evaluation and paid-continuation boundary — September 29, 2026
+## Paid selection after closeout
 
-The Proof Pilot is an evaluation for qualified businesses: after-hours OR overflow, up to 14 days or 25 real calls, whichever comes first. Customer scope, acceptance, human escalation and rollback come first. There is no automatic paid conversion or scope expansion.
+Offer the customer the choice to stop or select a paid package using the [service scope and pricing](../SERVICE_SCOPE_AND_PRICING.md). RadarAnswer is $99, RadarRecover $179, RadarGrow $249 and RadarSchedule $349 per month. RadarDispatch is quoted individually. Obtain separate explicit approval of the plan, price, scope and effective date. Record the consent and hand it to the billing owner.
 
-Paid continuation is a separate decision and order. RadarRecover is $497/month standard or $397/month for an approved Founding Partner, with founding setup waived where approved. Use `../SERVICE_SCOPE_AND_PRICING.md` for the full current ladder and setup fees. State coverage, usage, integrations and separate costs in the order; do not promise unlimited usage or surprise overage charges.
-
-Appointment requests remain confirm-only. RadarSchedule live calendar booking requires separate approval and acceptance. Technician assignment, travel-aware routing and full dispatch are custom RadarDispatch scope. Entitled features remain gated until their customer-specific setup, consent and acceptance checks pass.
+Calendar booking needs separate authorization, a supported calendar and customer acceptance. Staff confirm requested times until these checks pass. Travel-aware technician assignment and field dispatch require an individual RadarDispatch quote.

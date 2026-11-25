@@ -4,7 +4,9 @@ This document is the customer-facing source of truth for package positioning. Ea
 
 ## Package ladder
 
-### 1. RadarAnswer — $149/month
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. For the monthly voice allowance, individual Dispatch quote and separately agreed paid charges, see the [service scope and pricing](SERVICE_SCOPE_AND_PRICING.md).
+
+### 1. RadarAnswer — $99/month, 200 included voice minutes
 **Purpose:** Make sure the business answers professionally, captures the right information, and gets urgent callers to a person.
 
 **Includes**
@@ -44,8 +46,7 @@ Businesses that mainly want professional call coverage and lead capture without 
 
 ---
 
-### 2. RadarRecover — $497/month
-**Founding Partner:** $397/month, setup waived.
+### 2. RadarRecover — $179/month, 350 included voice minutes
 
 **Purpose:** Everything in RadarAnswer, plus actively identify and recover opportunities the business would otherwise lose.
 
@@ -88,8 +89,7 @@ Home-service businesses that already get valuable inbound leads but lose revenue
 
 ---
 
-### 3. RadarGrow — $697/month
-**Founding Partner:** $597/month, setup waived.
+### 3. RadarGrow — $249/month, 500 included voice minutes
 
 **Purpose:** Everything in RadarRecover, plus help protect recurring revenue and strengthen the customer's long-term customer base.
 
@@ -122,8 +122,7 @@ Businesses with maintenance agreements, recurring service, meaningful appointmen
 
 ---
 
-### 4. RadarSchedule — $897/month
-**Founding Partner:** $797/month, setup waived.
+### 4. RadarSchedule — $349/month, 700 included voice minutes
 
 **Purpose:** Everything in RadarGrow, plus simple live booking into an approved connected calendar.
 

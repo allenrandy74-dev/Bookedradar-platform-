@@ -1,5 +1,7 @@
 # BookedRadar Billing Setup — Launch Configuration
 
+> **Historical September 2026 billing configuration.** Preserve this record for its original scope and any existing signed agreements. For new pilots and paid orders, use the [current offer](../SERVICE_SCOPE_AND_PRICING.md). The current pilot is free and has no automatic billing. The billing owner must verify a separate dated approval and matching price before any new paid service.
+
 Updated: 2026-09-24
 
 ## Business identity

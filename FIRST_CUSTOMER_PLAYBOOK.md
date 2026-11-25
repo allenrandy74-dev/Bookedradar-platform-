@@ -4,7 +4,7 @@
 
 Move a qualified prospect from verbal interest to a safe live BookedRadar deployment without changing scope on the fly.
 
-**Recommended first-market offer:** RadarRecover Founding Partner — $397/month, setup waived.
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
 
 ## Stage 1 — Qualify
 
@@ -22,22 +22,11 @@ Avoid promising:
 - guaranteed revenue;
 - customer-facing SMS before provider/A2P acceptance.
 
-## Stage 2 — Quote and service order
+## Stage 2 — Record the selected offer
 
-1. Select package.
-2. Fill the Customer Service Order.
-3. Record:
-   - monthly price;
-   - setup fee/waiver;
-   - coverage mode;
-   - transcript choice;
-   - messaging approvals;
-   - scheduling authorization state;
-   - integrations;
-   - customer acceptance contact.
-4. Obtain approval/signature.
-5. Create the billing account only for the package on the signed order.
-6. Verify Stripe Checkout displays the same package and price before payment.
+For a free pilot, complete the [pilot worksheet](docs/PILOT_ORDER_WORKSHEET.md). Record authority, coverage, authorized and actual UTC start, deadline, real-call limit, human escalation and return route. Verify independent admission enforcement before traffic. No payment, billing account or checkout is required.
+
+For a separate paid order, use the [current published prices](SERVICE_SCOPE_AND_PRICING.md) and [customer service order](CLIENT_SERVICE_ORDER_TEMPLATE.md). Record the plan, price, included minutes, scope, separate charges and effective date. Send the verified approver's explicit authorization to the billing owner. That owner verifies the live price mapping before any billing action.
 
 ## Stage 3 — Quick Start
 
@@ -62,6 +51,8 @@ Do not ask the customer to configure technical feature flags.
 
 ## Stage 4 — Generate tenant
 
+For a free pilot, use the verified pilot admission and routing workflow from the [pilot runbook](docs/PILOT_OPERATIONS_RUNBOOK.md). Paid deployment and checkout commands apply only to separately authorized paid orders. If a deployment plan selects a legacy catalog or a different price, stop and hand the discrepancy to the billing owner.
+
 1. Generate tenant ID and isolated secrets prefix.
 2. Apply the signed service profile.
 3. Store package entitlements separately from activated capabilities.
@@ -71,7 +62,7 @@ Do not ask the customer to configure technical feature flags.
 7. Configure only the integrations the customer selected.
 8. Keep every provider- or consent-dependent feature gated until accepted.
 
-Run:
+For a separately approved paid deployment, review the plan:
 
 `npm run deployment:plan -- <tenant-id>`
 
@@ -165,8 +156,8 @@ Any failed active feature returns to gated/off until fixed.
 ## Stage 8 — Go-live decision
 
 Go live only when:
-- service order matches tenant package;
-- billing package matches signed package;
+- pilot authorization matches the tested tenant scope, time/call limit and return route, or a separately approved paid order matches the tenant package;
+- for paid service, the billing owner has verified the signed price and effective date;
 - tenant readiness is READY;
 - enabled integrations passed;
 - customer acceptance passed;
@@ -195,7 +186,11 @@ Review:
 
 Do not make broad prompt/routing changes from one odd call unless safety demands it.
 
-## Stage 10 — First 30 days
+## Pilot closeout
+
+At the earliest time or call limit, the routing owner verifies that admission stopped and the original route was restored. Send one confirmed results summary to the agreed contact. Offer stop or a separate paid selection. Verify explicit customer approval before handing any paid request to billing.
+
+## Stage 10 — First 30 days of separately approved paid service
 
 Provide customer review with:
 - calls handled;
@@ -208,7 +203,7 @@ Provide customer review with:
 - owner labor saved qualitatively;
 - provider usage/cost profile.
 
-Use the first 5 Founding Partners to refine:
+Use verified customer feedback and outcomes to refine:
 - fair-use limits;
 - package pricing;
 - support burden;

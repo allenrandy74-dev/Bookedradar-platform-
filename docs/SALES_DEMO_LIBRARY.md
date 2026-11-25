@@ -220,7 +220,7 @@ Show value:
 ---
 
 # 6 — Full Scheduling / Dispatch Discovery Demo
-This is **not included in the standard $497 pilot** unless separately scoped and agreed.
+The free pilot captures the caller’s preferred appointment time for staff confirmation. Live calendar booking requires a separately accepted RadarSchedule configuration. Technician assignment and travel-aware dispatch require an individual RadarDispatch quote and tested scope.
 
 Synthetic business: **Demo Service Scheduler**
 

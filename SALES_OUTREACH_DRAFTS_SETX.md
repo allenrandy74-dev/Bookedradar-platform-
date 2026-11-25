@@ -1,5 +1,7 @@
 # BookedRadar — Initial Southeast Texas Outreach Drafts
 
+> **Historical September 2026 drafts.** Preserve this record for its original scope and any existing signed agreements. For new pilots and paid orders, use the [current offer](SERVICE_SCOPE_AND_PRICING.md). The current pilot is free and has no automatic billing. The billing owner must verify a separate dated approval and matching price before any new paid service.
+
 Updated: 2026-09-25
 
 These are draft-only messages. Do not send without Randy's approval. Lead with the prospect's operational gap, not with "AI receptionist." Attach or link the current `BOOKEDRADAR_ONE_PAGE_EXPLAINER.md` / approved sales sheet when outreach begins.

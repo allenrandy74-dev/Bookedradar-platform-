@@ -17,11 +17,14 @@ Use one completed sheet per customer. This is the operational companion to the c
 
 ## Commercial scope
 
-- Package: RadarAnswer / RadarRecover / RadarGrow / RadarSchedule / RadarDispatch
-- Price tier: Standard / approved Founding Partner / Custom
-- Monthly price:
-- Setup fee:
-- Billing start date:
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
+
+- Select free Proof Pilot, separately approved paid plan, or individually quoted Dispatch.
+- Free pilot: tenant ID, verified approver, contact preference, authorized and actual UTC start, UTC deadline, accepted unique real-call count and any earlier agreed limit:
+- Free pilot: admission stop receipt, routing owner, agreed original route and restoration receipt:
+- Paid only: approved plan, monthly price, monthly voice minutes and separately agreed charges:
+- Paid only: explicit customer consent receipt, scope and effective date:
+- Paid only: billing owner and verified price mapping:
 - Agreement reference:
 - Coverage mode: After hours / Overflow-no-answer / Busy / Combination / Other
 - Coverage hours:
@@ -138,4 +141,3 @@ BookedRadar operator: ______________________
 Customer representative: ___________________
 
 Notes:
-

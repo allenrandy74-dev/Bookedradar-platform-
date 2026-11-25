@@ -11,29 +11,27 @@
 
 ## 2. Selected paid-continuation package
 
-This order records paid service. A preceding Proof Pilot is a separate capped evaluation of up to 14 days or 25 real calls, whichever comes first. Completing that evaluation does not automatically execute this order, start billing or expand scope. Record a separate approval before paid continuation.
+This form is for a separate paid order. The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date.
 
-**Prior Proof Pilot reference and review decision, if applicable:** ______________________________
+**Prior pilot reference and closeout, if applicable:** ______________________________
 
-**Paid continuation authorized by / date:** ______________________________
+**Verified customer approver and dated consent reference:** ______________________________
 
-### Selected BookedRadar package
+**Approved paid service scope and effective date:** ______________________________
 
-Select one:
+### Selected paid package
 
-- [ ] **RadarAnswer** — $149/month
-- [ ] **RadarRecover** — $497/month standard
-- [ ] **RadarRecover Founding Partner** — $397/month; setup fee waived
-- [ ] **RadarGrow** — $697/month standard
-- [ ] **RadarGrow Founding Partner** — $597/month; setup fee waived
-- [ ] **RadarSchedule** — $897/month standard
-- [ ] **RadarSchedule Founding Partner** — $797/month; setup fee waived
-- [ ] **RadarDispatch** — custom scope and pricing attached
+Select one and record its monthly price in USD and included voice minutes per month.
 
-**Setup fee:** $__________ / [ ] waived  
-**Approved direct/provider costs, if any:** ______________________________
+- [ ] **RadarAnswer** — $99/month, 200 voice minutes
+- [ ] **RadarRecover** — $179/month, 350 voice minutes
+- [ ] **RadarGrow** — $249/month, 500 voice minutes
+- [ ] **RadarSchedule** — $349/month, 700 voice minutes
+- [ ] **RadarDispatch** — individually quoted price, usage and scope attached
 
-The detailed package scope is defined in the current BookedRadar Package Matrix and this service order. If there is a conflict, the signed customer-specific service order controls.
+**Separately agreed paid setup, additional usage or provider charges, including basis and cap, if applicable:** ______________________________
+
+The [package matrix](PACKAGE_MATRIX.md) describes the intended capabilities. The signed customer-specific service order controls the approved scope. The billing owner verifies that the price mapping matches the signed order before any charge.
 
 ## 3. Coverage
 
@@ -116,7 +114,7 @@ Service is billed monthly in advance unless otherwise stated in the signed order
 
 Preferred payment method is ACH; card may be available.
 
-For Founding Partners, the setup fee is waived as shown above. A Founding Partner promotional monthly rate applies while the applicable founding subscription remains continuously active, unless the signed order states otherwise.
+Any separately agreed paid charges and effective date must appear in this signed order. The free pilot does not authorize a subscription, charge or extension of service.
 
 Unless a different term is written here, service is **month-to-month**. Either party may elect not to renew. Customer cancellation normally becomes effective at the end of the current paid billing period. Amounts already paid for a current service period are not automatically prorated or refunded after service for that period has begun, except where required by law or expressly agreed in writing.
 
@@ -128,7 +126,7 @@ BookedRadar may pause new outbound automation or service activation when payment
 
 Published package pricing does not currently promise unlimited call, message, AI, storage, integration, or provider usage.
 
-During early Founding Partner deployments, BookedRadar will monitor real operating costs. BookedRadar will not impose surprise overage charges. If a customer’s volume or integration complexity materially exceeds the agreed package assumptions, BookedRadar and the customer will review a revised scope or price before new recurring overage charges are imposed.
+BookedRadar will monitor usage within the signed paid scope. BookedRadar will not impose surprise overage charges. If a customer’s volume or integration complexity materially exceeds the agreed package assumptions, BookedRadar and the customer will review a revised scope or price before new recurring overage charges are imposed.
 
 ## 12. Customer responsibilities
 

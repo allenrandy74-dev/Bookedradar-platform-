@@ -1,10 +1,14 @@
 # BookedRadar Customer Welcome / Onboarding Email Template
 
-**Subject:** Welcome to BookedRadar — your [Package Name] setup is ready to begin
+Choose the paragraph for the customer's signed scope and remove the unused paragraph before sending. Use the paid paragraph only after verifying separate explicit customer consent.
+
+**Subject:** Welcome to BookedRadar — your setup is ready to begin
 
 Hi [First Name],
 
-Welcome to BookedRadar. Your selected service is **[Package Name]** at **[Monthly Price]** [plus applicable setup fee / with setup waived].
+**For a free pilot:** Welcome to BookedRadar. Your [after-hours or overflow] pilot is free until 14 days or 25 real calls, whichever comes first. [If you agreed an earlier limit, state it here.] There is no automatic billing. We will confirm the start, deadline, scope and how your original routing will be restored. Paid continuation requires a separate decision from you.
+
+**For a separately approved paid order:** Welcome to BookedRadar. On [approval date], [authorized customer representative] approved [plan and scope] at [monthly USD price], effective [date]. The signed order records [included voice minutes and any separately agreed charges].
 
 We’ll keep the setup simple and do the technical work on our side.
 
