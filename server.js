@@ -1030,7 +1030,7 @@ async function executeTool({
         preferredWindow: args.preferred_window || "",
         windowStart: args.window_start || "",
         windowEnd: args.window_end || "",
-        durationMinutes: args.duration_minutes || null,
+        durationMinutes: args.duration_minutes ?? null,
         serviceAddress: args.service_address || "",
         city: args.city || "",
         callerNumber,

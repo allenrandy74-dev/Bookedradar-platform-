@@ -24,6 +24,11 @@ function positiveInt(value, fallback, min, max) {
   return n;
 }
 
+function serviceDurationMinutes(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  return positiveInt(value, null, 15, 480);
+}
+
 function overlap(start, end, busy) {
   const a = new Date(start).getTime(), b = new Date(end).getTime();
   return busy.some(item => {
@@ -53,7 +58,7 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
     super();
     Object.assign(this, {
       clientId, clientSecret, refreshToken, calendarId, timeZone,
-      defaultDurationMinutes: positiveInt(defaultDurationMinutes, 60, 15, 480),
+      defaultDurationMinutes: serviceDurationMinutes(defaultDurationMinutes ?? 60),
       slotIncrementMinutes: positiveInt(slotIncrementMinutes, 30, 5, 120),
       timeoutMs, fetchImpl,
     });
@@ -133,7 +138,20 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
       throw new Error("invalid_availability_window");
     }
 
-    const duration = positiveInt(request.durationMinutes || request.duration_minutes, this.defaultDurationMinutes, 15, 480);
+    const duration = serviceDurationMinutes(
+      request.durationMinutes ?? request.duration_minutes ?? this.defaultDurationMinutes
+    );
+    if (duration === null) {
+      return {
+        mode: "live_booking",
+        calendarProvider: "google",
+        confirmed: false,
+        slots: [],
+        needsHumanReview: true,
+        reason: "unsupported_service_duration",
+        message: "The calendar cannot check this service duration. The team must review the requested time.",
+      };
+    }
     const data = await this.request("https://www.googleapis.com/calendar/v3/freeBusy", {
       method: "POST",
       body: JSON.stringify({
