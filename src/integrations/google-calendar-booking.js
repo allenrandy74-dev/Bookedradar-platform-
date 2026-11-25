@@ -29,6 +29,17 @@ function serviceDurationMinutes(value) {
   return positiveInt(value, null, 15, 480);
 }
 
+function requestNewWindow() {
+  return {
+    mode: "live_booking",
+    calendarProvider: "google",
+    confirmed: false,
+    slots: [],
+    needsWindowRange: true,
+    message: "Please ask for another time window with enough time for the full service.",
+  };
+}
+
 function overlap(start, end, busy) {
   const a = new Date(start).getTime(), b = new Date(end).getTime();
   return busy.some(item => {
@@ -152,6 +163,15 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
         message: "The calendar cannot check this service duration. The team must review the requested time.",
       };
     }
+    const stepMs = this.slotIncrementMinutes * 60_000;
+    const durationMs = duration * 60_000;
+    const latestStart = maxMs - durationMs;
+    const firstUpcomingStart = () => {
+      const elapsed = Math.max(0, Date.now() - minMs);
+      return minMs + Math.ceil(elapsed / stepMs) * stepMs;
+    };
+    if (firstUpcomingStart() > latestStart) return requestNewWindow();
+
     const data = await this.request("https://www.googleapis.com/calendar/v3/freeBusy", {
       method: "POST",
       body: JSON.stringify({
@@ -169,10 +189,11 @@ export class GoogleCalendarBookingAdapter extends BookingAdapter {
     if (busy.some(item => !item || !iso(item.start) || !iso(item.end) || Date.parse(item.end) <= Date.parse(item.start))) {
       throw new Error("google_calendar_availability_unknown");
     }
-    const stepMs = this.slotIncrementMinutes * 60_000;
-    const durationMs = duration * 60_000;
+    // A candidate may have elapsed while the calendar was responding.
+    const firstStart = firstUpcomingStart();
+    if (firstStart > latestStart) return requestNewWindow();
     const slots = [];
-    for (let start = minMs; start + durationMs <= maxMs && slots.length < 5; start += stepMs) {
+    for (let start = firstStart; start <= latestStart && slots.length < 5; start += stepMs) {
       const end = start + durationMs;
       const startIso = new Date(start).toISOString();
       const endIso = new Date(end).toISOString();

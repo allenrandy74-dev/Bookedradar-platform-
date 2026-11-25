@@ -9,7 +9,8 @@ function adapter(fetchImpl) {
   });
 }
 
-test("Google Calendar adapter refreshes token and returns open slots", async () => {
+test("Google Calendar adapter refreshes token and returns open slots", async t => {
+  t.mock.method(Date, "now", () => Date.parse("2026-09-25T13:00:00Z"));
   const calls=[];
   const a=adapter(async (url,options)=>{
     calls.push({url,options});

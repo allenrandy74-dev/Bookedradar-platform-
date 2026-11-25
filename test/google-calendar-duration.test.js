@@ -7,6 +7,8 @@ const window = {
   windowEnd: "2030-06-10T22:00:00Z",
 };
 
+test.beforeEach(t => t.mock.method(Date, "now", () => Date.parse("2030-06-10T13:00:00Z")));
+
 function configuredCalendar(defaultDurationMinutes) {
   const calendarId = "fixture-calendar";
   const adapter = bookingAdapterForTenant({
