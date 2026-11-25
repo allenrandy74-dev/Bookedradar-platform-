@@ -1,14 +1,14 @@
 # BookedRadar service boundaries and scheduling assessment
-Current commercial direction: September 29, 2026. See `../SERVICE_SCOPE_AND_PRICING.md` and `../PACKAGE_MATRIX.md` for current prices and inclusions.
+For current prices and inclusions, see the [service scope and pricing](../SERVICE_SCOPE_AND_PRICING.md) and [package matrix](../PACKAGE_MATRIX.md).
 
-| Offer | Scope | Commercial treatment |
+| Offer | Scheduling scope | Commercial terms |
 | --- | --- | --- |
-| Proof Pilot | Approved after-hours OR overflow evaluation; confirm-only requests | Up to 14 days or 25 real calls; no automatic paid conversion or expansion |
-| RadarRecover continuation | Answering, recovery and owner intelligence, with accepted channels | $497/month standard or $397 approved Founding Partner; usage terms recorded |
-| RadarSchedule | RadarGrow plus separately approved simple calendar booking | $897/month standard or $797 approved Founding Partner; activation remains gated |
-| RadarDispatch | Technician/crew assignment, travel-aware scheduling and field coordination | Custom scope and quote |
+| Free Proof Pilot | Agreed after-hours or overflow intake. Staff confirm requested times. | Free for up to 14 days or 25 real calls, whichever comes first, or an earlier agreed limit. No automatic billing. |
+| RadarRecover | Answering and recovery using accepted channels. Staff confirm requested times. | $179/month including 350 voice minutes per month. |
+| RadarSchedule | Simple calendar booking after separate authorization and acceptance. | $349/month including 700 voice minutes per month. |
+| RadarDispatch | Technician assignment, travel-aware scheduling and field coordination. | Price, usage and scope are individually quoted. |
 
-Broader coverage requires a volume and operating-cost assessment. A customer's interest in scheduling does not authorize calendar writes. Package setup fees and custom implementation charges must be stated in the order; a founding waiver does not automatically waive custom dispatch work.
+Paid continuation requires separate explicit customer approval of the plan, price, scope and effective date. A scheduling inquiry does not authorize calendar writes. Any paid setup, implementation or usage charge requires separate agreement.
 
 ## Scheduling discovery worksheet
 For each job type record: diagnostic/estimate/maintenance/repair; typical duration;
@@ -34,8 +34,7 @@ rescheduling permissions, job-overrun handling and human override.
 Monthly calls/minutes; appointment volume; technicians; locations; calendars/CRMs;
 job-type complexity; mapping/API costs; coverage hours; exception/support workload.
 Specify implementation fee, recurring fee, included usage, extra usage treatment,
-review cadence and which changes require a new quote. Pilot setup waiver does not
-apply automatically to scheduling implementation.
+review cadence and which changes require a new quote. Document any paid scheduling implementation charge in the separate order.
 
 ## Acceptance before selling or enabling
 Test neighboring-job travel conflicts, overlapping booking attempts, duplicate events,

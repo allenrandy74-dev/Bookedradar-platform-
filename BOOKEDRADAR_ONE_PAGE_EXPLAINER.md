@@ -8,13 +8,13 @@ BookedRadar is an AI-powered call answering and revenue-recovery system for serv
 
 | Package | Monthly | What changes for the business |
 | --- | ---: | --- |
-| **RadarAnswer** | **$149** | Answer professionally, capture the right information, and escalate urgent callers. |
-| **RadarRecover** | **$497** | Everything in RadarAnswer, plus recover missed calls, web leads, stale estimates and cancellations; show measurable recovery activity with RadarProof. |
-| **RadarGrow** | **$697** | Everything in RadarRecover, plus membership-renewal, no-show and retention intelligence when approved channels are activated. |
-| **RadarSchedule** | **$897** | Everything in RadarGrow, plus separately approved live booking into a supported connected calendar. |
-| **RadarDispatch** | **Custom** | Customer-specific scheduling and field-service dispatch using technician, territory, travel-time, duration and capacity rules. |
+| **RadarAnswer** | **$99**, 200 voice minutes | Answer professionally, capture the right information, and escalate urgent callers. |
+| **RadarRecover** | **$179**, 350 voice minutes | Everything in RadarAnswer, plus recover missed calls, web leads, stale estimates and cancellations; show measurable recovery activity with RadarProof. |
+| **RadarGrow** | **$249**, 500 voice minutes | Everything in RadarRecover, plus membership-renewal, no-show and retention intelligence when approved channels are activated. |
+| **RadarSchedule** | **$349**, 700 voice minutes | Everything in RadarGrow, plus separately approved live booking into a supported connected calendar. |
+| **RadarDispatch** | **Price and minutes by quote** | Customer-specific scheduling and field-service dispatch using technician, territory, travel-time, duration and capacity rules. |
 
-**Founding Partner rates:** RadarRecover $397/month, RadarGrow $597/month, RadarSchedule $797/month. Approved Founding Partner setup fees are waived.
+Any setup, extra usage or provider charges for paid service require separate agreement before activation. A paid plan or minute allowance never authorizes an extra pilot call.
 
 ### What a caller experiences
 
@@ -50,8 +50,8 @@ BookedRadar handles the technical translation. The customer keeps the existing b
 - RadarProof separates diagnostic opportunity value from confirmed revenue.
 - BookedRadar does not guarantee revenue or replace emergency services, licensed tradespeople or the customer's field judgment.
 
-## Founding Partner opportunity
+## Free pilot
 
-BookedRadar is preparing its first customer deployments with a limited Founding Partner program. The goal is straightforward: prove that the system can capture and recover enough real opportunity value to justify its cost while reducing the burden on the business's team.
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. Start with after-hours or overflow coverage after we agree on readiness, the handoff and how to restore your route.
 
-**Next step:** complete the BookedRadar Revenue Leak Audit or schedule a short fit conversation to identify where calls, leads, estimates or cancellations are currently leaking revenue.
+[Request a pilot](https://www.bookedradar.com/pricing.html) or ask for a short walkthrough using a fictional service request.

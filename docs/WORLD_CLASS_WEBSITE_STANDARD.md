@@ -121,16 +121,17 @@ Collect workflow detail after initial interest.
 ## Pricing
 Keep pricing visible for self-qualification, but lower than proof/demo sections.
 
-RadarAnswer — $149/mo
-RadarRecover — $497/mo standard; $397/mo Founding Partner where offered
-RadarGrow — $697/mo standard; $597/mo Founding Partner where offered
-RadarSchedule — $897/mo standard; $797/mo Founding Partner where offered
-RadarDispatch — Custom
+| Paid plan | Monthly price (USD) | Included voice minutes per month |
+| --- | ---: | ---: |
+| RadarAnswer | $99 | 200 |
+| RadarRecover | $179 | 350 |
+| RadarGrow | $249 | 500 |
+| RadarSchedule | $349 | 700 |
+| RadarDispatch | Individually quoted | Individually quoted |
 
-Clearly distinguish:
-**Proof Pilot = evaluation**
-**Founding Partner price = paid continuation offer**
-Do not call $397/month itself the Proof Pilot.
+The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. Any setup, extra usage or provider charges for paid service require separate agreement before activation. A paid plan or minute allowance never authorizes an extra pilot call.
+
+Match the approved terms in the [service scope and pricing](../SERVICE_SCOPE_AND_PRICING.md) before publishing.
 
 ## FAQ
 Required:
@@ -199,7 +200,7 @@ Before calling the homepage complete:
 - every demo number tested
 - Proof Pilot form test creates one CRM contact/task only
 - pricing matches production commercial configuration
-- no stale "pilot" language that confuses paid Founding Partner pricing with the capped Proof Pilot
+- pilot wording states the free limits and separate paid approval
 - privacy/terms/security links work
 - page speed acceptable
 - no horizontal mobile overflow

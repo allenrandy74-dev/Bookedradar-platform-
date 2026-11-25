@@ -6,6 +6,8 @@ Make onboarding feel simple to the customer and repeatable for BookedRadar. A cu
 
 ## Package-to-tenant deployment rule
 
+For a free pilot, use the [pilot worksheet](docs/PILOT_ORDER_WORKSHEET.md) and customer-specific admission and routing checks. No paid account or checkout is required. The paid deployment steps below apply only after separate explicit approval of the plan, price, scope and effective date.
+
 The signed service order is the commercial source of truth for the customer's package. Before generating the tenant configuration:
 
 1. Confirm the selected package: RadarAnswer, RadarRecover, RadarGrow, RadarSchedule, or approved RadarDispatch scope.

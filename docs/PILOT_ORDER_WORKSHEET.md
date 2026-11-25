@@ -2,23 +2,25 @@
 Preparation document, not an executed service agreement. Resolve every open field
 and complete the agreement/privacy review before offering it for signature or payment.
 
-## Select evaluation or paid continuation
+## Choose the free pilot or a separate paid order
 
 Provider: BookedRadar LLC.
 
-- [ ] Proof Pilot evaluation: after-hours OR overflow; maximum 14 days or 25 real calls, whichever comes first. No automatic paid conversion or expansion. Record any expressly agreed evaluation charges or provider costs.
-- [ ] Separate paid continuation: select RadarAnswer, RadarRecover, RadarGrow, RadarSchedule or custom RadarDispatch from `../SERVICE_SCOPE_AND_PRICING.md`. RadarRecover is $497/month standard or $397/month for an approved Founding Partner. Founding setup is waived where approved; custom dispatch is separately scoped.
+- [ ] **Free Proof Pilot.** The Proof Pilot is free for qualified businesses. It ends at 14 days or 25 real calls, whichever comes first, or at an earlier agreed limit. There is no automatic billing. Paid service requires separate explicit customer approval of the plan, price, scope and effective date. Choose after-hours or overflow coverage and agree on the return route before activation.
+- [ ] **Separate paid continuation.** Use the [paid service order](../CLIENT_SERVICE_ORDER_TEMPLATE.md) and the current [service scope and pricing](../SERVICE_SCOPE_AND_PRICING.md). The authorized customer must approve the exact plan, price, scope, any separate charges and effective date. Dispatch requires an individual quote.
 
-Record the selected package, approved price and current scope/version. Confirm live Stripe mappings before charging. Confirm-only appointment requests remain the default; live booking and dispatch require their own approval, integration and acceptance.
+The pilot has no paid checkout. Hand a verified paid order to the billing owner, who must verify the live price mapping before any billing action. Appointment requests collect the caller's preferred time for staff confirmation. Live calendar writes and dispatch require separate authorization and a successful customer-specific acceptance test.
 
 ## Complete for each customer
 - Customer legal name, approver, billing contact and operational contact: OPEN.
 - Coverage hours, locations, inbound number/routing, supported integrations: OPEN.
 - Included call/minute/message usage and measurement source: OPEN.
-- Separate usage charges, rate basis, approval/cap and invoice presentation: OPEN.
-- Founding qualification and availability confirmed by an operator, if applicable: OPEN.
-- Evaluation start time, call/time caps, review date, stop conditions and rollback owner: OPEN.
-- Separate paid continuation decision and authorization after evaluation: OPEN.
+- For separately approved paid service, any extra charges, rates, cap and billing terms: OPEN.
+- Tenant ID, verified customer approver, evidence of authority, and approved contact channel: OPEN.
+- Approved coverage and acceptance receipt, authorized UTC start, actual UTC start, UTC deadline and any earlier agreed call/time limit: OPEN.
+- Source for unique, accepted non-test calls, usage as-of UTC, and admission-control test receipt: OPEN.
+- Progress/closeout receipts and feedback; final accepted calls, stop time, routing owner and original-route restoration receipt: OPEN.
+- Separate paid decision, approver, consent receipt, approved plan, price, scope and effective date, if any: OPEN.
 - Activation/acceptance date and subscription billing start: OPEN.
 - Initial commitment, renewal, cancellation notice and effective date: OPEN.
 - Refund/credit policy and treatment of cancelled unused time: OPEN.

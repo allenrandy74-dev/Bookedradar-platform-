@@ -1,5 +1,7 @@
 # BookedRadar Live Billing Activation
 
+> **Legacy billing catalog and validation history.** Preserve this record for its original scope and any existing signed agreements. For new pilots and paid orders, use the [current offer](SERVICE_SCOPE_AND_PRICING.md). The current pilot is free and has no automatic billing. The billing owner must verify a separate dated approval and matching price before any new paid service.
+
 Live billing is implemented but must remain **disarmed** until the Stripe live account has the complete package catalog and the checks below pass.
 
 ## Safety model
