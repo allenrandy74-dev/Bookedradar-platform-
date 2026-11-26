@@ -148,6 +148,17 @@ test('a late hold response after stop is cancelled without replay', () => {
   assert.equal(sent.filter(x => x.type === 'response.create').length, 1);
 });
 
+test('the hold speaks a single sentence in the caller’s selected language', () => {
+  const sent = [];
+  const hold = createTransferHold({ send: event => sent.push(event), log() {} });
+  hold.start('es');
+  hold.start('en');
+  const responses = sent.filter(event => event.type === 'response.create');
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].response.instructions, /Por favor, espere un momento mientras intento comunicarle con el equipo\./);
+  assert.doesNotMatch(responses[0].response.instructions, /Please hold|take a relaxed breath/);
+});
+
 test('sideband send failure does not throw and cannot prevent transfer execution', () => {
   const c = clock(), logs = [];
   const hold = createTransferHold({ ...c, send() { throw new Error('socket closed'); }, log: event => logs.push(event) });
