@@ -2507,7 +2507,7 @@ routes.get("/health", (_req, res) => {
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
-    voiceReliabilityRevision: "2026-11-26.2",
+    voiceReliabilityRevision: "2026-11-26.3",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
     transferSmsConfigured: transferCompanion.ready(),

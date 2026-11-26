@@ -4,8 +4,8 @@ export const CONVERSATION_TURN_DETECTION = Object.freeze({
   type: "server_vad",
   threshold: 0.7,
   prefix_padding_ms: 300,
-  // Allow a caller to pause between groups of digits before answering.
-  silence_duration_ms: 1800,
+  // Leave room for short pauses between groups of digits.
+  silence_duration_ms: 1500,
   create_response: true,
   interrupt_response: true,
   idle_timeout_ms: 10000,
