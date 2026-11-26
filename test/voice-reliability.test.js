@@ -1,3 +1,5 @@
+import { transferContact } from '../src/operator.js';
+import { transferSummary } from '../src/transfer-companion.js';
 import { attemptStore } from './helpers/transfer-attempt-store.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,34 +9,52 @@ import express from 'express';
 import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
 
-test('transfer request preserves captured intake and only fills missing name or service', async () => {
-  // Exercise the production prepare callback without starting the HTTP/SIP server.
+test('requested transfer requires a name and confirmed callback before hold, save, text or dial', async () => {
+  // Exercise the live tool handler without opening a SIP connection.
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
-  const handler = source.slice(source.indexOf('if (name === "transfer_to_human")'));
-  const match = handler.match(/prepare: async \(\) => \{([\s\S]*?)\n    \} \}\);/);
-  assert.ok(match, 'transfer prepare callback exists');
+  const start = source.indexOf('if (name === "transfer_to_human")');
+  const end = source.indexOf('  return { ok: false, reason: `unknown_tool:', start);
+  assert.ok(start !== -1 && end > start);
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const prepare = new AsyncFunction('state', 'args', 'executeTool', 'callId', 'callerNumber', 'tenant', match[1]);
-  const context = { name: 'Replacement', service_type: 'I want to speak with someone', urgency: 'routine', preferred_window: 'anytime' };
-  for (const lastLead of [
-    { name: 'Jane', service_type: 'Burst pipe', urgency: 'emergency', preferred_window: 'today after 3', address: '123 Example St' },
-    { urgency: 'urgent', preferred_window: 'tomorrow morning' },
-    {},
-  ]) {
-    const before = structuredClone(lastLead);
-    const captured = [];
-    const result = await prepare({ getCall: async () => ({ lastLead }) }, { context }, async tool => captured.push(tool), 'test-call', '', {});
-    assert.equal(result.urgency, before.urgency);
-    assert.equal(result.preferred_window, before.preferred_window);
-    assert.equal(result.name, before.name || context.name);
-    assert.equal(result.service_type, before.service_type || context.service_type);
-    assert.equal(result.address, before.address);
-    assert.deepEqual(lastLead, before);
-    assert.equal(captured.length, 1);
-    assert.equal(captured[0].name, 'capture_lead');
-    assert.equal(captured[0].syncCrm, false);
-    assert.deepEqual(captured[0].args, result);
+  const invoke = new AsyncFunction('name', 'args', 'callId', 'tenant', 'callerNumber', 'state',
+    'transferContact', 'humanTransferTarget', 'recordCallMilestone', 'transferHold',
+    'guardedTransfer', 'executeTool', 'transferCompanion', 'callHistory', source.slice(start, end));
+  const tenant = { tenantId: 'demo', businessName: 'Test Plumbing' };
+  const events = [];
+  const saved = [], texts = [];
+  const networkNumber = '+14095550100';
+  let lastLead = { name: 'Old name', service_type: 'Burst pipe', urgency: 'urgent',
+    preferred_window: 'today', service_address: '123 Example St', callback_number: networkNumber };
+  const transfer = createTransferController({ store: attemptStore(), log() {},
+    relay: { preflight: () => ({ ready: false, reason: 'screening_disabled' }) },
+    refer: async () => events.push('dial') });
+  const run = (context, callId = 'test-call') => invoke('transfer_to_human', { context }, callId,
+    tenant, networkNumber, { getCall: async () => ({ lastLead }), patchCall: async () => {} },
+    transferContact, () => '+14095550199', () => {}, { start: () => events.push('hold') }, transfer,
+    async tool => { events.push('save'); saved.push(tool); return { captured: true }; },
+    { notifyAndWait: async ({lead}) => { events.push('text'); texts.push(transferSummary(tenant, lead)); } },
+    { finish: async () => {} });
+
+  const valid = { name: 'Jo', callback_number: '(409) 555-0123', callback_confirmed: true };
+  for (const context of [undefined, {}, { ...valid, name: '  ' }, { ...valid, name: 'Not provided' },
+    { ...valid, callback_number: '' }, { ...valid, callback_number: '555-0123' },
+    { ...valid, callback_number: '+14095550123 ext 2' }, { ...valid, callback_confirmed: false },
+    { name: 'Jo', callback_number: networkNumber }]) {
+    assert.equal((await run(context)).transferred, false);
   }
+  assert.deepEqual(events, []);
+  assert.equal((await run({ ...valid, service_type: 'Speak to someone' })).transferred, true);
+  assert.deepEqual(events, ['hold', 'save', 'text', 'dial']);
+  assert.deepEqual(saved[0].args, { ...lastLead, name: 'Jo', callback_number: '+14095550123' });
+  assert.equal(saved[0].name, 'capture_lead');
+  assert.equal(saved[0].syncCrm, false);
+  assert.match(texts[0], /Caller: Jo/);
+  assert.match(texts[0], /Callback: \+14095550123/);
+  assert.ok(!texts[0].includes(networkNumber));
+
+  lastLead = undefined;
+  assert.equal((await run(valid, 'immediate-request')).transferred, true);
+  assert.deepEqual(saved[1].args, { name: 'Jo', callback_number: '+14095550123' });
 });
 
 function clock() {
@@ -227,7 +247,14 @@ test('preflight exception, preparation timeout, start failure and callback timeo
     const overrides=kind==='prepare'?{}:{[kind]:kind==='waitForEntry'?()=>new Promise(()=>{}):()=>{throw new Error('secret must not be logged');}};
     const f=controllerFixture(overrides);
     if(kind==='prepare') f.options.prepare=()=>new Promise(()=>{});
-    assert.equal((await f.run(f.options)).status,'legacy_referred',kind);
+    const result = await f.run(f.options);
+    if (kind === 'prepare') {
+      assert.equal(result.reason, 'transfer_contact_save_failed');
+      assert.equal(result.transferred, false);
+      assert.deepEqual(f.targets, []);
+      continue;
+    }
+    assert.equal(result.status,'legacy_referred',kind);
     assert.equal(f.targets.at(-1),'tel:+15555550100');
     assert.equal(JSON.stringify(f.events).includes('secret'),false);
   }

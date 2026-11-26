@@ -70,7 +70,7 @@ test('crash boundary after claim before provider remains fenced after reconstruc
  await completesWithin(preparing);
  const replay=await controller(await f.build(),async()=>refs++)(input);
  assert.equal(replay.reason,'transfer_attempt_pending');
- f.expireDeadline();await completesWithin(blocked);assert.equal(refs,1);
+ f.expireDeadline();assert.equal((await completesWithin(blocked)).reason,'transfer_contact_save_failed');assert.equal(refs,0);
 });
 test('provider acceptance followed by receipt write failure never replays',async t=>{
  const f=await fixture(t);let refs=0;
