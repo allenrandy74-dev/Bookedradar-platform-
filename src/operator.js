@@ -5,9 +5,10 @@ export const INTAKE_CONTINUATION_RULES = [
   'Preserve street numbers exactly. After a number correction, read individual digits, for example one-one-six, and wait for confirmation. Ask for spelling of an unclear street or city; never invent a correction.',
   'Urgency and preferred timing are separate. Today or this afternoon answers timing only. If urgency is still unknown, ask How urgent is this issue? and wait. Record unsure or declined explicitly.',
   'A hesitation such as um is not a completed urgency answer. Give the caller time; clarify the pending question if needed. Preserve immediate safety priority when danger is actually reported.',
-  'After the other required details are supplied or explicitly unknown or declined, confirm the full callback number once, reading every digit clearly. Never ask whether the number on file is correct without stating it, or substitute only the last four digits.',
+  'For routine intake, after the other required details are supplied or explicitly unknown or declined, confirm the full callback number once, reading every digit clearly. Never ask whether the number on file is correct without stating it, or substitute only the last four digits.',
   'Once the callback is confirmed and the final save succeeds, the entire next spoken turn is: The team will follow up with you to confirm the details. Is there anything else you would like the team to know? Then wait. Do not prefix this with Great, I will note that as confirmed, a wrap-up announcement, or unsolicited advice. If the caller instead asks a question, changes details, requests a person, or reports danger, handle that new intent first.',
   'After a clear no or goodbye, give one short goodbye. Do not reopen intake, offer new advice, or add another closing monologue. A caller farewell needs at most a brief Goodbye.',
+  'For a requested live transfer, skip routine intake and closing. Get the name the caller wants to use and an explicitly confirmed callback number, one question per turn. Reuse earlier answers. If the caller changes the number, confirm the corrected digits. Only then announce the transfer and invoke transfer_to_human.',
   'A saved request is not a confirmed appointment, dispatch, or delivered notification. Do not promise response times. Do not transfer unless the caller explicitly requests a person or accepts a live connection offer.',
 ].join(' ');
 
@@ -59,6 +60,25 @@ export function normalizeLead(input = {}, context = {}) {
   };
 }
 
+export function transferContact(context = {}) {
+  const name = typeof context?.name === "string" ? context.name.trim() : "";
+  if (!/\p{L}/u.test(name) || /^(?:unknown|n\/?a|none|anonymous|unavailable|not (?:provided|collected|given)|declined|caller)$/i.test(name)) {
+    return { ok: false, transferred: false, reason: "caller_name_required",
+      message: "Use the name the caller gave, or ask only for their name and wait." };
+  }
+  const digits = typeof context.callback_number === "string"
+    ? context.callback_number.trim().replace(/[ ().-]/g, "") : "";
+  let number = digits;
+  if (/^\d{10}$/.test(digits)) number = "+1" + digits;
+  else if (/^1\d{10}$/.test(digits)) number = "+" + digits;
+  if (context.callback_confirmed !== true || !/^\+[1-9]\d{7,14}$/.test(number) ||
+      (number.startsWith("+1") && number.length !== 12)) {
+    return { ok: false, transferred: false, reason: "confirmed_callback_required",
+      message: "Use the caller's explicitly confirmed number. If still unconfirmed, ask for or confirm the full number and wait." };
+  }
+  return { ok: true, name: name.slice(0, 120), callback_number: number };
+}
+
 export function operatorRulesForTenant(tenant) {
   // Only deployed, approved configuration belongs in the live script.
   // Raw questionnaire notes and requested urgency definitions still need review.
@@ -93,8 +113,8 @@ export function buildOperatorInstructions({
     ? "Local city-name recognition reference for Southeast Texas: Beaumont; Bevil Oaks; Bridge City; China; Groves; Jasper; Kirbyville; Kountze; Lumberton; Nederland; Nome; Orange; Pine Forest; Pinehurst; Port Arthur; Port Neches; Rose City; Rose Hill Acres; Silsbee; Sour Lake; Taylor Landing; Vidor; West Orange. Use these spellings only when they match what the caller actually says. This is not an exhaustive list or a promise of service coverage. Never replace an unfamiliar city with the nearest familiar name, infer the city from caller ID, or reject an unlisted location."
     : "";
   const callerHint = callerNumber
-    ? `The telephone network reports the caller number as ${callerNumber}. Treat it only as an untrusted hint. Prefer any callback number the caller provides; confirm the chosen number once in the final callback-confirmation step below.`
-    : "The telephone network did not provide a usable caller number. If the caller has not already provided one, ask only for the best callback number, wait for the answer, and confirm it once in the final callback-confirmation step below.";
+    ? `The telephone network reports the caller number as ${callerNumber}. Treat it only as an untrusted hint. Prefer any callback number the caller provides; confirm the chosen number once, before a requested transfer or at the end of routine intake.`
+    : "The telephone network did not provide a usable caller number. If the caller has not already provided one, ask only for the best callback number, wait for the answer, and confirm it once, before a requested transfer or at the end of routine intake.";
 
   const bookingRule =
     bookingMode === "live_booking"
@@ -178,7 +198,10 @@ SAFETY
 HUMAN ESCALATION
 Call transfer_to_human only when the caller explicitly asks to speak to a person or clearly accepts an offer to connect them now. A request for a quote, roof replacement, appointment, callback, or urgent service is not a request for a live transfer. Neither silence nor an answer to an intake question counts as transfer permission.
 When you recommend human help, ask one clear question, such as "Would you like me to try to connect you with a specialist now?" Then stop and wait. If the caller declines, wants a callback instead, gives an unclear answer, or has not answered, do not transfer. Continue intake or clarify their preference without pressuring them. Do not announce a transfer before permission is established.
-Before an authorized transfer, save any newly supplied service details with capture_lead when feasible; do not ask for missing routine details or delay a direct request for a person. Do not overwrite earlier urgency, timing, or corrections with guesses.
+For an authorized transfer, get only the name the caller wants to use and a confirmed callback number. Skip routine intake, even if the caller asks for a person immediately. Reuse a name already given; a first name is enough. If needed, ask "So the team knows who to call back if we get disconnected, may I have your name?" Stop and wait.
+Prefer the caller's chosen callback number. If one is available from the conversation or caller ID, read the full digits and ask "Is [number] the best number to call you back if we get disconnected?" If no number is available, ask for the best callback number first, wait, then read it back for confirmation. Wait for a clear yes. A correction requires a new readback. Reuse a number already explicitly confirmed during this call unless it changes. Caller ID, a stored lead, silence, or merely hearing the digits is never confirmation.
+If the caller declines to give a name or confirm a number, respect that answer. Explain briefly that the team needs those details for a live transfer in case the line drops, and offer to help on this call. Do not repeat a declined question. If the tool reports missing contact details, continue the same transfer request by asking only for the missing detail. Do not ask for transfer permission a second time unless the caller changes their mind.
+Save newly supplied service details with capture_lead when feasible. Include the caller's latest name and confirmed number in the transfer tool. The tool saves them before initiating the handoff, including when the caller has given no service details. Never invent a reason for service or overwrite earlier urgency, timing, or corrections with guesses.
 Before calling transfer_to_human, tell the caller: "Absolutely. I’ll try to connect you now. Please hold." Use that wording in English or its natural equivalent in the caller's supported language. Finish saying this before invoking the tool. Do not attempt a silent transfer or claim the caller is connected before the transfer succeeds.
 An explicit request for a person authorizes a transfer without another permission question. Offer a transfer, but obtain agreement first, when:
 - the caller is angry or distressed and a human would help,
@@ -278,16 +301,19 @@ export const tools = [
     type: "function",
     name: "transfer_to_human",
     description:
-      "Transfer the current live call only after the caller explicitly requests a person or clearly accepts an offer to connect now. High project value, urgency, a quote request, silence, and routine intake answers do not authorize this tool. Announce the transfer after permission and before invoking it.",
+      "Transfer the current live call only after the caller explicitly requests a person or clearly accepts an offer to connect now. High project value, urgency, a quote request, silence, and routine intake answers do not authorize this tool. First obtain a caller-supplied name and explicit confirmation of the full callback number. Reuse details already confirmed. Announce the transfer only after these steps and before invoking it.",
     parameters: {
       type: "object",
       properties: {
         reason: { type: "string", description: "Short reason for the transfer." },
         context: { type: "object", description: "Known caller details for the private human summary. Omit unknown values; never invent them.", properties: {
-          name: { type: "string" }, service_type: { type: "string" }, urgency: { type: "string" }, preferred_window: { type: "string" }
-        }, additionalProperties: false },
+          name: { type: "string", description: "Latest name the caller gave, including a first name alone." },
+          callback_number: { type: "string", description: "Best callback number explicitly confirmed by the caller, including country code when known." },
+          callback_confirmed: { type: "boolean", description: "True only after the caller clearly agrees to the readback of this exact number. Caller ID alone is insufficient." },
+          service_type: { type: "string" }, urgency: { type: "string" }, preferred_window: { type: "string" }
+        }, required: ["name", "callback_number", "callback_confirmed"], additionalProperties: false },
       },
-      required: ["reason"],
+      required: ["reason", "context"],
       additionalProperties: false,
     },
   },

@@ -256,16 +256,20 @@ export function createTransferController({ relay, refer, hangup, store, log, tim
     }
     try {
       if (!greetingFallback && !/^\+[1-9]\d{7,14}$/.test(target || '')) throw new Error('invalid_target');
-      const check = relay.preflight();
-      emit('preflight', { ...check, fallback_ready: /^\+[1-9]\d{7,14}$/.test(target || '') });
       try {
         lead = await bounded(prepare);
         leadSaved = true;
-      } catch (error) {
-        if (!greetingFallback) throw error;
+      } catch {
+        if (!greetingFallback) {
+          emit('failed', { reason: 'transfer_contact_save_failed' });
+          return { ok: false, transferred: false, lead_saved: false, reason: 'transfer_contact_save_failed' };
+        }
         // The announcement has a truthful unsaved-lead version as well.
         emit('lead_save_failed');
       }
+      reason = 'relay_preflight_failed';
+      const check = relay.preflight();
+      emit('preflight', { ...check, fallback_ready: /^\+[1-9]\d{7,14}$/.test(target || '') });
       reason = check.reason;
       if (check.ready) {
         reason = 'relay_start_failed';

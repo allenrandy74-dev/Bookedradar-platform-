@@ -26,6 +26,7 @@ import {
   buildOperatorInstructions,
   operatorRulesForTenant,
   normalizeLead,
+  transferContact,
   parseSipPhone,
   parseDialedNumber,
   tools,
@@ -1106,7 +1107,6 @@ async function executeTool({
   }
 
   if (name === "transfer_to_human") {
-    recordCallMilestone(callId, "transfer.requested");
     const target = humanTransferTarget(tenant);
     if (!target) {
       recordCallMilestone(callId, "transfer.failed", {
@@ -1120,19 +1120,22 @@ async function executeTool({
       };
     }
 
+    const contact = transferContact(args?.context);
+    if (!contact.ok) return contact;
+
+    recordCallMilestone(callId, "transfer.requested");
     transferHold?.start();
     const result = await guardedTransfer({ callId, tenant, target,
-      beforeRefer: ({ lead }) => transferCompanion.notifyAndWait({ callId, tenant, target, lead, callerNumber }),
+      beforeRefer: ({ lead }) => transferCompanion.notifyAndWait({ callId, tenant, target, lead }),
       prepare: async () => {
-      const existing = await state.getCall(callId);
-      const supplied = args?.context || {};
-      const lead = { ...(existing?.lastLead || {}) };
-      for (const key of ["name", "service_type"]) {
-        if (!lead[key] && supplied[key]) lead[key] = supplied[key];
-      }
-      await executeTool({ name: "capture_lead", args: lead, callId, callerNumber, tenant, syncCrm: false });
-      return lead;
-    } });
+        const existing = await state.getCall(callId);
+        const lead = { ...existing?.lastLead, name: contact.name, callback_number: contact.callback_number };
+        if (!lead.service_type && args.context.service_type) lead.service_type = args.context.service_type;
+        const saved = await executeTool({ name: "capture_lead", args: lead, callId, callerNumber, tenant, syncCrm: false });
+        if (saved?.captured !== true) throw new Error("transfer_contact_save_failed");
+        return lead;
+      },
+    });
     if (result.transferred) {
       recordCallMilestone(callId, "transfer.initiated");
       try {
@@ -2495,7 +2498,7 @@ routes.get("/health", (_req, res) => {
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
-    voiceReliabilityRevision: "2026-09-22.2",
+    voiceReliabilityRevision: "2026-11-26.1",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
     transferSmsConfigured: transferCompanion.ready(),
