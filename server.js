@@ -4,7 +4,7 @@ import { trackedRoutes } from "./src/tracked-routes.js";
 import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import path from "node:path";
-import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from "./src/greeting-watchdog.js";
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createCallerTurnTracker } from "./src/greeting-watchdog.js";
 import { createWarmTransfer, createTransferController, validTwilioSignature } from "./src/warm-transfer.js";
 import { createTransferCompanion, createTransferHold, TRANSFER_DELAY_MS } from "./src/transfer-companion.js";
 import express from "express";
@@ -1186,11 +1186,7 @@ async function attachSideband({
     }
   };
   const transferHold = createTransferHold({ send: event => send(ws, event), log: voiceLog, restoreTurnDetection: CONVERSATION_TURN_DETECTION });
-  const conversationOutputGuard = createConversationOutputGuard({
-    send: event => send(ws, event),
-    log: voiceLog,
-    shouldRestore: () => !transferHold.isActive(),
-  });
+  const callerTurns = createCallerTurnTracker();
   const postSaveResponse = createPostSaveResponse({ send: event => send(ws, event), log: voiceLog });
   const openingAudio = createOpeningAudioMonitor({ log: voiceLog });
   const greetingTurns = createGreetingTurnGuard({ send: event => send(ws, event), log: voiceLog });
@@ -1235,7 +1231,7 @@ async function attachSideband({
       greetingTurns.event(event);
       greeting.event(event);
       transferHold.event(event);
-      conversationOutputGuard.event(event);
+      callerTurns.event(event);
       postSaveResponse.event(event);
 
 
@@ -1282,6 +1278,8 @@ async function attachSideband({
         event.item?.type === "function_call"
       ) {
         const toolCall = event.item;
+        if (toolCall.status && toolCall.status !== "completed") return;
+        const origin = callerTurns.forResponse(event.response_id);
         const dedupeKey = toolCall.call_id || toolCall.id;
         if (dedupeKey && handledToolCalls.has(dedupeKey)) return;
         if (dedupeKey) handledToolCalls.add(dedupeKey);
@@ -1291,6 +1289,14 @@ async function attachSideband({
           args = JSON.parse(toolCall.arguments || "{}");
         } catch {}
 
+        // A caller may have started correcting the digits as the tool was emitted.
+        if (toolCall.name === "transfer_to_human" && !callerTurns.canReply(origin)) {
+          send(ws, { type: "conversation.item.create", item: {
+            type: "function_call_output", call_id: toolCall.call_id,
+            output: JSON.stringify({ transferred: false, reason: "caller_turn_changed" }),
+          } });
+          return;
+        }
         let output;
         if (toolCall.name === "transfer_to_human") greetingTurns.release("human_transfer");
         try {
@@ -1335,6 +1341,9 @@ async function attachSideband({
             output: JSON.stringify(output),
           },
         });
+        // Keep the tool result in the conversation. VAD owns the next reply
+        // if the caller has started a newer turn while the tool was running.
+        if (!callerTurns.canReply(origin)) return;
         if (toolCall.name === "capture_lead") postSaveResponse.request(output?.captured === true);
         else send(ws, { type: "response.create" });
         return;
@@ -1390,7 +1399,7 @@ async function attachSideband({
       console.error(JSON.stringify({ event: "call.finalization_failed", call_id: callId }));
     });
     callLifecycle.end(callId);
-    postSaveResponse.stop(); conversationOutputGuard.stop();
+    postSaveResponse.stop();
     openingAudio.close(); greetingTurns.stop(); greeting.stop(); transferHold.stop();
   });
 }
@@ -2498,7 +2507,7 @@ routes.get("/health", (_req, res) => {
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
-    voiceReliabilityRevision: "2026-11-26.1",
+    voiceReliabilityRevision: "2026-11-26.2",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
     transferSmsConfigured: transferCompanion.ready(),

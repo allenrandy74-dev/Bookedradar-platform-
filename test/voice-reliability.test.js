@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import express from 'express';
-import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createConversationOutputGuard } from '../src/greeting-watchdog.js';
+import { createGreetingWatchdog, createOpeningAudioMonitor, createGreetingTurnGuard, createCallerTurnTracker } from '../src/greeting-watchdog.js';
 import { createWarmTransfer, whisperText } from '../src/warm-transfer.js';
 
 test('requested transfer requires a name and confirmed callback before hold, save, text or dial', async () => {
@@ -177,7 +177,7 @@ test('failed lead persistence never produces a saved-lead claim in the audible f
   assert.match(result.text,/Please call the business again/); assert.doesNotMatch(result.text,/saved/);
 });
 
-test('call acceptance preserves model, voice, tools and explicitly enables short-turn VAD', async () => {
+test('call acceptance preserves model, voice, tools and allows a pause between digit groups', async () => {
   const { acceptRealtimeCall } = await import('../src/openai-call.js');
   const saved = globalThis.fetch; let body;
   globalThis.fetch = async (_url, options) => { body = JSON.parse(options.body); return new Response(''); };
@@ -188,7 +188,7 @@ test('call acceptance preserves model, voice, tools and explicitly enables short
   assert.equal(body.audio.input.turn_detection.create_response,true);
   assert.equal(body.audio.input.turn_detection.interrupt_response,false);
   assert.equal(body.audio.input.turn_detection.threshold,0.7);
-  assert.equal(body.audio.input.turn_detection.silence_duration_ms,600);
+  assert.equal(body.audio.input.turn_detection.silence_duration_ms,1800);
   assert.equal(body.audio.input.noise_reduction.type,'near_field');
 });
 
@@ -361,6 +361,7 @@ test('greeting guard protects opening until actual playback ends, not generation
   assert.equal(sent[1].session.audio.input.turn_detection.interrupt_response, true);
   assert.equal(sent[1].session.audio.input.turn_detection.create_response, true);
   assert.equal(sent[1].session.audio.input.turn_detection.threshold, 0.7);
+  assert.equal(sent[1].session.audio.input.turn_detection.silence_duration_ms, 1800);
   assert.equal(logs[1].reason, 'greeting_completed');
   g.release('duplicate'); assert.equal(sent.length, 2);
   assert.equal(c.timers.size, 0);
@@ -396,56 +397,27 @@ test('greeting guard cancels its release on socket close', async () => {
 });
 
 
-test('normal assistant output guard suppresses VAD during playback and restores it after audio', () => {
-  const sent = [], logs = [];
-  const g = createConversationOutputGuard({
-    send: event => sent.push(event),
-    log: (event, fields) => logs.push({ event, ...fields }),
-  });
-  g.event({ type:'response.created', response:{ id:'r1' } });
-  assert.equal(sent.length,1);
-  assert.equal(sent[0].session.audio.input.turn_detection,null);
-  g.event({ type:'output_audio_buffer.started', response_id:'r1' });
-  g.event({ type:'input_audio_buffer.speech_started' });
-  assert.equal(sent.length,1,'ambient speech cannot alter guarded output');
-  g.event({ type:'output_audio_buffer.stopped', response_id:'r1' });
-  assert.equal(sent[1].type,'input_audio_buffer.clear');
-  assert.equal(sent[2].type,'session.update');
-  assert.equal(sent[2].session.audio.input.turn_detection.threshold,0.7);
-  assert.equal(sent[2].session.audio.input.turn_detection.interrupt_response,true);
-  assert.equal(logs.at(-1).reason,'playback_completed');
+test('caller can finish a correction that overlaps playback or an outstanding tool', () => {
+  const turns = createCallerTurnTracker();
+  turns.event({ type: 'response.created', response: { id: 'readback' } });
+  const original = turns.forResponse('readback');
+  assert.equal(turns.canReply(original), true);
+  turns.event({ type: 'output_audio_buffer.started', response_id: 'readback' });
+  turns.event({ type: 'input_audio_buffer.speech_started' });
+  assert.equal(turns.canReply(original), false);
+  turns.event({ type: 'output_audio_buffer.cleared', response_id: 'readback' });
+  turns.event({ type: 'response.done', response: { id: 'readback', status: 'cancelled' } });
+  assert.equal(turns.canReply(turns.forResponse('readback')), false);
+  turns.event({ type: 'input_audio_buffer.speech_stopped' });
+  assert.equal(turns.canReply(original), false, 'a late tool result must yield to the new reply');
+  turns.event({ type: 'response.created', response: { id: 'corrected' } });
+  assert.equal(turns.canReply(turns.forResponse('corrected')), true);
+  assert.equal(turns.canReply(turns.forResponse('readback')), false);
 });
 
-test('normal output guard does not fight active transfer hold', () => {
-  const sent = [];
-  let transferActive = false;
-  const g = createConversationOutputGuard({
-    send: event => sent.push(event),
-    log() {},
-    shouldRestore: () => !transferActive,
-  });
-  g.event({ type:'response.created', response:{ id:'r1' } });
-  g.event({ type:'output_audio_buffer.started', response_id:'r1' });
-  transferActive = true;
-  g.event({ type:'output_audio_buffer.cleared', response_id:'r1' });
-  assert.equal(sent[1].type,'input_audio_buffer.clear');
-  assert.equal(sent.filter(x=>x.type==='session.update').length,1,'only initial suspend update is sent');
-});
-
-test('normal output guard ignores greeting and transfer-hold responses', () => {
-  const sent = [];
-  const g = createConversationOutputGuard({ send:e=>sent.push(e), log(){} });
-  g.event({ type:'response.created', response:{ id:'g', metadata:{purpose:'opening_greeting'} } });
-  g.event({ type:'response.created', response:{ id:'h', metadata:{purpose:'bookedradar_transfer_hold'} } });
-  assert.equal(sent.length,0);
-});
-
-test('normal output guard restores after non-audio response', () => {
-  const sent = [];
-  const g = createConversationOutputGuard({ send:e=>sent.push(e), log(){} });
-  g.event({ type:'response.created', response:{ id:'tool' } });
-  g.event({ type:'response.done', response:{ id:'tool', status:'completed' } });
-  assert.equal(sent[0].session.audio.input.turn_detection,null);
-  assert.equal(sent[1].type,'input_audio_buffer.clear');
-  assert.equal(sent[2].session.audio.input.turn_detection.threshold,0.7);
+test('private hold playback does not replace the transfer tool response', () => {
+  const turns = createCallerTurnTracker();
+  turns.event({ type: 'response.created', response: { id: 'request' } });
+  turns.event({ type: 'response.created', response: { id: 'hold', metadata: { purpose: 'bookedradar_transfer_hold' } } });
+  assert.equal(turns.canReply(turns.forResponse('request')), true);
 });
