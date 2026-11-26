@@ -1,4 +1,5 @@
 import { transferContact } from '../src/operator.js';
+import { competitiveFeaturesForTenant } from '../src/competitive-features.js';
 import { transferSummary } from '../src/transfer-companion.js';
 import { attemptStore } from './helpers/transfer-attempt-store.js';
 import test from 'node:test';
@@ -18,22 +19,22 @@ test('requested transfer requires a name and confirmed callback before hold, sav
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const invoke = new AsyncFunction('name', 'args', 'callId', 'tenant', 'callerNumber', 'state',
     'transferContact', 'humanTransferTarget', 'recordCallMilestone', 'transferHold',
-    'guardedTransfer', 'executeTool', 'transferCompanion', 'callHistory', source.slice(start, end));
-  const tenant = { tenantId: 'demo', businessName: 'Test Plumbing' };
+    'guardedTransfer', 'executeTool', 'transferCompanion', 'callHistory', 'competitiveFeaturesForTenant', source.slice(start, end));
+  const tenant = { tenantId: 'demo', businessName: 'Test Plumbing', features: { languages: ['en', 'es'] } };
   const events = [];
-  const saved = [], texts = [];
+  const saved = [], texts = [], holdLanguages = [];
   const networkNumber = '+14095550100';
   let lastLead = { name: 'Old name', service_type: 'Burst pipe', urgency: 'urgent',
     preferred_window: 'today', service_address: '123 Example St', callback_number: networkNumber };
   const transfer = createTransferController({ store: attemptStore(), log() {},
     relay: { preflight: () => ({ ready: false, reason: 'screening_disabled' }) },
     refer: async () => events.push('dial') });
-  const run = (context, callId = 'test-call') => invoke('transfer_to_human', { context }, callId,
+  const run = (context, callId = 'test-call', language) => invoke('transfer_to_human', { context, language }, callId,
     tenant, networkNumber, { getCall: async () => ({ lastLead }), patchCall: async () => {} },
-    transferContact, () => '+14095550199', () => {}, { start: () => events.push('hold') }, transfer,
+    transferContact, () => '+14095550199', () => {}, { start: selected => { events.push('hold'); holdLanguages.push(selected); } }, transfer,
     async tool => { events.push('save'); saved.push(tool); return { captured: true }; },
     { notifyAndWait: async ({lead}) => { events.push('text'); texts.push(transferSummary(tenant, lead)); } },
-    { finish: async () => {} });
+    { finish: async () => {} }, competitiveFeaturesForTenant);
 
   const valid = { name: 'Jo', callback_number: '(409) 555-0123', callback_confirmed: true };
   for (const context of [undefined, {}, { ...valid, name: '  ' }, { ...valid, name: 'Not provided' },
@@ -53,8 +54,9 @@ test('requested transfer requires a name and confirmed callback before hold, sav
   assert.ok(!texts[0].includes(networkNumber));
 
   lastLead = undefined;
-  assert.equal((await run(valid, 'immediate-request')).transferred, true);
+  assert.equal((await run(valid, 'immediate-request', 'es')).transferred, true);
   assert.deepEqual(saved[1].args, { name: 'Jo', callback_number: '+14095550123' });
+  assert.deepEqual(holdLanguages, ['en', 'es']);
 });
 
 function clock() {

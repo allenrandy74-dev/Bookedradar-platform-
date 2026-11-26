@@ -1124,7 +1124,8 @@ async function executeTool({
     if (!contact.ok) return contact;
 
     recordCallMilestone(callId, "transfer.requested");
-    transferHold?.start();
+    const holdLanguage = competitiveFeaturesForTenant(tenant).languages.includes(args.language) ? args.language : "en";
+    transferHold?.start(holdLanguage);
     const result = await guardedTransfer({ callId, tenant, target,
       beforeRefer: ({ lead }) => transferCompanion.notifyAndWait({ callId, tenant, target, lead }),
       prepare: async () => {
@@ -2507,7 +2508,7 @@ routes.get("/health", (_req, res) => {
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
-    voiceReliabilityRevision: "2026-11-26.3",
+    voiceReliabilityRevision: "2026-11-26.4",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
     transferSmsConfigured: transferCompanion.ready(),

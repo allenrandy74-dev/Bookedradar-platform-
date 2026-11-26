@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 export const TRANSFER_DELAY_MS = 10_000;
-export const TRANSFER_HOLD_MESSAGE = "I’m arranging your transfer. Please stay on the line.";
+export const TRANSFER_HOLD_MESSAGE = "Please hold while I try to connect you.";
+const SPANISH_TRANSFER_HOLD_MESSAGE = "Por favor, espere un momento mientras intento comunicarle con el equipo.";
 
 export function transferSummary(tenant, lead = {}, callerNumber = '') {
   const clean = (value, max) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, max) : '';
@@ -105,19 +106,20 @@ export function createTransferHold({ send: deliver, log, restoreTurnDetection })
     try { deliver(event); }
     catch { log('transfer.hold_failed', { reason: 'sideband_unavailable' }); }
   }
-  function request() {
+  function request(language) {
     if (!active) return;
     responseId = undefined;
     requestNumber++;
+    const message = language === 'es' ? SPANISH_TRANSFER_HOLD_MESSAGE : TRANSFER_HOLD_MESSAGE;
     send({ type: 'response.create', response: {
       conversation: 'none', input: [], output_modalities: ['audio'], tools: [], tool_choice: 'none',
       metadata: { purpose: tag, sequence: String(requestNumber) },
-      instructions: `Say this holding announcement exactly once, then remain silent. Use a calm, conversational voice. Leave natural pauses between sentences. Before saying "Please stay on the line", take a relaxed breath and pause silently for about one second; do not rush into that sentence or speak these delivery instructions. Do not ask questions or add facts: "${TRANSFER_HOLD_MESSAGE}"`,
+      instructions: `Say this sentence exactly once in a calm, conversational voice, then remain silent: "${message}"`,
     } });
   }
   return {
     isActive() { return active; },
-    start() {
+    start(language) {
       if (active) return;
       active = true;
       // The caller cannot act during the fixed handoff wait. Fully suspend VAD
@@ -130,7 +132,7 @@ export function createTransferHold({ send: deliver, log, restoreTurnDetection })
         activeConversationResponseId = undefined;
       }
       log('transfer.hold_requested');
-      request();
+      request(language);
     },
     event(event) {
       if (!active && ['session.created', 'session.updated'].includes(event.type)) originalVad = event.session?.audio?.input?.turn_detection;

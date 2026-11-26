@@ -87,6 +87,20 @@ test("business guidance is isolated to the selected tenant", async () => {
   assert.deepEqual(b, { safetyRule: "", urgentDefinition: "", businessInstructions: "" });
 });
 
+test("a live transfer asks one callback question per turn and leaves the announcement to the tool", async () => {
+  const { buildOperatorInstructions, tools } = await import("../src/operator.js");
+  const prompt = buildOperatorInstructions({ companyName: "QA HVAC", companyTrade: "HVAC", serviceArea: "Silsbee" });
+  const handoff = prompt.split("HUMAN ESCALATION\n")[1].split("\nPRIVACY")[0];
+  const transfer = tools.find(tool => tool.name === "transfer_to_human");
+
+  assert.match(handoff, /say only "What's the best number to call you back\?" Then wait/);
+  assert.match(handoff, /ask only "Is \[full number\] the best number to call you back\?"/);
+  assert.match(handoff, /Read every digit clearly .+ no preamble or second confirmation question/);
+  assert.match(handoff, /invoke transfer_to_human without speaking first/);
+  assert.match(transfer.description, /The tool plays the hold announcement/);
+  assert.deepEqual(transfer.parameters.properties.language.enum, ["en", "es"]);
+});
+
 test('live-booking configuration gives advisory-only, owner-confirmed guidance while authority is unavailable',async()=>{
   const {buildOperatorInstructions}=await import('../src/operator.js');
   const prompt=buildOperatorInstructions({companyName:'Synthetic',companyTrade:'HVAC',serviceArea:'Test',bookingMode:'live_booking'});
