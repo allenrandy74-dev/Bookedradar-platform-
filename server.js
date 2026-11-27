@@ -431,38 +431,37 @@ async function performOpsAlertCheck() {
         continue;
       }
 
-      const observed = await opsIncidentStore.observe(candidate, { cooldownMinutes });
-      if (!observed.shouldNotify) continue;
+      const from = process.env.RESEND_FROM_EMAIL;
+      const to = OPS_ALERT_EMAIL;
+      const { notification } = await opsIncidentStore.observe(candidate, { cooldownMinutes, from, to });
+      if (!notification) continue;
 
-      if (!OPS_ALERT_EMAIL || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
+      const releaseClaim = () => opsIncidentStore.releaseNotification(candidate.incidentKey, notification.claimId)
+        .catch(() => console.error(JSON.stringify({
+          event:"ops.alert_claim_release_failed",
+          incident_key:candidate.incidentKey,
+        })));
+
+      if (!to || !process.env.RESEND_API_KEY || !from) {
         console.error(JSON.stringify({
           event:"ops.alert_delivery_unconfigured",
           scope_key:scopeKey,
           severity:candidate.severity,
           incident_key:candidate.incidentKey,
         }));
+        await releaseClaim();
         continue;
       }
 
+      let delivered;
       try {
-        const delivered = await sendOpsAlertEmail({
+        delivered = await sendOpsAlertEmail({
           apiKey:process.env.RESEND_API_KEY,
-          from:process.env.RESEND_FROM_EMAIL,
-          to:OPS_ALERT_EMAIL,
-          candidate,
-          incidentId:candidate.incidentKey,
+          from,
+          to,
+          notification,
         });
-        console.log(JSON.stringify({
-          event:"ops.alert_delivered",
-          scope_key:scopeKey,
-          severity:candidate.severity,
-          incident_key:candidate.incidentKey,
-          provider:"resend",
-          provider_id:delivered.id || null,
-        }));
       } catch (error) {
-        await opsIncidentStore.releaseNotification(candidate.incidentKey);
         console.error(JSON.stringify({
           event:"ops.alert_delivery_failed",
           scope_key:scopeKey,
@@ -470,7 +469,25 @@ async function performOpsAlertCheck() {
           incident_key:candidate.incidentKey,
           error:String(error?.message || "ops_alert_delivery_failed").slice(0,160),
         }));
+        await releaseClaim();
+        continue;
       }
+
+      const recorded = await opsIncidentStore.completeNotification(candidate.incidentKey, notification.claimId)
+        .catch(() => {
+          console.error(JSON.stringify({event:"ops.alert_record_failed",incident_key:candidate.incidentKey}));
+          return false;
+        });
+      if (!recorded) continue;
+
+      console.log(JSON.stringify({
+        event:"ops.alert_delivered",
+        scope_key:scopeKey,
+        severity:candidate.severity,
+        incident_key:candidate.incidentKey,
+        provider:"resend",
+        provider_id:delivered.id || null,
+      }));
     }
   } finally {
     opsAlertCheckRunning = false;
@@ -484,6 +501,12 @@ if (OPS_ALERTS_ENABLED.toLowerCase() === "true") {
   opsIntervalTimer = setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs);
   opsIntervalTimer.unref();
 }
+console.log(JSON.stringify({
+  event: "ops.alerting.startup",
+  enabled: Boolean(opsIntervalTimer),
+  incident_store_configured: Boolean(opsIncidentStore),
+  delivery_configured: Boolean(OPS_ALERT_EMAIL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL),
+}));
 
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
 let billing = null;

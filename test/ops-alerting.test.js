@@ -46,29 +46,24 @@ test("healthy and no-data assessments do not create incidents",()=>{
   assert.equal(buildOpsAlertCandidate({scopeKey:"tenant:x",assessment:{status:"no_data",signals:[]}}),null);
 });
 
-test("ops email contains no caller content and uses deterministic idempotency",async()=>{
-  let request;
-  const fetchImpl=async(url,options)=>{
-    request={url,options};
-    return {ok:true,status:200,text:async()=>JSON.stringify({id:"email-1"})};
+test("ops email uses the notification ID and keeps the snapshotted request on retry",async()=>{
+  const requests = [];
+  const fetchImpl = async (_url, options) => {
+    requests.push({ key: options.headers["Idempotency-Key"], body: options.body });
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: "email-1" }) };
   };
-  const candidate=buildOpsAlertCandidate({
-    scopeKey:"tenant:demo-hvac",
-    assessment:{
-      status:"critical",severity:"critical",
-      signals:[{code:"lead_persistence_failure",count:1,message:"do not include this free text"}],
-    },
-    summary:{callsStarted:3,leadPersistFailures:1},
-  });
-  const result=await sendOpsAlertEmail({
+  const notification = { id: "notification-1", message: { subject: "Critical incident", text: "Known signal" } };
+  const send = (attempt) => sendOpsAlertEmail({
     apiKey:"synthetic-key",from:"ops@example.com",to:"owner@example.com",
-    candidate,incidentId:candidate.incidentKey,fetchImpl,
+    notification: attempt, fetchImpl,
   });
-  assert.equal(result.id,"email-1");
-  const body=JSON.parse(request.options.body);
-  assert.equal(body.to[0],"owner@example.com");
-  assert.match(body.subject,/CRITICAL/);
-  assert.equal(body.text.includes("lead_persistence_failure"),true);
-  assert.equal(body.text.includes("do not include this free text"),false);
-  assert.equal(request.options.headers["Idempotency-Key"],`bookedradar/ops/${candidate.incidentKey}`);
+  assert.equal((await send(notification)).id, "email-1");
+  await send({ ...notification, claimId: "reclaimed" });
+  await send({ ...notification, id: "notification-2" });
+  assert.deepEqual(requests[0], requests[1]);
+  assert.equal(requests[0].key, "bookedradar/ops/notification-1");
+  assert.equal(requests[2].key, "bookedradar/ops/notification-2");
+  assert.deepEqual(JSON.parse(requests[0].body), {
+    from: "ops@example.com", to: ["owner@example.com"], ...notification.message,
+  });
 });
