@@ -34,7 +34,7 @@ Core demo calls are owner-accepted with the known voicemail handoff limitation. 
 
 ## Manual onboarding preparation until automation is accepted
 
-1. Read the existing Quick Start submission in Wix Forms and verify its business/contact details.
+1. For hosted Quick Start requests, use the [current Wix CRM task and notes handoff](CUSTOMER_ONBOARDING.md#prepare-a-draft-from-the-hosted-quick-start). Read the original submission in Wix Forms only for a legacy Wix Forms request.
 2. Use the protected `POST /api/v1/onboarding/prepare` endpoint with the submission. Keep the billing/admin credentials server-side.
 3. Review the returned tenant draft and missing answers. A generated draft is not a deployed tenant or signed package selection.
 4. Complete CUSTOMER_ACTIVATION_SHEET.md; obtain the selected package from the signed service order.

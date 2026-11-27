@@ -25,6 +25,36 @@ operator note before follow-up. Missing preferences default to email; clarify
 legacy choices in writing rather than inferring permission from a phone number.
 
 ## 2. Tenant provisioning map
+
+### Prepare a draft from the hosted Quick Start
+
+1. Open the Wix CRM **AI phone lead — Customer setup review** task and the linked contact's notes.
+   Confirm the linked contact and business, and use the note timestamps to identify the
+   corresponding submission. Use one report, from
+   `Customer setup questionnaire` through `Source: bookedradar.com/setup`. Long reports may span
+   consecutive notes. Read the chunks in order and join their text directly, since a chunk can
+   split an answer mid-line. If the report is incomplete or its order is unclear, reconcile it
+   before preparing the draft.
+2. In a private operator workspace, transcribe the answers into a JSON object named `submissions`.
+   The accepted keys are `first_name`, `business_name`, `email`, `contact_preference`, `phone`,
+   `business_type`, `service_area`, `business_hours`, `services`, `coverage`, `urgent_contact`,
+   `urgent_definition`, `customer_tracking`, `booking`, and `anything_else`. Keep multiline
+   answers in one JSON string per field, using `\n` for line breaks. Text within an answer can
+   look like a field label. Review the boundaries against the whole report before copying.
+   Leave an absent optional answer empty or omit the key.
+3. Send `{"submissions": {…}}` to `POST /api/v1/onboarding/prepare` from the private operator
+   environment with the existing admin authorization. Keep the token and submission out of
+   shared logs, public pages and source control. Use `urgent_contact` for the caller-transfer
+   destination. Include `phone` only for a separately requested setup call. If a signed service
+   order specifies a standard package, an operator can add `service_profile` as `answer`,
+   `recover`, `grow`, or `schedule`. Confirm the purchased package from the signed order.
+   Handle custom Dispatch separately.
+4. Review `tenantDraft`, `customerActions` and `readiness` against the questionnaire and approved
+   scope. Check that the draft honors the follow-up preference and preserves the separate
+   transfer destination. A prepared draft has `activationAllowed: false`. Complete the customer
+   activation checklist and obtain the required approvals before changing routing, enabling
+   integrations or starting billing.
+
 Onboarding answers map to these tenant fields:
 - Identity: tenantId, businessName, trade, timeZone
 - Operations: serviceArea, services, businessHours
