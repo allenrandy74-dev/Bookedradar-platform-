@@ -35,6 +35,7 @@ test('real application HTTP routes use disposable Postgres with providers disabl
     const event={id:'http-event',idempotencyKey:'http-event',type:'missed_call',contact:{name:'Synthetic',phone:'+14095550111',transactionalSmsAllowed:true}};
     const ingestHeaders={...headers,authorization:'Bearer synthetic-ingest'};
     const first=await fetch(base+'/api/v1/events',{method:'POST',headers:ingestHeaders,body:JSON.stringify(event)});assert.equal(first.status,201,await first.clone().text());
+    const { result: { opportunity } } = await first.json();
     const replay=await(await fetch(base+'/api/v1/events',{method:'POST',headers:ingestHeaders,body:JSON.stringify(event)})).json();assert.equal(replay.result.duplicate,true);
     const calls=await(await fetch(base+'/api/v1/calls',{headers})).json();assert.equal(calls.calls[0].callId,'http-call');
     assert.equal((await fetch(base+'/api/v1/calls/http-call',{headers:{...headers,'x-bookedradar-tenant':'demo-plumbing'}})).status,404);
@@ -46,7 +47,26 @@ test('real application HTTP routes use disposable Postgres with providers disabl
     const loadStarted=Date.now();
     const loadResults=await Promise.all(Array.from({length:20},(_,i)=>fetch(base+'/api/v1/events',{method:'POST',headers:ingestHeaders,body:JSON.stringify({...event,id:`load-${i}`,idempotencyKey:`load-${i}`})})));
     for(const response of loadResults)assert.equal(response.status,201,await response.clone().text());
-    assert.equal((await stores.recovery.forTenant('demo-hvac').snapshot()).events.length,21);
+    const tenantRecovery = stores.recovery.forTenant('demo-hvac');
+    const beforeRevenue = await tenantRecovery.snapshot();
+    assert.equal(beforeRevenue.events.length, 21);
+    const recordRevenue = body => fetch(`${base}/api/v1/opportunities/${opportunity.id}/revenue`, {
+      method: 'POST', headers, body: JSON.stringify(body),
+    });
+    for (const body of [{}, ...[null, '', ' ', false, true, [], [10], {}, '0x10'].map(amount => ({ amount }))]) {
+      const response = await recordRevenue(body);
+      assert.equal(response.status, 400, JSON.stringify(body));
+    }
+    assert.deepEqual(await tenantRecovery.snapshot(), beforeRevenue);
+    const zero = await recordRevenue({ amount: 0 });
+    assert.equal(zero.status, 200);
+    assert.equal((await zero.json()).result.attribution.confirmedRevenue, 0);
+    const decimal = await recordRevenue({ amount: '12.50' });
+    assert.equal(decimal.status, 200);
+    assert.equal((await decimal.json()).result.attribution.confirmedRevenue, 12.5);
+    const sameAmount = await recordRevenue({ amount: '12.5' });
+    assert.equal(sameAmount.status, 200);
+    assert.equal((await sameAmount.json()).result.duplicate, true);
     assert.equal((await fetch(base+'/health')).status,200);
     console.log(JSON.stringify({event:'synthetic.storage_load',concurrentRequests:20,elapsedMs:Date.now()-loadStarted,allCommitted:true}));
     for(const key of ['STATE_FILE','RECOVERY_STATE_FILE','CALL_HISTORY_FILE','GROWTH_METRICS_FILE'])await assert.rejects(fs.stat(env[key]),{code:'ENOENT'});

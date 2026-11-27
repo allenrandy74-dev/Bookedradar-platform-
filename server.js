@@ -39,7 +39,7 @@ import { enforceProofPilotAdmission, readProofPilotSnapshot, preparePilotCall } 
 import { GrowthMetricsStore, normalizeGrowthEvent } from "./src/growth-metrics.js";
 import { applyBookedRadarPublicCors } from "./src/public-site-cors.js";
 import { RecoveryStore } from "./src/recovery/store.js";
-import { RecoveryEngine } from "./src/recovery/engine.js";
+import { RecoveryEngine, nonnegativeMoney } from "./src/recovery/engine.js";
 import { mountReconciliationRoutes } from "./src/recovery/reconciliation-http.js";
 import {
   postgresBackendConfig,
@@ -1993,15 +1993,13 @@ routes.post("/api/v1/opportunities/:id/recovered", requireAdmin, requireTenant, 
 });
 
 routes.post("/api/v1/opportunities/:id/revenue", requireAdmin, requireTenant, async (req, res) => {
+  let amount;
   try {
-    const amount = Number(req.body?.amount);
-    if (!Number.isFinite(amount) || amount < 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "amount must be a non-negative number",
-      });
-    }
-
+    amount = nonnegativeMoney(req.body?.amount, "amount");
+  } catch {
+    return res.status(400).json({ ok: false, error: "amount must be a non-negative number" });
+  }
+  try {
     const result = await engineFor(req.bookedRadarTenant).ingest({
       idempotencyKey:
         req.body?.idempotencyKey ||

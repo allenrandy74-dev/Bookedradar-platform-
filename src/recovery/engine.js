@@ -65,7 +65,7 @@ export async function contactWithRecipientSuppression(store, tenantId, contact) 
     : contact;
 }
 
-function nonnegativeMoney(value, field) {
+export function nonnegativeMoney(value, field) {
   // Numeric strings remain supported for existing intake clients, but coercible
   // objects, booleans, empty strings and null are not monetary amounts.
   if (!(typeof value === "number" ||
