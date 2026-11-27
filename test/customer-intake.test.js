@@ -113,7 +113,7 @@ test("quick start defaults to RadarRecover deployment profile", () => {
   });
   assert.equal(result.tenant.commercial.serviceProfile,"recover");
   assert.equal(result.tenant.commercial.serviceProfileName,"RadarRecover");
-  assert.equal(result.tenant.commercial.pricing.monthlyUsd,497);
+  assert.equal(result.tenant.commercial.pricing.monthlyUsd,179);
   assert.equal(result.tenant.commercial.pricing.foundingMonthlyUsd,397);
   assert.equal(result.tenant.features.twoWaySms,false);
   assert.equal(result.tenant.commercial.entitlements.twoWaySms,true);

@@ -4,7 +4,7 @@ This document is the customer-facing source of truth for package positioning. Ea
 
 ## Package ladder
 
-### 1. RadarAnswer — $149/month
+### 1. RadarAnswer — $99/month
 **Purpose:** Make sure the business answers professionally, captures the right information, and gets urgent callers to a person.
 
 **Includes**
@@ -44,7 +44,7 @@ Businesses that mainly want professional call coverage and lead capture without 
 
 ---
 
-### 2. RadarRecover — $497/month
+### 2. RadarRecover — $179/month
 **Founding Partner:** $397/month, setup waived.
 
 **Purpose:** Everything in RadarAnswer, plus actively identify and recover opportunities the business would otherwise lose.
@@ -88,7 +88,7 @@ Home-service businesses that already get valuable inbound leads but lose revenue
 
 ---
 
-### 3. RadarGrow — $697/month
+### 3. RadarGrow — $249/month
 **Founding Partner:** $597/month, setup waived.
 
 **Purpose:** Everything in RadarRecover, plus help protect recurring revenue and strengthen the customer's long-term customer base.
@@ -122,7 +122,7 @@ Businesses with maintenance agreements, recurring service, meaningful appointmen
 
 ---
 
-### 4. RadarSchedule — $897/month
+### 4. RadarSchedule — $349/month
 **Founding Partner:** $797/month, setup waived.
 
 **Purpose:** Everything in RadarGrow, plus simple live booking into an approved connected calendar.

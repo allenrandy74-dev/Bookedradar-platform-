@@ -24,14 +24,14 @@ Test and live billing use separate state files and reject Stripe objects/events 
 
 Create recurring monthly USD prices for:
 
-| Package | Standard | Founding |
+| Package | Standard | Existing Founding terms |
 | --- | ---: | ---: |
-| RadarAnswer | $149 | $149 |
-| RadarRecover | $497 | $397 |
-| RadarGrow | $697 | $597 |
-| RadarSchedule | $897 | $797 |
+| RadarAnswer | $99 | $149 |
+| RadarRecover | $179 | $397 |
+| RadarGrow | $249 | $597 |
+| RadarSchedule | $349 | $797 |
 
-RadarAnswer standard and Founding may reference the same $149 monthly Stripe Price ID if desired.
+Add the current standard prices to the existing Stripe products. Keep the previous prices active for any account with that price in its signed order and billing record. Update all four standard Render mappings with the matching release while live billing is disarmed. `STRIPE_PRICE_ID` is the legacy test pilot price and cannot supply a standard package mapping.
 
 Recommended Stripe product names:
 - BookedRadar — RadarAnswer
@@ -123,11 +123,11 @@ Stripe portal cancellation may end service at the paid period end. BookedRadar p
 
 No abrupt automated call-routing change should be tied directly to a single payment event; service suspension/handoff remains an operational decision governed by the customer agreement.
 
-## Catalog prepared September 25, 2026
+## Historical catalog prepared September 25, 2026
 
 Existing Stripe account: `acct_1UJDp1CIdeSd220W` (BookedRadar LLC).
 
-| Render variable | Live monthly price ID | USD |
+| Render variable at the time | Live monthly price ID | USD |
 | --- | --- | ---: |
 | STRIPE_PRICE_ANSWER_STANDARD | price_1UJXVFCIdeSd220WvY9Sx350 | 149 |
 | STRIPE_PRICE_ANSWER_FOUNDING | price_1UJbPkCIdeSd220Wj0xcscIf | 149 |

@@ -49,6 +49,6 @@ Capabilities depend on the customer's selected configuration and connected syste
 
 The Proof Pilot is an evaluation for qualified businesses: after-hours OR overflow, up to 14 days or 25 real calls, whichever comes first. Customer scope, acceptance, human escalation and rollback come first. There is no automatic paid conversion or scope expansion.
 
-Paid continuation is a separate decision and order. RadarRecover is $497/month standard or $397/month for an approved Founding Partner, with founding setup waived where approved. Use `../SERVICE_SCOPE_AND_PRICING.md` for the full current ladder and setup fees. State coverage, usage, integrations and separate costs in the order; do not promise unlimited usage or surprise overage charges.
+Paid continuation is a separate decision and order. RadarRecover is $179/month standard or $397/month for an approved Founding Partner, with founding setup waived where approved. Use `../SERVICE_SCOPE_AND_PRICING.md` for the full current ladder and setup fees. State coverage, usage, integrations and separate costs in the order; do not promise unlimited usage or surprise overage charges.
 
 Appointment requests remain confirm-only. RadarSchedule live calendar booking requires separate approval and acceptance. Technician assignment, travel-aware routing and full dispatch are custom RadarDispatch scope. Entitled features remain gated until their customer-specific setup, consent and acceptance checks pass.

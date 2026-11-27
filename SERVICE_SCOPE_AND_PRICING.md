@@ -4,10 +4,10 @@
 
 | Package | Standard monthly | Standard setup | Founding Partner monthly | Founding setup |
 | --- | ---: | ---: | ---: | ---: |
-| RadarAnswer | $149 | $199 | $149 | Waived |
-| RadarRecover | $497 | $499 | $397 | Waived |
-| RadarGrow | $697 | $749 | $597 | Waived |
-| RadarSchedule | $897 | $999 | $797 | Waived |
+| RadarAnswer | $99 | $199 | $149 | Waived |
+| RadarRecover | $179 | $499 | $397 | Waived |
+| RadarGrow | $249 | $749 | $597 | Waived |
+| RadarSchedule | $349 | $999 | $797 | Waived |
 | RadarDispatch | Custom | Custom | Custom | Custom |
 
 These prices position BookedRadar above commodity answering services while remaining in the same general range as higher-touch AI receptionist/automation offerings. The pricing assumes BookedRadar is being sold as an operating and revenue-recovery layer, not simply by the minute.
@@ -30,10 +30,9 @@ Evaluate outcomes before choosing a separate paid continuation order. A Founding
 
 ## Founding Partner paid continuation
 
-**Standard RadarRecover price:** $497/month  
-**Founding Partner RadarRecover price:** $397/month  
-**Setup fee:** Waived for approved Founding Partners  
-**Preferred payment method:** ACH; card available
+- Standard RadarRecover costs $179 per month.
+- RadarRecover under approved Founding Partner terms costs $397 per month with setup waived.
+- ACH is preferred. Card payment is available.
 
 The Founding Partner paid continuation is designed as a revenue-recovery operating layer, not merely a phone-answering service. Voice, approved messaging, web lead capture, CRM follow-up and recovery attribution should preserve one opportunity context across channels and make the resulting value measurable.
 

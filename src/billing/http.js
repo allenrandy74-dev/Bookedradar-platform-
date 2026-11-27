@@ -13,9 +13,7 @@ function buildPriceCatalog(env) {
   for (const profileId of PROFILE_IDS) {
     const profile = serviceProfile(profileId);
     const upper = profileId.toUpperCase();
-    const standardPriceId =
-      env[`STRIPE_PRICE_${upper}_STANDARD`] ||
-      (profileId === 'recover' ? env.STRIPE_PRICE_ID : '');
+    const standardPriceId = env[`STRIPE_PRICE_${upper}_STANDARD`] || '';
     const foundingPriceId = env[`STRIPE_PRICE_${upper}_FOUNDING`] || '';
 
     catalog[profileId] = {
@@ -101,7 +99,7 @@ export async function createBilling({
     store,
     tenantExists,
     tenantProfile,
-    priceId: env.STRIPE_PRICE_ID || priceCatalog.recover?.standard?.priceId || '',
+    priceId: env.STRIPE_PRICE_ID || '',
     priceCatalog,
     portalConfiguration: env.STRIPE_PORTAL_CONFIGURATION,
     baseUrl: baseUrl.origin,
