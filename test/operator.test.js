@@ -107,6 +107,8 @@ test("routine intake ends with a direct callback question and a single goodbye",
   const routine = prompt.split("CALL HANDLING\n")[1].split("\nSAFETY")[0];
 
   assert.match(routine, /ask for any missing urgency first and the preferred visit time second\..+make the callback check the final intake question/);
+  assert.match(routine, /If the caller has not already made the urgency clear, ask only "Would you say this is routine, urgent, or an emergency\?" Then stop and wait/);
+  assert.doesNotMatch(routine, /How urgent is this issue\?/);
   assert.match(routine, /call ask_routine_callback directly without speaking\..+Wait for explicit confirmation before the final save/);
   assert.ok(tools.some(tool => tool.name === "ask_routine_callback"));
   assert.equal(routineCallbackQuestion("(409) 555-0123"), "Is 409-555-0123 the best number to call you back?");
