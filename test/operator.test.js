@@ -101,6 +101,19 @@ test("a live transfer asks one callback question per turn and leaves the announc
   assert.deepEqual(transfer.parameters.properties.language.enum, ["en", "es"]);
 });
 
+test("routine intake ends with a direct callback question and a single goodbye", async () => {
+  const { buildOperatorInstructions } = await import("../src/operator.js");
+  const prompt = buildOperatorInstructions({ companyName: "QA HVAC", companyTrade: "HVAC", serviceArea: "Silsbee" });
+  const routine = prompt.split("CALL HANDLING\n")[1].split("\nSAFETY")[0];
+
+  assert.match(routine, /ask for any missing urgency first and the preferred visit time second\..+make the callback check the final intake question/);
+  assert.match(routine, /ask only: "Is \[full number\] the best number to call you back\?" Read every digit and wait for explicit confirmation/);
+  assert.match(routine, /keep saving, planning, and transitions silent/);
+  assert.match(routine, /say only "Thank you for calling\. Goodbye\."/);
+  assert.match(routine, /stay silent through a return farewell, thanks, or silence\. Speak again only if/);
+  assert.doesNotMatch(routine, /briefly summarize the service request|take care, and have a good day/i);
+});
+
 test('live-booking configuration gives advisory-only, owner-confirmed guidance while authority is unavailable',async()=>{
   const {buildOperatorInstructions}=await import('../src/operator.js');
   const prompt=buildOperatorInstructions({companyName:'Synthetic',companyTrade:'HVAC',serviceArea:'Test',bookingMode:'live_booking'});
