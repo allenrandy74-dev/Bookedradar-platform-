@@ -501,6 +501,12 @@ if (OPS_ALERTS_ENABLED.toLowerCase() === "true") {
   opsIntervalTimer = setInterval(() => runOpsAlertCheck().catch(() => {}), intervalMs);
   opsIntervalTimer.unref();
 }
+console.log(JSON.stringify({
+  event: "ops.alerting.startup",
+  enabled: Boolean(opsIntervalTimer),
+  incident_store_configured: Boolean(opsIncidentStore),
+  delivery_configured: Boolean(OPS_ALERT_EMAIL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL),
+}));
 
 const billingMode = String(process.env.BOOKEDRADAR_BILLING_MODE || "test").trim().toLowerCase();
 let billing = null;

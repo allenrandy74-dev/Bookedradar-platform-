@@ -21,12 +21,12 @@ This order records paid service. A preceding Proof Pilot is a separate capped ev
 
 Select one:
 
-- [ ] **RadarAnswer** — $99/month standard
-- [ ] **RadarRecover** — $179/month standard
+- [ ] **RadarAnswer** — $99/month standard with 200 included voice minutes per month
+- [ ] **RadarRecover** — $179/month standard with 350 included voice minutes per month
 - [ ] **RadarRecover Founding Partner** — $397/month; setup fee waived
-- [ ] **RadarGrow** — $249/month standard
+- [ ] **RadarGrow** — $249/month standard with 500 included voice minutes per month
 - [ ] **RadarGrow Founding Partner** — $597/month; setup fee waived
-- [ ] **RadarSchedule** — $349/month standard
+- [ ] **RadarSchedule** — $349/month standard with 700 included voice minutes per month
 - [ ] **RadarSchedule Founding Partner** — $797/month; setup fee waived
 - [ ] **RadarDispatch** — custom scope and pricing attached
 
@@ -124,7 +124,17 @@ BookedRadar may pause new outbound automation or service activation when payment
 
 **Different agreed billing/cancellation terms, if any:** ______________________________
 
-## 11. Fair-use and unusually high volume
+## 11. Voice usage and overages
+
+Record the included voice minutes for the selected standard package or from the signed Founding Partner terms or RadarDispatch scope. Before activation, agree how voice minutes are counted and what happens when the included minutes are used. Any overage charge requires an agreed written rate and billing terms.
+
+**Included voice minutes per month:** ______________________________
+
+**How voice minutes are counted:** ______________________________
+
+**Agreed handling when included minutes are used:** ______________________________
+
+**Agreed overage rate and billing terms, if applicable:** ______________________________
 
 Published package pricing does not currently promise unlimited call, message, AI, storage, integration, or provider usage.
 
