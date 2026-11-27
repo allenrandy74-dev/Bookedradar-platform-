@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPostSaveResponse } from '../src/post-save-response.js';
+import { INTAKE_CONTINUATION_RULES } from '../src/operator.js';
 function fixture() {
   const sent = [], logs = [];
   const guard = createPostSaveResponse({ send: e => sent.push(e), log: (e, fields) => logs.push({ e, ...fields }) });
@@ -55,6 +56,15 @@ test('ordinary confirmation responses never trigger the post-save recovery', () 
   f.guard.event({ type: 'response.created', response: { id: 'ordinary' } });
   f.done([], 'completed', 'ordinary');
   assert.equal(f.sent.length, 0);
+});
+test('save completion uses the same intake order and preserves a pending answer or completed farewell', () => {
+  const f = fixture();
+  f.guard.request(true);
+  const { instructions } = f.sent[0].response;
+
+  assert.ok(instructions.includes(INTAKE_CONTINUATION_RULES));
+  assert.match(instructions, /If you have already asked a question and the caller has not answered, wait/);
+  assert.match(instructions, /If you have already said goodbye, remain silent unless the caller starts a new substantive turn/);
 });
 test('late response.done cannot retry an older request or overwrite the newest request', () => {
   const f = fixture(); f.guard.request(true); f.created('old'); f.guard.request(false); f.created('new');
