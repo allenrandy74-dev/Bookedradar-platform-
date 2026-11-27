@@ -122,7 +122,7 @@ export function bookingAdapterForTenant(tenant, {
       refreshToken,
       calendarId,
       timeZone: tenant?.timeZone || "America/Chicago",
-      defaultDurationMinutes: Number(calendar.defaultDurationMinutes || 60),
+      defaultDurationMinutes: calendar.defaultDurationMinutes ?? 60,
       slotIncrementMinutes: Number(calendar.slotIncrementMinutes || 30),
       timeoutMs,
     });

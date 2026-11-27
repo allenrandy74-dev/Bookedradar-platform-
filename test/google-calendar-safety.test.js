@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GoogleCalendarBookingAdapter } from '../src/integrations/google-calendar-booking.js';
 const slot = { slotStart: '2026-11-02T15:00:00Z', slotEnd: '2026-11-02T16:00:00Z' };
+test.beforeEach(t => t.mock.method(Date, 'now', () => Date.parse('2026-11-02T14:00:00Z')));
 function fixture({ busy = [], freeBusy } = {}) {
   let writes = 0, reads = 0;
   const adapter = new GoogleCalendarBookingAdapter({clientId:'synthetic',clientSecret:'synthetic',refreshToken:'synthetic',fetchImpl:async (url) => {
