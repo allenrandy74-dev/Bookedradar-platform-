@@ -2,17 +2,19 @@
 
 ## Recommended launch pricing
 
-| Package | Standard monthly | Standard setup | Founding Partner monthly | Founding setup |
-| --- | ---: | ---: | ---: | ---: |
-| RadarAnswer | $99 | $199 | $149 | Waived |
-| RadarRecover | $179 | $499 | $397 | Waived |
-| RadarGrow | $249 | $749 | $597 | Waived |
-| RadarSchedule | $349 | $999 | $797 | Waived |
-| RadarDispatch | Custom | Custom | Custom | Custom |
+| Package | Standard monthly | Included monthly voice minutes (standard) | Standard setup | Founding Partner monthly | Founding setup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| RadarAnswer | $99 | 200 | $199 | $149 | Waived |
+| RadarRecover | $179 | 350 | $499 | $397 | Waived |
+| RadarGrow | $249 | 500 | $749 | $597 | Waived |
+| RadarSchedule | $349 | 700 | $999 | $797 | Waived |
+| RadarDispatch | Custom | Custom | Custom | Custom | Custom |
 
 These prices position BookedRadar above commodity answering services while remaining in the same general range as higher-touch AI receptionist/automation offerings. The pricing assumes BookedRadar is being sold as an operating and revenue-recovery layer, not simply by the minute.
 
-**Important:** Do not publish unlimited-use or call-volume promises yet. Included usage/overage terms should be set only after production provider costs and pilot call volume are measured. Founding Partner pilots should use a clearly stated fair-use provision with no surprise overage billing unless separately agreed.
+Use the signed Founding Partner terms or custom RadarDispatch scope to determine the voice allowance for those orders. Before activation, record in the service order how voice minutes are counted, what happens when the included minutes are used, any agreed overage rate and billing terms, and any separate SMS or provider charges. See [published pricing](https://www.bookedradar.com/pricing.html).
+
+Founding Partner pilots should use a clearly stated fair-use provision with no surprise overage billing unless separately agreed.
 
 ### Package intent
 
