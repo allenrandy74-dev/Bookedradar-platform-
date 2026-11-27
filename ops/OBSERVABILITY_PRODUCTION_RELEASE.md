@@ -97,6 +97,12 @@ For the first observation window:
 
 Do not publish an uptime/SLA or concurrency claim from this initial data.
 
+## Recurring alert delivery upgrade
+
+Schedule the rollout as a separate change. Pause the old alert loops and verify every old instance has drained before starting the new loops. A mixed rollout can overwrite the new workers' pending notification data. Use the same quiescing step before rolling back to a build that lacks durable notifications.
+
+Verify a repeated incident in an isolated environment. A later reminder should have a different provider key, a retry of the same reminder should keep its original message and key, and a stale worker should leave a reclaimed reminder alone. Confirm that the operations view omits private delivery state.
+
 ## Closeout
 Record:
 - deployed SHA
