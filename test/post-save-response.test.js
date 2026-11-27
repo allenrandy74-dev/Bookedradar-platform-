@@ -65,6 +65,7 @@ test('save completion uses the same intake order and preserves a pending answer 
   const { instructions } = f.sent[0].response;
 
   assert.ok(instructions.includes(INTAKE_CONTINUATION_RULES));
+  assert.match(instructions, /"Would you say this is routine, urgent, or an emergency\?"/);
   assert.match(instructions, /If you have already asked a question and the caller has not answered, wait/);
   assert.match(instructions, /If you have already said goodbye, remain silent unless the caller starts a new substantive turn/);
 });
