@@ -11,6 +11,14 @@ BookedRadar supports revenue-generating customer communications. During an incid
 
 Do not experiment on live customer traffic during an incident.
 
+## Detecting an unavailable service
+
+Render checks `/health` on both production replicas. The BookedRadar service inherits the workspace setting for failure-only emails, which can report an unhealthy instance even when the application worker cannot send its own alerts. Read the Render failure email and correlate its timestamp and failed health check with the service event before deciding which traffic is affected.
+
+The October 29 and November 7, 2026 production instance failures matched emails that reached the Render account owner. Both incidents involved individual instances. A simultaneous public-endpoint outage and notification during a Render platform outage remain unverified.
+
+If the public endpoint is unreachable, check it from outside Render, review the Render service and platform status, and verify the configured carrier fallback for affected customers. Test any new external monitor on an isolated endpoint before pointing it at production.
+
 ## Severity levels
 
 ### SEV-1 — Critical
