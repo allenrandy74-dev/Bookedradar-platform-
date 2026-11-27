@@ -7,7 +7,7 @@ export const INTAKE_CONTINUATION_RULES = [
   'A hesitation such as um is not a completed urgency answer. Give the caller time; clarify the pending question if needed. Preserve immediate safety priority when danger is actually reported.',
   'When the caller gives or corrects a phone number, listen through pauses between groups of digits. Let them finish before you speak. Keep the groups in order across turns; never fill missing digits from caller ID or a previous number. If they have finished and digits are missing or unclear, ask only for the missing or unclear part. Read the complete number back once and wait for explicit confirmation.',
   'For a routine service request, after the address is confirmed or unavailable, ask for any missing urgency first and the preferred visit time second. Ask each in a separate turn and wait. Once the other required details are supplied or explicitly unknown or declined, make the callback check the final intake question.',
-  'For the routine callback check, ask only: "Is [full number] the best number to call you back?" Read every digit and wait for explicit confirmation. If you do not have a usable number, ask only "What is the best number to call you back?" and wait for the answer before reading it back. Use the caller’s chosen number and confirm a correction with a new readback.',
+  'For the routine callback check, if you have a usable number, call ask_routine_callback directly without speaking. It asks one question with every digit. Wait for explicit confirmation before the final save. If you do not have a usable number, ask only "What is the best number to call you back?" and wait for the answer before using the tool. Use the caller’s chosen number and use the tool again only for a correction or a missing confirmation.',
   'Once the callback is confirmed and the final save succeeds, the entire next spoken turn is: The team will follow up with you to confirm the details. Is there anything else you would like the team to know? Then wait. Do not prefix this with Great, I will note that as confirmed, a wrap-up announcement, or unsolicited advice. If the caller instead asks a question, changes details, requests a person, or reports danger, handle that new intent first.',
   'If the caller says no to the final invitation or otherwise clearly ends the call, say only "Thank you for calling. Goodbye." in the caller’s supported language. After you have said goodbye, stay silent through a return farewell, thanks, or silence. Speak again only if the caller brings up a new question, request, correction, or safety concern.',
   'For a requested live transfer, skip routine intake and closing. Get the name the caller wants to use and an explicitly confirmed callback number, one question per turn. Reuse earlier answers. If the caller changes the number, confirm the corrected digits. Then invoke transfer_to_human directly. The tool plays the hold announcement.',
@@ -68,17 +68,34 @@ export function transferContact(context = {}) {
     return { ok: false, transferred: false, reason: "caller_name_required",
       message: "Use the name the caller gave, or ask only for their name and wait." };
   }
-  const digits = typeof context.callback_number === "string"
-    ? context.callback_number.trim().replace(/[ ().-]/g, "") : "";
-  let number = digits;
-  if (/^\d{10}$/.test(digits)) number = "+1" + digits;
-  else if (/^1\d{10}$/.test(digits)) number = "+" + digits;
-  if (context.callback_confirmed !== true || !/^\+[1-9]\d{7,14}$/.test(number) ||
-      (number.startsWith("+1") && number.length !== 12)) {
+  const number = normalizeCallbackNumber(context.callback_number);
+  if (context.callback_confirmed !== true || !number) {
     return { ok: false, transferred: false, reason: "confirmed_callback_required",
       message: "Use the caller's explicitly confirmed number. If still unconfirmed, ask for or confirm the full number and wait." };
   }
   return { ok: true, name: name.slice(0, 120), callback_number: number };
+}
+
+function normalizeCallbackNumber(value) {
+  const digits = typeof value === "string" ? value.trim().replace(/[ ().-]/g, "") : "";
+  let number = digits;
+  if (/^\d{10}$/.test(digits)) number = "+1" + digits;
+  else if (/^1\d{10}$/.test(digits)) number = "+" + digits;
+  if (!/^\+[1-9]\d{7,14}$/.test(number) || (number.startsWith("+1") && number.length !== 12)) return "";
+  return number;
+}
+
+export function routineCallbackQuestion(value, language) {
+  const number = normalizeCallbackNumber(value);
+  if (!number) {
+    return language === "es" ? "¿A qué número podemos devolverle la llamada?" : "What is the best number to call you back?";
+  }
+  const digits = number.startsWith("+1")
+    ? `${number.slice(2, 5)}-${number.slice(5, 8)}-${number.slice(8)}`
+    : number;
+  return language === "es"
+    ? `¿Es ${digits} el mejor número para devolverle la llamada?`
+    : `Is ${digits} the best number to call you back?`;
 }
 
 export function operatorRulesForTenant(tenant) {
@@ -215,6 +232,20 @@ PRIVACY
 }
 
 export const tools = [
+  {
+    type: "function",
+    name: "ask_routine_callback",
+    description: "Ask one scripted confirmation question for the routine callback number after the other intake details. Invoke silently, using the caller’s latest chosen number. Wait for the caller’s answer before treating it as confirmed or saving the final lead. Do not use this tool for a live transfer.",
+    parameters: {
+      type: "object",
+      properties: {
+        callback_number: { type: "string", description: "Full telephone number selected by the caller, or caller ID only if they have not supplied a different number." },
+        language: { type: "string", enum: ["en", "es"], description: "Language currently used with the caller." },
+      },
+      required: ["callback_number"],
+      additionalProperties: false,
+    },
+  },
   {
     type: "function",
     name: "capture_lead",

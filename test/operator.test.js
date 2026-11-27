@@ -102,12 +102,17 @@ test("a live transfer asks one callback question per turn and leaves the announc
 });
 
 test("routine intake ends with a direct callback question and a single goodbye", async () => {
-  const { buildOperatorInstructions } = await import("../src/operator.js");
+  const { buildOperatorInstructions, routineCallbackQuestion, tools } = await import("../src/operator.js");
   const prompt = buildOperatorInstructions({ companyName: "QA HVAC", companyTrade: "HVAC", serviceArea: "Silsbee" });
   const routine = prompt.split("CALL HANDLING\n")[1].split("\nSAFETY")[0];
 
   assert.match(routine, /ask for any missing urgency first and the preferred visit time second\..+make the callback check the final intake question/);
-  assert.match(routine, /ask only: "Is \[full number\] the best number to call you back\?" Read every digit and wait for explicit confirmation/);
+  assert.match(routine, /call ask_routine_callback directly without speaking\..+Wait for explicit confirmation before the final save/);
+  assert.ok(tools.some(tool => tool.name === "ask_routine_callback"));
+  assert.equal(routineCallbackQuestion("(409) 555-0123"), "Is 409-555-0123 the best number to call you back?");
+  assert.equal(routineCallbackQuestion("+14095550123", "es"), "¿Es 409-555-0123 el mejor número para devolverle la llamada?");
+  assert.equal(routineCallbackQuestion("+442071234567"), "Is +442071234567 the best number to call you back?");
+  assert.equal(routineCallbackQuestion("409-555", "en"), "What is the best number to call you back?");
   assert.match(routine, /keep saving, planning, and transitions silent/);
   assert.match(routine, /say only "Thank you for calling\. Goodbye\."/);
   assert.match(routine, /stay silent through a return farewell, thanks, or silence\. Speak again only if/);
