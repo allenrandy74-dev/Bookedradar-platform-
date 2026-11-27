@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createPostSaveResponse } from '../src/post-save-response.js';
-import { INTAKE_CONTINUATION_RULES } from '../src/operator.js';
+import { INTAKE_CONTINUATION_RULES, routineCallbackQuestion } from '../src/operator.js';
+import { competitiveFeaturesForTenant } from '../src/competitive-features.js';
 function fixture() {
   const sent = [], logs = [];
   const guard = createPostSaveResponse({ send: e => sent.push(e), log: (e, fields) => logs.push({ e, ...fields }) });
@@ -65,6 +67,61 @@ test('save completion uses the same intake order and preserves a pending answer 
   assert.ok(instructions.includes(INTAKE_CONTINUATION_RULES));
   assert.match(instructions, /If you have already asked a question and the caller has not answered, wait/);
   assert.match(instructions, /If you have already said goodbye, remain silent unless the caller starts a new substantive turn/);
+});
+test('callback readback starts once after the tool response and stays in the conversation', () => {
+  const f = fixture();
+  const question = 'Is 4095550123 the best number to call you back?';
+  f.guard.event({ type: 'response.created', response: { id: 'tool' } });
+  assert.equal(f.guard.queueCallback('tool', question), true);
+  assert.equal(f.guard.queueCallback('tool', question), false);
+  f.done([{ type: 'function_call' }], 'completed', 'unrelated');
+  assert.equal(f.sent.length, 0);
+  f.done([{ type: 'function_call' }], 'completed', 'tool');
+  f.done([{ type: 'function_call' }], 'completed', 'tool');
+  assert.equal(f.sent.length, 1);
+  const { response } = f.sent[0];
+  assert.equal(response.metadata.purpose, 'callback_readback');
+  assert.equal(response.tool_choice, 'none');
+  assert.equal(response.conversation, undefined);
+  assert.ok(response.instructions.endsWith(`"${question}"`));
+  f.created('readback'); f.done([], 'completed', 'readback');
+  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent[1].response.instructions, response.instructions);
+});
+
+test('caller interruption, replacement response, cancellation or call closure drops a queued callback', () => {
+  for (const action of ['caller', 'replacement', 'cancel', 'close']) {
+    const f = fixture();
+    assert.equal(f.guard.queueCallback('tool', 'Is 4095550123 your callback number?'), true);
+    if (action === 'caller') f.guard.event({ type: 'input_audio_buffer.speech_started' });
+    if (action === 'replacement') f.guard.event({ type: 'response.created', response: { id: 'new' } });
+    if (action === 'close') f.guard.stop();
+    f.done([{ type: 'function_call' }], action === 'cancel' ? 'cancelled' : 'completed', 'tool');
+    assert.equal(f.sent.length, 0, action);
+  }
+});
+
+test('the live tool respects the latest caller turn and never marks a number confirmed', async () => {
+  const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  const start = source.indexOf('if (toolCall.name === "ask_routine_callback")');
+  const end = source.indexOf('// A caller may have started correcting', start);
+  assert.ok(start >= 0 && end > start);
+  const invoke = new Function('toolCall', 'args', 'tenant', 'callerTurns', 'origin',
+    'postSaveResponse', 'event', 'send', 'ws', 'routineCallbackQuestion',
+    'competitiveFeaturesForTenant', source.slice(start, end));
+
+  for (const current of [false, true]) {
+    const f = fixture();
+    const sent = [];
+    invoke({ name: 'ask_routine_callback', call_id: 'tool-item' },
+      { callback_number: '4095550123', language: 'es' }, { features: { languages: ['en', 'es'] } },
+      { canReply: () => current }, 1, f.guard, { response_id: 'tool' },
+      (_ws, event) => sent.push(event), null, routineCallbackQuestion, competitiveFeaturesForTenant);
+    assert.deepEqual(JSON.parse(sent[0].item.output), { question_queued: current, callback_confirmed: false });
+    f.done([{ type: 'function_call' }], 'completed', 'tool');
+    assert.equal(f.sent.length, current ? 1 : 0);
+    if (current) assert.match(f.sent[0].response.instructions, /¿Es 409-555-0123 el mejor número/);
+  }
 });
 test('late response.done cannot retry an older request or overwrite the newest request', () => {
   const f = fixture(); f.guard.request(true); f.created('old'); f.guard.request(false); f.created('new');

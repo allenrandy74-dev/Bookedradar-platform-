@@ -26,6 +26,7 @@ import {
   buildOperatorInstructions,
   operatorRulesForTenant,
   normalizeLead,
+  routineCallbackQuestion,
   transferContact,
   parseSipPhone,
   parseDialedNumber,
@@ -1290,6 +1291,19 @@ async function attachSideband({
           args = JSON.parse(toolCall.arguments || "{}");
         } catch {}
 
+        if (toolCall.name === "ask_routine_callback") {
+          if (!toolCall.call_id) return;
+          const language = args?.language === "es" && competitiveFeaturesForTenant(tenant).languages.includes("es") ? "es" : "en";
+          const queued = callerTurns.canReply(origin) && postSaveResponse.queueCallback(
+            event.response_id, routineCallbackQuestion(args?.callback_number, language)
+          );
+          send(ws, { type: "conversation.item.create", item: {
+            type: "function_call_output", call_id: toolCall.call_id,
+            output: JSON.stringify({ question_queued: queued, callback_confirmed: false }),
+          } });
+          return;
+        }
+
         // A caller may have started correcting the digits as the tool was emitted.
         if (toolCall.name === "transfer_to_human" && !callerTurns.canReply(origin)) {
           send(ws, { type: "conversation.item.create", item: {
@@ -2508,7 +2522,7 @@ routes.get("/health", (_req, res) => {
     version: "2.0.0",
     billingMode: billing?.billingMode || 'disabled',
     billingLiveArmed: billingMode === 'live' && process.env.BOOKEDRADAR_BILLING_LIVE_ARMED === 'true',
-    voiceReliabilityRevision: "2026-11-26.5",
+    voiceReliabilityRevision: "2026-11-26.6",
     screenedTransferReady: warmTransfer.ready(),
     transferFallbackReady,
     transferSmsConfigured: transferCompanion.ready(),
