@@ -7,7 +7,7 @@ and complete the agreement/privacy review before offering it for signature or pa
 Provider: BookedRadar LLC.
 
 - [ ] Proof Pilot evaluation: after-hours OR overflow; maximum 14 days or 25 real calls, whichever comes first. No automatic paid conversion or expansion. Record any expressly agreed evaluation charges or provider costs.
-- [ ] Separate paid continuation: select RadarAnswer, RadarRecover, RadarGrow, RadarSchedule or custom RadarDispatch from `../SERVICE_SCOPE_AND_PRICING.md`. RadarRecover is $497/month standard or $397/month for an approved Founding Partner. Founding setup is waived where approved; custom dispatch is separately scoped.
+- [ ] Separate paid continuation: select RadarAnswer, RadarRecover, RadarGrow, RadarSchedule or custom RadarDispatch from `../SERVICE_SCOPE_AND_PRICING.md`. RadarRecover is $179/month standard or $397/month for an approved Founding Partner. Founding setup is waived where approved; custom dispatch is separately scoped.
 
 Record the selected package, approved price and current scope/version. Confirm live Stripe mappings before charging. Confirm-only appointment requests remain the default; live booking and dispatch require their own approval, integration and acceptance.
 

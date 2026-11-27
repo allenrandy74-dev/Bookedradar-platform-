@@ -45,18 +45,16 @@ test("deployable capability report reflects actual enabled state, not requested 
 });
 
 
-test("service profile pricing is explicit and founding pricing is not higher than standard", () => {
-  for (const id of ["answer","recover","grow","schedule"]) {
-    const p=serviceProfile(id);
-    assert.ok(Number.isFinite(p.pricing.monthlyUsd));
-    assert.ok(Number.isFinite(p.pricing.standardSetupUsd));
-    assert.ok(p.pricing.foundingMonthlyUsd <= p.pricing.monthlyUsd);
-    assert.equal(p.pricing.foundingSetupUsd,0);
+test("service profiles use published standard rates and retain Founding terms", () => {
+  const expected = {
+    answer: { monthlyUsd: 99, standardSetupUsd: 199, foundingMonthlyUsd: 149, foundingSetupUsd: 0 },
+    recover: { monthlyUsd: 179, standardSetupUsd: 499, foundingMonthlyUsd: 397, foundingSetupUsd: 0 },
+    grow: { monthlyUsd: 249, standardSetupUsd: 749, foundingMonthlyUsd: 597, foundingSetupUsd: 0 },
+    schedule: { monthlyUsd: 349, standardSetupUsd: 999, foundingMonthlyUsd: 797, foundingSetupUsd: 0 },
+  };
+  for (const [id, pricing] of Object.entries(expected)) {
+    assert.deepEqual(serviceProfile(id).pricing, pricing, id);
   }
-  assert.equal(serviceProfile("answer").pricing.monthlyUsd,149);
-  assert.equal(serviceProfile("recover").pricing.monthlyUsd,497);
-  assert.equal(serviceProfile("grow").pricing.monthlyUsd,697);
-  assert.equal(serviceProfile("schedule").pricing.monthlyUsd,897);
 });
 
 

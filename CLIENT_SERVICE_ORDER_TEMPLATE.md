@@ -21,12 +21,12 @@ This order records paid service. A preceding Proof Pilot is a separate capped ev
 
 Select one:
 
-- [ ] **RadarAnswer** — $149/month
-- [ ] **RadarRecover** — $497/month standard
+- [ ] **RadarAnswer** — $99/month standard
+- [ ] **RadarRecover** — $179/month standard
 - [ ] **RadarRecover Founding Partner** — $397/month; setup fee waived
-- [ ] **RadarGrow** — $697/month standard
+- [ ] **RadarGrow** — $249/month standard
 - [ ] **RadarGrow Founding Partner** — $597/month; setup fee waived
-- [ ] **RadarSchedule** — $897/month standard
+- [ ] **RadarSchedule** — $349/month standard
 - [ ] **RadarSchedule Founding Partner** — $797/month; setup fee waived
 - [ ] **RadarDispatch** — custom scope and pricing attached
 

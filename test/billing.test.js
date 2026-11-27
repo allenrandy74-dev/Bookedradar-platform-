@@ -226,18 +226,29 @@ test('package billing rejects profile mismatch and missing configured price', as
 });
 
 test('price catalog maps configured package Stripe ids to published amounts', () => {
-  const catalog=buildPriceCatalog({
-    STRIPE_PRICE_ID:'price_recover_standard',
-    STRIPE_PRICE_ANSWER_FOUNDING:'price_answer_f',
-    STRIPE_PRICE_RECOVER_FOUNDING:'price_recover_f',
-    STRIPE_PRICE_GROW_FOUNDING:'price_grow_f',
-    STRIPE_PRICE_SCHEDULE_FOUNDING:'price_schedule_f'
+  const catalog = buildPriceCatalog({
+    STRIPE_PRICE_ID: 'price_legacy_test',
+    STRIPE_PRICE_ANSWER_STANDARD: 'price_answer_standard',
+    STRIPE_PRICE_ANSWER_FOUNDING: 'price_answer_f',
+    STRIPE_PRICE_RECOVER_STANDARD: 'price_recover_standard',
+    STRIPE_PRICE_RECOVER_FOUNDING: 'price_recover_f',
+    STRIPE_PRICE_GROW_STANDARD: 'price_grow_standard',
+    STRIPE_PRICE_GROW_FOUNDING: 'price_grow_f',
+    STRIPE_PRICE_SCHEDULE_STANDARD: 'price_schedule_standard',
+    STRIPE_PRICE_SCHEDULE_FOUNDING: 'price_schedule_f',
   });
-  assert.equal(catalog.answer.founding.expectedAmountCents,14900);
-  assert.equal(catalog.recover.founding.expectedAmountCents,39700);
-  assert.equal(catalog.grow.founding.expectedAmountCents,59700);
-  assert.equal(catalog.schedule.founding.expectedAmountCents,79700);
-  assert.equal(catalog.recover.standard.expectedAmountCents,49700);
+  const expected = {
+    answer: [9900, 14900],
+    recover: [17900, 39700],
+    grow: [24900, 59700],
+    schedule: [34900, 79700],
+  };
+  for (const [profile, [standard, founding]] of Object.entries(expected)) {
+    assert.equal(catalog[profile].standard.priceId, `price_${profile}_standard`);
+    assert.equal(catalog[profile].standard.expectedAmountCents, standard);
+    assert.equal(catalog[profile].founding.expectedAmountCents, founding);
+  }
+  assert.equal(buildPriceCatalog({ STRIPE_PRICE_ID: 'price_legacy_test' }).recover.standard, null);
 });
 
 
@@ -272,7 +283,7 @@ test('disarmed live readiness validates every price but blocks all billing opera
     STRIPE_WEBHOOK_SECRET: 'whsec_live', STRIPE_PORTAL_CONFIGURATION: 'bpc_live',
     BILLING_PUBLIC_BASE_URL: 'https://example.com', BOOKEDRADAR_BILLING_ADMIN_TOKEN: 'x'.repeat(40),
   };
-  const amounts = { answer: [14900,14900], recover: [49700,39700], grow: [69700,59700], schedule: [89700,79700] };
+  const amounts = { answer: [9900,14900], recover: [17900,39700], grow: [24900,59700], schedule: [34900,79700] };
   const expected = {};
   for (const [profile, values] of Object.entries(amounts)) {
     for (const [i, tier] of ['standard','founding'].entries()) {
@@ -306,11 +317,11 @@ test('disarmed live readiness validates every price but blocks all billing opera
   assert.equal((await fetch(url+'/api/accounts/tenant1')).status,401);
   assert.equal((await fetch(url+'/health')).status,200);
   assert.equal(reads.length,8);
-  const invalidClient = {prices:{retrieve:async()=>({livemode:false,active:true,currency:'usd',unit_amount:14900,recurring:{interval:'month',interval_count:1}})}};
+  const invalidClient = {prices:{retrieve:async()=>({livemode:true,active:true,currency:'usd',unit_amount:14900,recurring:{interval:'month',interval_count:1}})}};
   await assert.rejects(createBilling({env,stripeClient:invalidClient,tenantExists:()=>true,defaultStateFile:path.join(f.dir,'invalid.json')}),/invalid_live_package_price/);
 });
 
-test('live BillingService rejects test objects and accepts live package objects', async t => {
+test('live billing keeps an enrolled account’s price after the catalog changes and rejects test events', async t => {
   const dir=await mkdtemp(path.join(os.tmpdir(),'br-billing-live-service-'));
   t.after(()=>rm(dir,{recursive:true,force:true}));
   const store=await new BillingStore(path.join(dir,'state.json'),{mode:'live'}).load();
@@ -339,8 +350,14 @@ test('live BillingService rejects test objects and accepts live package objects'
   });
   const account=await service.enroll({tenantId:'tenant1',qualified:true,agreementAccepted:true,profileId:'recover',foundingPartner:false});
   assert.equal(account.mode,'live');
+  service.priceCatalog = buildPriceCatalog({ STRIPE_PRICE_RECOVER_STANDARD: 'price_current_recover' });
+  const currentPlan = service.resolvePlan({ tenantId: 'tenant1', profileId: 'recover', foundingPartner: false });
+  assert.equal(currentPlan.priceId, 'price_current_recover');
+  assert.equal(currentPlan.expectedAmountCents, 17900);
   const checkout=await service.checkout('tenant1');
   assert.equal(checkout.mode,'live');
+  assert.equal(checkout.monthlyUsd, 497);
+  assert.deepEqual(checkouts[0].params.line_items, [{ price: 'price_live_recover', quantity: 1 }]);
   assert.equal(checkouts[0].params.metadata.bookedradar_mode,'live');
 
   await service.processEvent({id:'evt_live_ok',livemode:true,type:'invoice.paid',data:{object:{id:'in_live_1',customer:'cus_live_1',parent:{subscription_details:{subscription:'sub_live_1'}}}}});
